@@ -1,15 +1,13 @@
+# UITGESCHAKELD — vereist Apple Developer-account (€99/jaar).
+# Handmatig opnieuw starten via Actions → Run workflow zodra secrets zijn ingesteld.
 name: TestFlight
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "ios/**"
-      - ".github/workflows/testflight.yml"
 
 jobs:
   build:
+    if: false  # Geen auto-build zonder Apple Developer
     runs-on: macos-latest
     timeout-minutes: 45
 

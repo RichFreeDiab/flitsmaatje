@@ -50,7 +50,8 @@ const limitBadgeEl = document.getElementById("limit-badge");
 const fineBanner = document.getElementById("fine-banner");
 const fineText = document.getElementById("fine-text");
 const alertBanner = document.getElementById("alert-banner");
-const alertText = document.getElementById("alert-text");
+const alertLabel = document.getElementById("alert-label");
+const alertDistance = document.getElementById("alert-distance");
 const reportFab = document.getElementById("report-fab");
 const reportMenu = document.getElementById("report-menu");
 const reportCancel = document.getElementById("report-cancel");
@@ -145,6 +146,7 @@ function startGPS() {
     maximumAge: 1000,
     timeout: 10000,
   });
+  requestWakeLock();
 }
 
 function startPolling() {
@@ -263,34 +265,62 @@ function showAlert(type, distanceM) {
   const label = TYPE_LABELS[type] || "Melding";
   const icon = TYPE_ICONS[type] || "⚠️";
   document.getElementById("alert-icon").textContent = icon;
-  alertText.textContent = `${label} over ${distanceM}m`;
+  alertLabel.textContent = label;
+  alertDistance.textContent = `${distanceM} m`;
   alertBanner.classList.remove("hidden");
-  playBeepOnce(type);
+  document.body.classList.add("alert-active");
+  playAlertSound(type);
+  vibrateAlert();
 }
 
 function hideAlert() {
   alertBanner.classList.add("hidden");
+  document.body.classList.remove("alert-active");
 }
 
 let audioCtx = null;
-function playBeepOnce(type) {
-  const key = type + "_beeped";
-  if (sessionStorage.getItem(key) === "recent") return;
+let audioUnlocked = false;
+
+function unlockAudio() {
+  if (audioUnlocked) return;
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.frequency.value = 880;
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.18);
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    audioUnlocked = true;
   } catch (e) {
-    // audio niet beschikbaar, geen probleem
+    // geen audio
+  }
+}
+
+function beep(freq, duration, volume, type = "sine") {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playAlertSound(type) {
+  const key = type + "_beeped";
+  if (sessionStorage.getItem(key) === "recent") return;
+  unlockAudio();
+  try {
+    beep(880, 0.15, 0.35);
+    setTimeout(() => beep(1100, 0.15, 0.35), 180);
+  } catch (e) {
+    // audio niet beschikbaar
   }
   sessionStorage.setItem(key, "recent");
-  setTimeout(() => sessionStorage.removeItem(key), 30000);
+  setTimeout(() => sessionStorage.removeItem(key), 25000);
+}
+
+function vibrateAlert() {
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
 }
 
 // Houd typeCache bij wanneer renderReports draait
@@ -364,19 +394,11 @@ function playFineBeep() {
   const now = Date.now();
   if (now - lastFineBeepTime < 20000) return; // niet vaker dan elke 20s zeuren
   lastFineBeepTime = now;
+  unlockAudio();
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.frequency.value = 440;
-    osc.type = "square";
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.25);
+    beep(440, 0.3, 0.3, "square");
   } catch (e) {
-    // geen geluid beschikbaar, geen probleem
+    // geen geluid beschikbaar
   }
 }
 
@@ -410,3 +432,41 @@ document.querySelectorAll(".report-btn").forEach((btn) => {
 });
 
 startGPS();
+
+// --- PWA: service worker, install-tip, audio ontgrendelen ---
+
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    }
+  } catch (e) {
+    // niet ondersteund of geweigerd
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && userPos) requestWakeLock();
+});
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+const installHint = document.getElementById("install-hint");
+const installHintClose = document.getElementById("install-hint-close");
+const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+
+if (!isStandalone && !localStorage.getItem("install_hint_dismissed")) {
+  installHint.classList.remove("hidden");
+}
+installHintClose.addEventListener("click", () => {
+  installHint.classList.add("hidden");
+  localStorage.setItem("install_hint_dismissed", "1");
+});
+
+["click", "touchstart"].forEach((ev) => {
+  document.addEventListener(ev, unlockAudio, { once: true, passive: true });
+});

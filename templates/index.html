@@ -2,12 +2,25 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#e8482c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FlitsMaatje">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="Flitsers en verkeersmeldingen in de buurt — crowdsourced">
 <title>FlitsMaatje</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+
+  <div id="install-hint" class="hidden">
+  <span>📲 Tip: tik op <strong>Delen → Zet op beginscherm</strong> voor fullscreen rijmodus</span>
+  <button id="install-hint-close" type="button" aria-label="Sluiten">✕</button>
+  </div>
 
   <div id="speed-panel">
     <div id="speed-value">--</div>
@@ -22,14 +35,17 @@
     <span id="fine-text"></span>
   </div>
 
-  <div id="alert-banner" class="hidden">
+  <div id="alert-banner" class="hidden" role="alert" aria-live="assertive">
     <span id="alert-icon">⚠️</span>
-    <span id="alert-text"></span>
+    <div class="alert-body">
+      <div id="alert-label">Melding</div>
+      <div id="alert-distance">-- m</div>
+    </div>
   </div>
 
   <div id="map"></div>
 
-  <button id="report-fab">➕</button>
+  <button id="report-fab" type="button" aria-label="Melding plaatsen">➕</button>
 
   <div id="report-menu" class="hidden">
     <div class="report-menu-header">Wat meld je?</div>
@@ -41,7 +57,7 @@
     <button class="report-btn" data-type="file">🚗 File</button>
     <button class="report-btn" data-type="gevaar">⚠️ Gevaar op de weg</button>
     <button class="report-btn" data-type="wegwerkzaamheden">🚧 Wegwerkzaamheden</button>
-    <button id="report-cancel">Annuleren</button>
+    <button id="report-cancel" type="button">Annuleren</button>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

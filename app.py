@@ -304,6 +304,11 @@ def index():
     return send_from_directory(app.template_folder, "index.html")
 
 
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory(app.static_folder, "sw.js", mimetype="application/javascript")
+
+
 @app.route("/api/speed-check", methods=["GET"])
 def speed_check():
     """Geeft de geldende snelheidslimiet op deze locatie + boete-indicatie
