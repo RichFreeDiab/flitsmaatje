@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FlitsMaatje</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div id="speed-panel">
+    <div id="speed-value">--</div>
+    <div id="speed-unit">km/h</div>
+    <div id="limit-row" class="hidden">
+      <span id="limit-badge">--</span>
+    </div>
+  </div>
+
+  <div id="fine-banner" class="hidden">
+    <span id="fine-icon">🚨</span>
+    <span id="fine-text"></span>
+  </div>
+
+  <div id="alert-banner" class="hidden">
+    <span id="alert-icon">⚠️</span>
+    <span id="alert-text"></span>
+  </div>
+
+  <div id="map"></div>
+
+  <button id="report-fab">➕</button>
+
+  <div id="report-menu" class="hidden">
+    <div class="report-menu-header">Wat meld je?</div>
+    <button class="report-btn" data-type="flitser_vast">📷 Vaste flitser</button>
+    <button class="report-btn" data-type="flitser_mobiel">🚐 Mobiele flitser</button>
+    <button class="report-btn" data-type="trajectcontrole">📡 Trajectcontrole</button>
+    <button class="report-btn" data-type="politie">👮 Politiecontrole</button>
+    <button class="report-btn" data-type="ongeval">💥 Ongeval</button>
+    <button class="report-btn" data-type="file">🚗 File</button>
+    <button class="report-btn" data-type="gevaar">⚠️ Gevaar op de weg</button>
+    <button class="report-btn" data-type="wegwerkzaamheden">🚧 Wegwerkzaamheden</button>
+    <button id="report-cancel">Annuleren</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

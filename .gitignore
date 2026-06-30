@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+flitsmaatje.db
+.DS_Store
+ios/*.xcodeproj
+ios/*.xcworkspace
+ios/fastlane/report.xml
+ios/fastlane/Preview.html
+ios/fastlane/test_output/
+ios/fastlane/README.md
+*.ipa
+*.dSYM.zip
+.env
+*.p8

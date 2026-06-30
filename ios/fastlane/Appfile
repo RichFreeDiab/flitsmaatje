@@ -1,0 +1,3 @@
+app_identifier("nl.readvanes.flitsmaatje")
+apple_id(ENV["APPLE_ID"]) # optioneel als je ASC API key gebruikt
+team_id(ENV["APPLE_TEAM_ID"])

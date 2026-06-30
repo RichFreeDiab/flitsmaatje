@@ -1,0 +1,80 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Maak app-records aan in App Store Connect (eenmalig)"
+  lane :setup_app do
+    api_key = asc_api_key
+    produce(
+      api_key: api_key,
+      app_identifier: "nl.readvanes.flitsmaatje",
+      app_name: "FlitsMaatje",
+      language: "nl-NL",
+      app_version: "1.0",
+      sku: "flitsmaatje-ios",
+      team_id: ENV["APPLE_TEAM_ID"],
+      enable_services: { app_group: "on" }
+    )
+    produce(
+      api_key: api_key,
+      app_identifier: "nl.readvanes.flitsmaatje.widget",
+      app_name: "FlitsMaatjeWidget",
+      skip_itc: true,
+      team_id: ENV["APPLE_TEAM_ID"],
+      enable_services: { app_group: "on" }
+    )
+  end
+
+  desc "Build en upload naar TestFlight (draait op GitHub Actions — geen Mac nodig)"
+  lane :beta do
+    setup_ci if ENV["CI"]
+    api_key = asc_api_key
+
+    cert(api_key: api_key, output_path: "./build/certs")
+
+    sigh(api_key: api_key, app_identifier: "nl.readvanes.flitsmaatje", output_path: "./build/profiles", filename: "app.mobileprovision")
+    update_project_provisioning(
+      xcodeproj: "FlitsMaatje.xcodeproj",
+      target_filter: "FlitsMaatje",
+      profile: "./build/profiles/app.mobileprovision",
+      build_configuration: "Release"
+    )
+
+    sigh(api_key: api_key, app_identifier: "nl.readvanes.flitsmaatje.widget", output_path: "./build/profiles", filename: "widget.mobileprovision")
+    update_project_provisioning(
+      xcodeproj: "FlitsMaatje.xcodeproj",
+      target_filter: "FlitsMaatjeWidget",
+      profile: "./build/profiles/widget.mobileprovision",
+      build_configuration: "Release"
+    )
+
+    increment_build_number(
+      xcodeproj: "FlitsMaatje.xcodeproj",
+      build_number: ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i.to_s
+    )
+
+    build_app(
+      scheme: "FlitsMaatje",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build",
+      xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual"
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      changelog: ENV["FLITSMAATJE_CHANGELOG"] || "Nieuwe build"
+    )
+  end
+
+  private_lane :asc_api_key do
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: true,
+      duration: 1200,
+      in_house: false
+    )
+  end
+end
