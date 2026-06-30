@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-latest
     timeout-minutes: 45
 
     steps:
@@ -24,6 +24,10 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Installeer Ruby gems
+        working-directory: ios
+        run: bundle install --jobs 4 --retry 3
 
       - name: Genereer app-icoon
         run: python3 ios/scripts/generate_icon.py
