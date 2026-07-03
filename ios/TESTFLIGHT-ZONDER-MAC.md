@@ -23,12 +23,12 @@ Je hebt **geen Mac nodig**. De iOS-app wordt gebouwd in de **cloud** (GitHub Act
 
 ### App Group (eenmalig, in browser)
 
-1. [developer.apple.com/account/resources/identifiers/list](https://developer.apple.com/account/resources/identifiers/list)
-2. **+** → **App Groups** → Identifier: `group.nl.readvanes.flitsmaatje`
-3. **+** → **App IDs** → `nl.readvanes.flitsmaatje` (App) — vink App Groups aan
-4. **+** → **App IDs** → `nl.readvanes.flitsmaatje.widget` (App Extension) — vink App Groups aan
+1. [developer.apple.com/account/resources/identifiers/list/applicationGroup](https://developer.apple.com/account/resources/identifiers/list/applicationGroup) — groep `group.nl.readvanes.flitsmaatje` moet bestaan
+2. Open **FlitsMaatje** (`nl.readvanes.flitsmaatje`) → vink **App Groups** aan → **Configure** → selecteer `group.nl.readvanes.flitsmaatje` → **Save**
+3. Herhaal voor **FlitsMaatjeWidget** (`nl.readvanes.flitsmaatje.widget`)
+4. Draai daarna opnieuw de **TestFlight** GitHub Action (profiles moeten de App Group bevatten)
 
-> De eerste GitHub-build kan dit ook via `fastlane setup_app` doen als de App IDs nog niet bestaan.
+> Zonder stap 2–3 faalt de build met *"doesn't support the group.nl.readvanes.flitsmaatje App Group"*.
 
 ## Stap 2 — GitHub-repository
 
