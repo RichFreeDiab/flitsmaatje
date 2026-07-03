@@ -1,0 +1,254 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 1920px;
+  height: 720px;
+  overflow: hidden;
+  background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
+  color: #f5f5f7;
+}
+
+.screen {
+  width: 1920px;
+  height: 720px;
+  position: relative;
+  background: #0d1117;
+  display: none;
+}
+
+.screen.active {
+  display: block;
+}
+
+.statusbar {
+  position: absolute;
+  top: 18px;
+  left: 24px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 22px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+}
+
+.statusbar-right {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.map .leaflet-pane,
+.map .leaflet-control-container {
+  z-index: 1 !important;
+}
+
+.map .leaflet-control-container {
+  display: none;
+}
+
+.statusbar {
+  z-index: 20;
+}
+
+.nav-topbar {
+  position: absolute;
+  top: 64px;
+  left: 24px;
+  right: 24px;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.nav-btn {
+  background: rgba(28, 28, 30, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 14px;
+  padding: 12px 22px;
+  font-size: 22px;
+  font-weight: 600;
+  backdrop-filter: blur(12px);
+}
+
+.guidance-card {
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  bottom: 32px;
+  z-index: 20;
+  background: rgba(22, 22, 24, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  padding: 28px 32px;
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  gap: 24px;
+  align-items: center;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.turn-icon {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #1a95ff 0%, #0a84ff 100%);
+  display: grid;
+  place-items: center;
+  font-size: 46px;
+  box-shadow: 0 8px 24px rgba(10, 132, 255, 0.35);
+}
+
+.guidance-main h2 {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.12;
+  margin-bottom: 8px;
+}
+
+.guidance-main p {
+  font-size: 26px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.guidance-meta {
+  text-align: right;
+  min-width: 160px;
+}
+
+.guidance-meta .eta {
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.guidance-meta .sub {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.62);
+  margin-top: 4px;
+}
+
+.search-panel {
+  position: absolute;
+  inset: 64px 0 0 0;
+  z-index: 20;
+  background: rgba(12, 12, 14, 0.96);
+  padding: 28px 32px;
+}
+
+.search-header {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 18px;
+}
+
+.search-box {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 18px 22px;
+  font-size: 26px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 22px;
+}
+
+.search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.search-item strong {
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.search-item span {
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.search-item.active {
+  background: rgba(10, 132, 255, 0.14);
+  border-radius: 14px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.nav-alert {
+  position: absolute;
+  left: 50%;
+  top: 120px;
+  transform: translateX(-50%);
+  z-index: 25;
+  width: min(760px, calc(100% - 48px));
+  background: rgba(28, 28, 30, 0.96);
+  border: 1px solid rgba(255, 69, 58, 0.45);
+  border-radius: 18px;
+  padding: 22px 26px;
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 18px;
+  align-items: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.nav-alert .icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(255, 69, 58, 0.18);
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+}
+
+.nav-alert h3 {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.nav-alert p {
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.62);
+  margin-top: 4px;
+}
+
+.nav-alert .ok {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0a84ff;
+}
+
+.brand-watermark {
+  position: absolute;
+  right: 28px;
+  bottom: 28px;
+  z-index: 7;
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.04em;
+}

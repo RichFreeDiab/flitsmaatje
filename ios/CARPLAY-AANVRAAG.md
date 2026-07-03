@@ -2,16 +2,26 @@
 
 FlitsMaatje is gebouwd als **CarPlay-navigatie-app** (kaart op het grote autoscherm, route, flitsalarm). Daarvoor moet Apple het **CarPlay Maps**-entitlement goedkeuren.
 
-## Stap 1 — Aanvraag bij Apple
+## Status
 
-1. Ga naar [developer.apple.com/contact/carplay](https://developer.apple.com/contact/carplay)
-2. Kies **Navigation** als app-categorie
-3. Vul in:
-   - **App name:** FlitsMaatje
-   - **Bundle ID:** `nl.readvanes.flitsmaatje`
-   - **Team ID:** `D358S348HY`
-   - **Beschrijving:** Navigatie-app met flitsers, snelheidscontrole en boete-indicatie voor Nederland
-4. Wacht op goedkeuring (meestal enkele dagen tot weken)
+| Stap | Status |
+|------|--------|
+| CarPlay-aanvraag (Navigation + 3 screenshots) | **Ingediend** — 3 jul 2026 |
+| Apple-goedkeuring per e-mail | Wachten (dagen–weken) |
+| CarPlay Maps App op App ID | Nog niet zichtbaar (normaal tot goedkeuring) |
+| Entitlement in app + TestFlight | Na goedkeuring |
+
+## Stap 1 — Aanvraag bij Apple ✅
+
+Ingediend via [developer.apple.com/contact/carplay](https://developer.apple.com/contact/carplay):
+
+- **App type:** Navigation (turn-by-turn)
+- **App name:** FlitsMaatje
+- **Bundle ID:** `nl.readvanes.flitsmaatje`
+- **Team ID:** `D358S348HY`
+- **3 screenshots:** navigatie, flitsalarm, dashboard-widget
+
+Apple antwoordt per e-mail met goedkeuring of vragen.
 
 ## Stap 2 — App ID in Developer Portal
 

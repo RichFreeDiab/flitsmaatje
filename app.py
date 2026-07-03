@@ -310,6 +310,23 @@ def carplay_simulator():
     return send_from_directory(app.template_folder, "carplay.html")
 
 
+@app.route("/carplay-submit")
+def carplay_submit_screenshot():
+    """Statische CarPlay-navigatie-screenshots voor Apple-aanvraag (?scene=nav|search|alert)."""
+    from flask import render_template
+    scene = request.args.get("scene", "nav")
+    if scene not in {"nav", "search", "alert"}:
+        scene = "nav"
+    return render_template("carplay-submit.html", scene=scene)
+
+
+@app.after_request
+def carplay_submit_cors(response):
+    if request.path.startswith("/static/carplay-submit/"):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
 @app.route("/sw.js")
 def service_worker():
     return send_from_directory(app.static_folder, "sw.js", mimetype="application/javascript")

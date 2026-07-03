@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>FlitsMaatje CarPlay Screenshots</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/css/carplay-submit.css">
+</head>
+<body data-scene="{{ scene }}">
+
+  <section id="scene-nav" class="screen">
+    <div class="statusbar">
+      <span>FlitsMaatje</span>
+      <div class="statusbar-right"><span id="clock">9:41</span><span>5G</span><span>🔋</span></div>
+    </div>
+    <div id="map-nav" class="map"></div>
+    <div class="nav-topbar">
+      <div class="nav-btn">Zoek</div>
+      <div class="nav-btn">Centreren</div>
+    </div>
+    <div class="guidance-card">
+      <div class="turn-icon">↱</div>
+      <div class="guidance-main">
+        <h2>Rechtsaf de A2 op</h2>
+        <p>Over 650 meter · richting Utrecht</p>
+      </div>
+      <div class="guidance-meta">
+        <div class="eta">12 min</div>
+        <div class="sub">8,2 km · 21:53</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="scene-search" class="screen">
+    <div class="statusbar">
+      <span>FlitsMaatje</span>
+      <div class="statusbar-right"><span>9:41</span><span>5G</span><span>🔋</span></div>
+    </div>
+    <div id="map-search" class="map"></div>
+    <div class="search-panel">
+      <div class="search-header">Zoek bestemming</div>
+      <div class="search-box">Amsterdam…</div>
+      <div class="search-item active">
+        <div><strong>Amsterdam Centraal</strong><br><span>Stationsplein, Amsterdam</span></div>
+        <span>18 min</span>
+      </div>
+      <div class="search-item">
+        <div><strong>Amsterdam Arena</strong><br><span>ArenA Boulevard, Amsterdam</span></div>
+        <span>24 min</span>
+      </div>
+      <div class="search-item">
+        <div><strong>Schiphol Airport</strong><br><span>Evert van de Beekstraat</span></div>
+        <span>31 min</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="scene-alert" class="screen">
+    <div class="statusbar">
+      <span>FlitsMaatje</span>
+      <div class="statusbar-right"><span>9:41</span><span>5G</span><span>🔋</span></div>
+    </div>
+    <div id="map-alert" class="map"></div>
+    <div class="nav-alert">
+      <div class="icon">📷</div>
+      <div>
+        <h3>Vaste flitser</h3>
+        <p>Over 186 meter · 100 km/u zone</p>
+      </div>
+      <div class="ok">OK</div>
+    </div>
+    <div class="guidance-card">
+      <div class="turn-icon">↑</div>
+      <div class="guidance-main">
+        <h2>Recht door op A2</h2>
+        <p>Volg de route · flitsalarm actief</p>
+      </div>
+      <div class="guidance-meta">
+        <div class="eta">9 min</div>
+        <div class="sub">6,1 km · 21:50</div>
+      </div>
+    </div>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const scene = document.body.dataset.scene || "nav";
+    const routeA2 = [
+      [52.3538, 4.8922],
+      [52.3556, 4.8965],
+      [52.3578, 4.9010],
+      [52.3602, 4.9058],
+      [52.3628, 4.9110],
+      [52.3655, 4.9165],
+    ];
+    const flitser = [52.3602, 4.9058];
+
+    function initMap(id, options = {}) {
+      const map = L.map(id, {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+      }).setView([52.3588, 4.8990], options.zoom || 14);
+
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        maxZoom: 19,
+      }).addTo(map);
+
+      L.polyline(routeA2, { color: "#0a84ff", weight: 8, opacity: 0.95 }).addTo(map);
+
+      L.circleMarker(routeA2[0], {
+        radius: 10,
+        color: "#fff",
+        weight: 3,
+        fillColor: "#0a84ff",
+        fillOpacity: 1,
+      }).addTo(map);
+
+      if (options.showFlitser) {
+        L.circleMarker(flitser, {
+          radius: 12,
+          color: "#fff",
+          weight: 2,
+          fillColor: "#ff453a",
+          fillOpacity: 1,
+        }).addTo(map);
+      }
+
+      setTimeout(() => map.invalidateSize(), 100);
+      return map;
+    }
+
+    document.getElementById(`scene-${scene}`)?.classList.add("active");
+
+    if (scene === "nav") initMap("map-nav");
+    if (scene === "search") initMap("map-search", { zoom: 13 });
+    if (scene === "alert") initMap("map-alert", { showFlitser: true });
+
+    document.body.classList.add("ready");
+  </script>
+</body>
+</html>
