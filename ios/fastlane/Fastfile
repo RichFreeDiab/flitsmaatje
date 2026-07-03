@@ -56,6 +56,8 @@ def install_carplay_profiles!(api_key:)
     app_identifier: APP_BUNDLE_ID,
     provisioning_name: MAIN_PROFILE_NAME,
     ignore_profiles_with_different_name: true,
+    include_all_certificates: true,
+    skip_certificate_verification: true,
     adhoc: false,
     force: false
   )
@@ -64,6 +66,8 @@ def install_carplay_profiles!(api_key:)
     app_identifier: WIDGET_BUNDLE_ID,
     provisioning_name: WIDGET_PROFILE_NAME,
     ignore_profiles_with_different_name: true,
+    include_all_certificates: true,
+    skip_certificate_verification: true,
     adhoc: false,
     force: false
   )
