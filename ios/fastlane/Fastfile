@@ -37,16 +37,8 @@ def revoke_all_distribution_certs!
 end
 
 def ensure_app_group_entity!
-  with_asc_api_token do
-    groups = Spaceship::ConnectAPI::BundleIdGroup.all(filter: { identifier: APP_GROUP_ID })
-    if groups.any?
-      UI.success("App Group exists: #{APP_GROUP_ID}")
-      return
-    end
-
-    Spaceship::ConnectAPI::BundleIdGroup.create(identifier: APP_GROUP_ID, name: "FlitsMaatje")
-    UI.success("Created App Group: #{APP_GROUP_ID}")
-  end
+  # App Group is aangemaakt in Apple Developer Portal (group.nl.readvanes.flitsmaatje).
+  UI.success("App Group assumed present: #{APP_GROUP_ID}")
 end
 
 def ensure_bundle_id!(identifier:, name:)
@@ -75,31 +67,13 @@ def link_app_group!(bundle_identifier:)
     UI.user_error!("Bundle ID not found: #{bundle_identifier}") unless bundle
 
     caps = Spaceship::ConnectAPI::BundleIdCapability.all(bundle_id_id: bundle.id)
-    ag_cap = caps.find { |c| c.capability_type.to_s == "APP_GROUPS" }
+    caps.select { |c| c.capability_type.to_s == "APP_GROUPS" }.each(&:delete!)
 
-    if ag_cap
-      begin
-        Spaceship::ConnectAPI::BundleIdCapability.update(
-          bundle_id_id: bundle.id,
-          capability_type: Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS,
-          settings: settings
-        )
-      rescue StandardError => e
-        UI.important("App Groups update failed (#{e.message}), recreating capability…")
-        Spaceship::ConnectAPI.delete_bundle_id_capability(bundle_id_id: bundle.id, capability_id: ag_cap.id)
-        Spaceship::ConnectAPI::BundleIdCapability.create(
-          bundle_id_id: bundle.id,
-          capability_type: Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS,
-          settings: settings
-        )
-      end
-    else
-      Spaceship::ConnectAPI::BundleIdCapability.create(
-        bundle_id_id: bundle.id,
-        capability_type: Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS,
-        settings: settings
-      )
-    end
+    Spaceship::ConnectAPI::BundleIdCapability.create(
+      bundle_id_id: bundle.id,
+      capability_type: Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS,
+      settings: settings
+    )
 
     UI.success("App Group #{APP_GROUP_ID} linked to #{bundle_identifier}")
   end
