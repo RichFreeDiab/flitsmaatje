@@ -64,20 +64,18 @@ def link_app_group!(bundle_identifier:)
     key: "APP_GROUP_IDS",
     options: [{ key: APP_GROUP_ID, enabled: true }]
   }]
+  capability_type = Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
 
   with_asc_api_token do
-    bundle = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: bundle_identifier }).first
+    bundle = Spaceship::ConnectAPI::BundleId.find(bundle_identifier)
     UI.user_error!("Bundle ID not found: #{bundle_identifier}") unless bundle
 
-    caps = Spaceship::ConnectAPI::BundleIdCapability.all(bundle_id_id: bundle.id)
-    caps.select { |c| c.capability_type.to_s == "APP_GROUPS" }.each(&:delete!)
+    caps = bundle.get_capabilities
+    unless caps.any? { |c| c.capability_type.to_s == "APP_GROUPS" }
+      bundle.create_capability(capability_type, settings: [])
+    end
 
-    Spaceship::ConnectAPI::BundleIdCapability.create(
-      bundle_id_id: bundle.id,
-      capability_type: Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS,
-      settings: settings
-    )
-
+    bundle.update_capability(capability_type, enabled: true, settings: settings)
     UI.success("App Group #{APP_GROUP_ID} linked to #{bundle_identifier}")
   end
 end
