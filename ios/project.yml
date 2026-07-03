@@ -27,30 +27,12 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Manual
-    dependencies:
-      - target: FlitsMaatjeWidget
-        embed: true
-
-  FlitsMaatjeWidget:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: FlitsMaatjeWidget
-      - path: Shared
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: nl.readvanes.flitsmaatje.widget
-        INFOPLIST_FILE: FlitsMaatjeWidget/Info.plist
-        CODE_SIGN_ENTITLEMENTS: FlitsMaatjeWidget/FlitsMaatjeWidget.entitlements
-        TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_STYLE: Manual
 
 schemes:
   FlitsMaatje:
     build:
       targets:
         FlitsMaatje: all
-        FlitsMaatjeWidget: all
     run:
       config: Debug
     archive:

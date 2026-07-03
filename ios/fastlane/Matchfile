@@ -2,6 +2,6 @@ git_url(ENV["MATCH_GIT_URL"] || "https://github.com/RichFreeDiab/flitsmaatje.git
 git_branch("certificates")
 storage_mode("git")
 type("appstore")
-app_identifier(["nl.readvanes.flitsmaatje", "nl.readvanes.flitsmaatje.widget"])
+app_identifier(["nl.readvanes.flitsmaatje"])
 username(ENV["APPLE_ID"])
 team_id(ENV["APPLE_TEAM_ID"])
