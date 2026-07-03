@@ -3,6 +3,8 @@ default_platform(:ios)
 APP_BUNDLE_ID = "nl.readvanes.flitsmaatje".freeze
 WIDGET_BUNDLE_ID = "nl.readvanes.flitsmaatje.widget".freeze
 APP_GROUP_ID = "group.nl.readvanes.flitsmaatje".freeze
+MAIN_PROFILE_NAME = "FlitsMaatje CarPlay AppStore".freeze
+WIDGET_PROFILE_NAME = "FlitsMaatjeWidget CarPlay AppStore".freeze
 
 def with_asc_api_token
   require "spaceship/connect_api"
@@ -42,10 +44,29 @@ def log_profile_entitlements!(path, label)
   xml = `security cms -D -i '#{path}' 2>/dev/null`
   if xml.include?(APP_GROUP_ID)
     UI.success("#{label}: profile bevat #{APP_GROUP_ID}")
+    true
   else
-    UI.important("#{label}: profile mist #{APP_GROUP_ID}")
-    UI.important(xml[/com\.apple\.security\.application-groups[\s\S]{0,200}/])
+    UI.user_error!("#{label}: profile mist #{APP_GROUP_ID}")
   end
+end
+
+def install_carplay_profiles!(api_key:)
+  sigh(
+    api_key: api_key,
+    app_identifier: APP_BUNDLE_ID,
+    provisioning_name: MAIN_PROFILE_NAME,
+    ignore_profiles_with_different_name: true,
+    adhoc: false,
+    force: false
+  )
+  sigh(
+    api_key: api_key,
+    app_identifier: WIDGET_BUNDLE_ID,
+    provisioning_name: WIDGET_PROFILE_NAME,
+    ignore_profiles_with_different_name: true,
+    adhoc: false,
+    force: false
+  )
 end
 
 def ensure_app_group_entity!
@@ -125,17 +146,15 @@ platform :ios do
 
     prepare_carplay_signing!
 
-    UI.important("Wachten op Apple Portal-sync voor App Group profiles…")
-    sleep(90) if ENV["CI"]
-
     match(
       type: "appstore",
       api_key: api_key,
-      app_identifier: [APP_BUNDLE_ID, WIDGET_BUNDLE_ID],
-      readonly: false,
-      force: true,
+      app_identifier: APP_BUNDLE_ID,
+      readonly: true,
       git_basic_authorization: match_git_auth
     )
+
+    install_carplay_profiles!(api_key: api_key)
 
     log_profile_entitlements!(ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-path"], "Hoofdapp")
     log_profile_entitlements!(ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-path"], "Widget")
