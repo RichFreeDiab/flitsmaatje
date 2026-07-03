@@ -9,9 +9,11 @@ de app draait op de achtergrond voor flitswaarschuwingen, terwijl je met **Kaart
 
 | Onderdeel | Functie |
 |-----------|---------|
-| **Hoofdapp** | Achtergrond-GPS, pollt `https://flitsmaatje.readvanes.nl/api/nearby-alert` |
+| **Hoofdapp** | Achtergrond-GPS, pollt meldingen + snelheidslimiet/boete |
 | **Widget** (`systemSmall`) | Toont dichtstbijzijnde melding — ook op CarPlay Dashboard |
 | **Live Activity** | Lock Screen + Dynamic Island tijdens actieve waarschuwing |
+| **Flitsalarm** | Dubbel piep + trilling + push bij naderen (600→400→200→100 m) |
+| **Boete-indicatie** | Snelheid vs limiet via `/api/speed-check` (indicatief) |
 
 Geen Apple CarPlay-goedkeuringsproces nodig — dit is een gewoon WidgetKit-widget.
 

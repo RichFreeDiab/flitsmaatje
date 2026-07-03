@@ -1,5 +1,4 @@
 import ActivityKit
-import AudioToolbox
 import AVFoundation
 import CoreLocation
 import Foundation
@@ -11,18 +10,28 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var isTracking = false
     @Published var statusText = "Wacht op locatietoestemming…"
     @Published var currentAlert: NearbyAlert?
+    @Published var currentSpeedKmh: Int?
+    @Published var speedLimit: Int?
+    @Published var fineEstimate: FineEstimate?
+    @Published var roadName: String?
 
     private let manager = CLLocationManager()
     private var lastPollAt: Date = .distantPast
+    private var lastSpeedCheckAt: Date = .distantPast
+    private var lastSpeedCheckLocation: CLLocation?
     private var lastAlertId: String?
-    private var audioPlayer: AVAudioPlayer?
+    private var passedDistanceThresholds: Set<Int> = []
+    private var lastAlarmAt: Date = .distantPast
     private var liveActivity: Activity<FlitsMaatjeAttributes>?
+
+    private let distanceAlarmThresholds = [600, 400, 200, 100]
+    private let alarmRepeatInterval: TimeInterval = 25
 
     override init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        manager.distanceFilter = 25
+        manager.distanceFilter = 15
         manager.pausesLocationUpdatesAutomatically = false
         manager.activityType = .automotiveNavigation
         manager.allowsBackgroundLocationUpdates = true
@@ -30,6 +39,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     func requestPermissionAndStart() {
+        AlertNotifier.requestPermissions()
         manager.requestWhenInUseAuthorization()
         manager.requestAlwaysAuthorization()
         start()
@@ -42,7 +52,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
         manager.startUpdatingLocation()
         isTracking = true
-        statusText = "Achtergrond-tracking actief — widget en CarPlay worden bijgewerkt"
+        statusText = "Achtergrond-tracking actief — flitsalarm + boete-indicatie"
         configureAudioSession()
     }
 
@@ -51,6 +61,11 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         isTracking = false
         statusText = "Tracking gestopt"
         currentAlert = nil
+        currentSpeedKmh = nil
+        speedLimit = nil
+        fineEstimate = nil
+        roadName = nil
+        resetAlarmState()
         endLiveActivity()
         persistSnapshot(lat: nil, lng: nil, alert: nil, message: "Tracking gestopt")
         WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
@@ -80,12 +95,20 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func handleLocation(_ location: CLLocation) async {
-        let now = Date()
-        guard now.timeIntervalSince(lastPollAt) >= 8 else { return }
-        lastPollAt = now
+        updateCurrentSpeed(from: location)
 
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude
+        let now = Date()
+
+        if shouldRunSpeedCheck(now: now, location: location) {
+            lastSpeedCheckAt = now
+            lastSpeedCheckLocation = location
+            await fetchSpeedCheck(lat: lat, lng: lng)
+        }
+
+        guard now.timeIntervalSince(lastPollAt) >= 8 else { return }
+        lastPollAt = now
 
         do {
             let alert = try await FlitsMaatjeAPI.fetchNearbyAlert(lat: lat, lng: lng)
@@ -95,15 +118,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 statusText = "\(alert.label) over \(alert.distance_m) m"
                 persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)
                 updateLiveActivity(alert: alert)
-                if lastAlertId != alert.id {
-                    playWarningSound()
-                    lastAlertId = alert.id
-                }
+                handleFlitserAlarm(alert: alert)
             } else {
-                statusText = "Geen meldingen in de buurt"
+                statusText = fineEstimate?.displayText ?? "Geen meldingen in de buurt"
                 persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
                 endLiveActivity()
-                lastAlertId = nil
+                resetAlarmState()
             }
 
             WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
@@ -111,6 +131,66 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             statusText = "Kon API niet bereiken"
             persistSnapshot(lat: lat, lng: lng, alert: currentAlert, message: statusText)
         }
+    }
+
+    private func updateCurrentSpeed(from location: CLLocation) {
+        guard location.speed >= 0 else { return }
+        currentSpeedKmh = Int((location.speed * 3.6).rounded())
+    }
+
+    private func shouldRunSpeedCheck(now: Date, location: CLLocation) -> Bool {
+        guard now.timeIntervalSince(lastSpeedCheckAt) >= 4 else { return false }
+        guard let last = lastSpeedCheckLocation else { return true }
+        return location.distance(from: last) >= 30
+    }
+
+    private func fetchSpeedCheck(lat: Double, lng: Double) async {
+        let speed = currentSpeedKmh.map(Double.init)
+        do {
+            let response = try await FlitsMaatjeAPI.fetchSpeedCheck(lat: lat, lng: lng, speedKmh: speed)
+            speedLimit = response.limit.maxspeed
+            roadName = response.limit.road_name
+            fineEstimate = response.fine
+
+            if currentAlert == nil, let fineText = response.fine?.displayText {
+                statusText = fineText
+            }
+        } catch {
+            // Snelheidslimiet is optioneel — flitsalarm blijft werken
+        }
+    }
+
+    private func handleFlitserAlarm(alert: NearbyAlert) {
+        var shouldAlarm = false
+
+        if lastAlertId != alert.id {
+            passedDistanceThresholds = []
+            lastAlertId = alert.id
+            shouldAlarm = true
+        } else {
+            for threshold in distanceAlarmThresholds {
+                if alert.distance_m <= threshold, !passedDistanceThresholds.contains(threshold) {
+                    passedDistanceThresholds.insert(threshold)
+                    shouldAlarm = true
+                    break
+                }
+            }
+            if !shouldAlarm, Date().timeIntervalSince(lastAlarmAt) >= alarmRepeatInterval {
+                shouldAlarm = true
+            }
+        }
+
+        guard shouldAlarm else { return }
+
+        lastAlarmAt = Date()
+        AlertNotifier.playFlitserAlarm()
+        AlertNotifier.notifyFlitser(alert: alert)
+    }
+
+    private func resetAlarmState() {
+        lastAlertId = nil
+        passedDistanceThresholds = []
+        lastAlarmAt = .distantPast
     }
 
     private func persistSnapshot(lat: Double?, lng: Double?, alert: NearbyAlert?, message: String) {
@@ -127,11 +207,6 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private func configureAudioSession() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
-    }
-
-    private func playWarningSound() {
-        // Korte piep via systeemgeluid — werkt ook als andere apps audio afspelen (mixWithOthers)
-        AudioServicesPlaySystemSound(1057)
     }
 
     // MARK: - Live Activity
@@ -159,7 +234,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 pushType: nil
             )
         } catch {
-            // Live Activity niet beschikbaar op dit device/iOS-versie — widget blijft werken
+            // Live Activity niet beschikbaar — widget blijft werken
         }
     }
 

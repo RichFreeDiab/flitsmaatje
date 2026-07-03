@@ -15,6 +15,37 @@ struct NearbyAlert: Codable, Equatable {
     let confirms: Int
 }
 
+struct SpeedLimitInfo: Codable, Equatable {
+    let maxspeed: Int?
+    let zone: String?
+    let road_name: String?
+    let source: String?
+}
+
+struct FineEstimate: Codable, Equatable {
+    let excess_kmh: Int
+    let bedrag: Int?
+    let bedrag_excl_administratiekosten: Int?
+    let om_zaak: Bool
+    let indicatief: Bool?
+
+    var displayText: String? {
+        guard excess_kmh >= 4 else { return nil }
+        if om_zaak {
+            return "\(excess_kmh) km/u te hard — geen vaste boete, mogelijk OM-zaak (dagvaarding)"
+        }
+        if let bedrag {
+            return "\(excess_kmh) km/u te hard — indicatief €\(bedrag) (incl. adm.kosten)"
+        }
+        return "\(excess_kmh) km/u te hard"
+    }
+}
+
+struct SpeedCheckResponse: Codable {
+    let limit: SpeedLimitInfo
+    let fine: FineEstimate?
+}
+
 /// Snapshot gedeeld tussen app, widget en Live Activity via App Group.
 struct WidgetSnapshot: Codable, Equatable {
     var updatedAt: Date
