@@ -204,7 +204,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                 destinationName: mapItem.name ?? "Bestemming",
                 from: user
             )
-            interfaceController?.popTemplate(animated: true)
+            try? await interfaceController?.popTemplate(animated: true)
         } catch {
             // negeer — zoek blijft open
         }
