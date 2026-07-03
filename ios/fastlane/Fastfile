@@ -86,91 +86,12 @@ def ensure_bundle_id!(identifier:, name:)
   end
 end
 
-def asc_bearer_token
-  token = Spaceship::ConnectAPI.token
-  if token.respond_to?(:text)
-    token.text
-  elsif token.respond_to?(:jwt)
-    token.jwt
-  else
-    token.instance_variable_get(:@jwt)
-  end
-end
-
-def asc_api_request!(method:, path:, body: nil)
-  require "net/http"
-  require "json"
-
-  uri = URI("https://api.appstoreconnect.apple.com#{path}")
-  klass = {
-    get: Net::HTTP::Get,
-    post: Net::HTTP::Post,
-    patch: Net::HTTP::Patch,
-    delete: Net::HTTP::Delete
-  }.fetch(method)
-
-  request = klass.new(uri)
-  request["Authorization"] = "Bearer #{asc_bearer_token}"
-  request["Content-Type"] = "application/json"
-  request.body = body.to_json if body
-
-  response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
-  return JSON.parse(response.body) if response.is_a?(Net::HTTPSuccess) && response.body && !response.body.empty?
-
-  UI.user_error!("ASC API #{method.upcase} #{path} (#{response.code}): #{response.body}")
-end
-
-def app_group_capability_settings
-  [{
-    "key" => "APP_GROUP_IDS",
-    "options" => [{ "key" => APP_GROUP_ID, "enabled" => true }]
-  }]
-end
-
-def ensure_app_groups_for_bundle!(identifier:)
-  with_asc_api_token do
-    bundle = Spaceship::ConnectAPI::BundleId.find(identifier)
-    UI.user_error!("Bundle ID not found: #{identifier}") unless bundle
-
-    caps = bundle.get_capabilities
-    app_groups_cap = caps.find { |c| c.capability_type.to_s == "APP_GROUPS" }
-
-    if app_groups_cap&.settings.to_s.include?(APP_GROUP_ID)
-      UI.success("APP_GROUPS bevat #{APP_GROUP_ID} voor #{identifier}")
-      return
-    end
-
-    if app_groups_cap
-      UI.important("Verwijder incomplete APP_GROUPS capability voor #{identifier}")
-      app_groups_cap.delete!
-    end
-
-    asc_api_request!(
-      method: :post,
-      path: "/v1/bundleIdCapabilities",
-      body: {
-        data: {
-          type: "bundleIdCapabilities",
-          attributes: {
-            capabilityType: "APP_GROUPS",
-            settings: app_group_capability_settings
-          },
-          relationships: {
-            bundleId: {
-              data: { type: "bundleIds", id: bundle.id }
-            }
-          }
-        }
-      }
-    )
-    UI.success("APP_GROUPS gekoppeld aan #{APP_GROUP_ID} voor #{identifier}")
-  end
-end
-
 def prepare_carplay_signing!
   ensure_bundle_id!(identifier: WIDGET_BUNDLE_ID, name: "FlitsMaatje Widget")
-  ensure_app_groups_for_bundle!(identifier: APP_BUNDLE_ID)
-  ensure_app_groups_for_bundle!(identifier: WIDGET_BUNDLE_ID)
+  UI.important(
+    "App Group #{APP_GROUP_ID} moet in Developer Portal aan beide App IDs gekoppeld zijn " \
+    "(Configure → groep → Continue → Save)"
+  )
 end
 
 def ensure_app_store_record!
