@@ -86,9 +86,36 @@ def ensure_bundle_id!(identifier:, name:)
   end
 end
 
+def ensure_app_groups_capability!(bundle_identifier:)
+  capability_type = Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
+  settings = [{ key: "APP_GROUPS", value: APP_GROUP_ID }]
+
+  with_asc_api_token do
+    bundle = Spaceship::ConnectAPI::BundleId.find(bundle_identifier)
+    UI.user_error!("Bundle ID not found: #{bundle_identifier}") unless bundle
+
+    caps = bundle.get_capabilities
+    app_groups_cap = caps.find { |c| c.capability_type.to_s == "APP_GROUPS" }
+
+    if app_groups_cap&.settings.to_s.include?(APP_GROUP_ID)
+      UI.success("APP_GROUPS bevat #{APP_GROUP_ID} voor #{bundle_identifier}")
+      return
+    end
+
+    if app_groups_cap
+      UI.important("Verwijder incomplete APP_GROUPS capability voor #{bundle_identifier}")
+      app_groups_cap.delete!
+    end
+
+    bundle.create_capability(capability_type, settings: settings)
+    UI.success("APP_GROUPS gekoppeld aan #{APP_GROUP_ID} voor #{bundle_identifier}")
+  end
+end
+
 def prepare_carplay_signing!
   ensure_bundle_id!(identifier: WIDGET_BUNDLE_ID, name: "FlitsMaatje Widget")
-  UI.important("App Group #{APP_GROUP_ID} moet aan beide bundle IDs gekoppeld zijn (Developer Portal)")
+  ensure_app_groups_capability!(bundle_identifier: APP_BUNDLE_ID)
+  ensure_app_groups_capability!(bundle_identifier: WIDGET_BUNDLE_ID)
 end
 
 def ensure_app_store_record!
