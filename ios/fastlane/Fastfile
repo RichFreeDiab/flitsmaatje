@@ -52,6 +52,15 @@ def log_profile_entitlements!(path, label)
   end
 end
 
+def sigh_profile_path(bundle_id)
+  Actions.lane_context[:"sigh_#{bundle_id}_appstore_profile-path"] ||
+    File.expand_path("AppStore_#{bundle_id}.mobileprovision", __dir__)
+end
+
+def sigh_profile_name(bundle_id)
+  Actions.lane_context[:"sigh_#{bundle_id}_appstore_profile-name"]
+end
+
 def install_distribution_certificate!(api_key:)
   match(
     type: "appstore",
@@ -139,20 +148,20 @@ platform :ios do
 
     install_app_store_profiles!(api_key: api_key)
 
-    log_profile_entitlements!(ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-path"], "Hoofdapp")
-    log_profile_entitlements!(ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-path"], "Widget")
+    log_profile_entitlements!(sigh_profile_path(APP_BUNDLE_ID), "Hoofdapp")
+    log_profile_entitlements!(sigh_profile_path(WIDGET_BUNDLE_ID), "Widget")
 
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
       target_filter: "FlitsMaatje",
-      profile: ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-path"],
+      profile: sigh_profile_path(APP_BUNDLE_ID),
       build_configuration: "Release"
     )
 
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
       target_filter: "FlitsMaatjeWidget",
-      profile: ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-path"],
+      profile: sigh_profile_path(WIDGET_BUNDLE_ID),
       build_configuration: "Release"
     )
 
@@ -163,7 +172,7 @@ platform :ios do
       build_configurations: ["Release"],
       team_id: ENV["APPLE_TEAM_ID"],
       code_sign_identity: "Apple Distribution",
-      profile_name: ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-name"],
+      profile_name: sigh_profile_name(APP_BUNDLE_ID),
       bundle_identifier: APP_BUNDLE_ID
     )
 
@@ -174,7 +183,7 @@ platform :ios do
       build_configurations: ["Release"],
       team_id: ENV["APPLE_TEAM_ID"],
       code_sign_identity: "Apple Distribution",
-      profile_name: ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-name"],
+      profile_name: sigh_profile_name(WIDGET_BUNDLE_ID),
       bundle_identifier: WIDGET_BUNDLE_ID
     )
 
@@ -190,8 +199,8 @@ platform :ios do
       output_directory: "./build",
       export_options: {
         provisioningProfiles: {
-          APP_BUNDLE_ID => ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-name"],
-          WIDGET_BUNDLE_ID => ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-name"]
+          APP_BUNDLE_ID => sigh_profile_name(APP_BUNDLE_ID),
+          WIDGET_BUNDLE_ID => sigh_profile_name(WIDGET_BUNDLE_ID)
         },
         signingStyle: "manual",
         teamID: ENV["APPLE_TEAM_ID"]
