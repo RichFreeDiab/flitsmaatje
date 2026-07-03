@@ -63,8 +63,7 @@ def install_carplay_profiles!(api_key:)
       include_all_certificates: true,
       skip_certificate_verification: true,
       adhoc: false,
-      force: true,
-      readonly: false
+      force: true
     )
   end
 end
