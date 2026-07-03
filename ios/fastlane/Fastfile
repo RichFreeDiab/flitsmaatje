@@ -28,7 +28,6 @@ platform :ios do
   lane :beta do
     setup_ci if ENV["CI"]
     api_key = asc_api_key
-    revoke_extra_distribution_certs if ENV["CI"]
     match_opts = {
       type: "appstore",
       api_key: api_key,
@@ -44,6 +43,14 @@ platform :ios do
       build_configuration: "Release"
     )
 
+    produce(
+      api_key: api_key,
+      app_identifier: "nl.readvanes.flitsmaatje.widget",
+      app_name: "FlitsMaatjeWidget",
+      skip_itc: true,
+      team_id: ENV["APPLE_TEAM_ID"],
+      enable_services: { app_group: "on" }
+    )
     match(**match_opts, app_identifier: "nl.readvanes.flitsmaatje.widget")
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
