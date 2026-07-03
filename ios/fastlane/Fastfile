@@ -28,7 +28,14 @@ platform :ios do
   lane :beta do
     setup_ci if ENV["CI"]
     api_key = asc_api_key
-    keychain = ci_keychain_options
+    keychain = {}
+    if ENV["CI"]
+      keychain_name = ENV["MATCH_KEYCHAIN_NAME"] || "fastlane_tmp_keychain"
+      keychain = {
+        keychain_path: File.expand_path("~/Library/Keychains/#{keychain_name}-db"),
+        keychain_password: ENV["MATCH_KEYCHAIN_PASSWORD"]
+      }
+    end
 
     cert(api_key: api_key, output_path: "./build/certs", **keychain)
 
@@ -66,15 +73,6 @@ platform :ios do
       skip_waiting_for_build_processing: true,
       changelog: ENV["FLITSMAATJE_CHANGELOG"] || "Nieuwe build"
     )
-  end
-
-  private_lane :ci_keychain_options do
-    return {} unless ENV["CI"]
-
-    {
-      keychain_path: ENV.fetch("KEYCHAIN_PATH"),
-      keychain_password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD")
-    }
   end
 
   private_lane :asc_api_key do
