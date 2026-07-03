@@ -94,7 +94,7 @@ platform :ios do
     )
     Spaceship::ConnectAPI.token = token
 
-    existing = Spaceship::ConnectAPI::BundleId.find(identifier: identifier)
+    existing = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: identifier }).first
     if existing
       UI.success("Bundle ID already exists: #{identifier}")
       next
