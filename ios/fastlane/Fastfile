@@ -117,23 +117,16 @@ end
 
 def ensure_app_store_record!
   with_asc_api_token do
-    bundle = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: APP_BUNDLE_ID }).first
-    UI.user_error!("Bundle ID missing: #{APP_BUNDLE_ID}") unless bundle
-
     existing = Spaceship::ConnectAPI::App.all(filter: { bundleId: APP_BUNDLE_ID })
     if existing.any?
       UI.success("App Store Connect record exists for #{APP_BUNDLE_ID}")
       return
     end
 
-    Spaceship::ConnectAPI::App.create(
-      name: "FlitsMaatje",
-      bundle_id: bundle.id,
-      primary_locale: "nl-NL",
-      sku: "flitsmaatje-ios",
-      platforms: ["IOS"]
+    UI.important(
+      "Geen App Store Connect-app gevonden voor #{APP_BUNDLE_ID}. " \
+      "Maak die handmatig aan in App Store Connect als upload faalt."
     )
-    UI.success("Created App Store Connect app: FlitsMaatje")
   end
 end
 
