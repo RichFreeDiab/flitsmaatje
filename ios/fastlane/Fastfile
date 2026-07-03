@@ -43,13 +43,9 @@ platform :ios do
       build_configuration: "Release"
     )
 
-    produce(
-      api_key: api_key,
-      app_identifier: "nl.readvanes.flitsmaatje.widget",
-      app_name: "FlitsMaatjeWidget",
-      skip_itc: true,
-      team_id: ENV["APPLE_TEAM_ID"],
-      enable_services: { app_group: "on" }
+    ensure_bundle_id(
+      identifier: "nl.readvanes.flitsmaatje.widget",
+      name: "FlitsMaatjeWidget"
     )
     match(**match_opts, app_identifier: "nl.readvanes.flitsmaatje.widget")
     update_project_provisioning(
@@ -77,6 +73,45 @@ platform :ios do
       skip_waiting_for_build_processing: true,
       changelog: ENV["FLITSMAATJE_CHANGELOG"] || "Nieuwe build"
     )
+  end
+
+  private_lane :ensure_bundle_id do |options|
+    require "spaceship/connect_api"
+    require "base64"
+    require "tmpdir"
+
+    identifier = options[:identifier]
+    name = options[:name]
+    key_path = File.join(Dir.tmpdir, "AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
+    File.binwrite(key_path, Base64.strict_decode64(ENV.fetch("ASC_KEY_CONTENT")))
+
+    token = Spaceship::ConnectAPI::Token.create(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      filepath: key_path,
+      duration: 1200,
+      in_house: false
+    )
+    Spaceship::ConnectAPI.token = token
+
+    existing = Spaceship::ConnectAPI::BundleId.find(identifier: identifier)
+    if existing
+      UI.success("Bundle ID already exists: #{identifier}")
+      next
+    end
+
+    bundle = Spaceship::ConnectAPI::BundleId.create(
+      identifier: identifier,
+      name: name,
+      platform: Spaceship::ConnectAPI::BundleId::Platform::IOS
+    )
+    Spaceship::ConnectAPI::BundleIdCapability.create(
+      bundle_id_id: bundle.id,
+      capability_type: Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
+    )
+    UI.success("Created bundle ID: #{identifier}")
+  ensure
+    File.delete(key_path) if defined?(key_path) && File.exist?(key_path)
   end
 
   private_lane :revoke_extra_distribution_certs do
