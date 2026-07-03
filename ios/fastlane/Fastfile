@@ -46,35 +46,27 @@ def log_profile_entitlements!(path, label)
     UI.success("#{label}: profile bevat #{APP_GROUP_ID}")
     true
   else
+    groups = xml[/com\.apple\.security\.application-groups.*?<\/array>/m]
+    UI.important("#{label}: application-groups sectie: #{groups || 'afwezig'}")
     UI.user_error!("#{label}: profile mist #{APP_GROUP_ID}")
   end
 end
 
 def install_carplay_profiles!(api_key:)
-  sigh(
-    api_key: api_key,
-    app_identifier: APP_BUNDLE_ID,
-    provisioning_name: MAIN_PROFILE_NAME,
-    ignore_profiles_with_different_name: true,
-    include_all_certificates: true,
-    skip_certificate_verification: true,
-    adhoc: false,
-    readonly: true
-  )
-  sigh(
-    api_key: api_key,
-    app_identifier: WIDGET_BUNDLE_ID,
-    provisioning_name: WIDGET_PROFILE_NAME,
-    ignore_profiles_with_different_name: true,
-    include_all_certificates: true,
-    skip_certificate_verification: true,
-    adhoc: false,
-    readonly: true
-  )
-end
-
-def ensure_app_group_entity!
-  UI.important("App Group #{APP_GROUP_ID} moet in Developer Portal aan beide bundle IDs gekoppeld zijn")
+  [APP_BUNDLE_ID, WIDGET_BUNDLE_ID].each do |app_id|
+    profile_name = app_id == APP_BUNDLE_ID ? MAIN_PROFILE_NAME : WIDGET_PROFILE_NAME
+    sigh(
+      api_key: api_key,
+      app_identifier: app_id,
+      provisioning_name: profile_name,
+      ignore_profiles_with_different_name: true,
+      include_all_certificates: true,
+      skip_certificate_verification: true,
+      adhoc: false,
+      force: true,
+      readonly: false
+    )
+  end
 end
 
 def ensure_bundle_id!(identifier:, name:)
@@ -95,26 +87,32 @@ def ensure_bundle_id!(identifier:, name:)
   end
 end
 
+def app_group_capability_settings
+  [{ key: "APP_GROUPS", value: APP_GROUP_ID }]
+end
+
 def ensure_app_groups_capability!(bundle_identifier:)
   capability_type = Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
+  settings = app_group_capability_settings
 
   with_asc_api_token do
     bundle = Spaceship::ConnectAPI::BundleId.find(bundle_identifier)
     UI.user_error!("Bundle ID not found: #{bundle_identifier}") unless bundle
 
     caps = bundle.get_capabilities
-    if caps.any? { |c| c.capability_type.to_s == "APP_GROUPS" }
-      UI.success("APP_GROUPS already enabled for #{bundle_identifier}")
-      return
-    end
+    has_app_groups = caps.any? { |c| c.capability_type.to_s == "APP_GROUPS" }
 
-    bundle.create_capability(capability_type, settings: [])
-    UI.success("APP_GROUPS enabled for #{bundle_identifier}")
+    if has_app_groups
+      bundle.update_capability(capability_type, enabled: true, settings: settings)
+      UI.success("APP_GROUPS gekoppeld aan #{APP_GROUP_ID} voor #{bundle_identifier}")
+    else
+      bundle.create_capability(capability_type, settings: settings)
+      UI.success("APP_GROUPS aangemaakt met #{APP_GROUP_ID} voor #{bundle_identifier}")
+    end
   end
 end
 
 def prepare_carplay_signing!
-  ensure_app_group_entity!
   ensure_bundle_id!(identifier: WIDGET_BUNDLE_ID, name: "FlitsMaatje Widget")
   ensure_app_groups_capability!(bundle_identifier: APP_BUNDLE_ID)
   ensure_app_groups_capability!(bundle_identifier: WIDGET_BUNDLE_ID)
