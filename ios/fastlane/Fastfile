@@ -34,6 +34,28 @@ def revoke_all_distribution_certs!
   end
 end
 
+def ensure_app_store_record!
+  with_asc_api_token do
+    bundle = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: APP_BUNDLE_ID }).first
+    UI.user_error!("Bundle ID missing: #{APP_BUNDLE_ID}") unless bundle
+
+    existing = Spaceship::ConnectAPI::App.all(filter: { bundleId: APP_BUNDLE_ID })
+    if existing.any?
+      UI.success("App Store Connect record exists for #{APP_BUNDLE_ID}")
+      next
+    end
+
+    Spaceship::ConnectAPI::App.create(
+      name: "FlitsMaatje",
+      bundle_id: bundle.id,
+      primary_locale: "nl-NL",
+      sku: "flitsmaatje-ios",
+      platforms: ["IOS"]
+    )
+    UI.success("Created App Store Connect app: FlitsMaatje")
+  end
+end
+
 platform :ios do
   desc "Build en upload naar TestFlight (draait op GitHub Actions — geen Mac nodig)"
   lane :beta do
@@ -82,6 +104,8 @@ platform :ios do
       output_directory: "./build",
       xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual"
     )
+
+    ensure_app_store_record!
 
     upload_to_testflight(
       api_key: api_key,
