@@ -59,7 +59,8 @@ def install_carplay_profiles!(api_key:)
     include_all_certificates: true,
     skip_certificate_verification: true,
     adhoc: false,
-    force: false
+    force: false,
+    readonly: true
   )
   sigh(
     api_key: api_key,
@@ -69,7 +70,8 @@ def install_carplay_profiles!(api_key:)
     include_all_certificates: true,
     skip_certificate_verification: true,
     adhoc: false,
-    force: false
+    force: false,
+    readonly: true
   )
 end
 
