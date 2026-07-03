@@ -88,14 +88,12 @@ platform :ios do
       in_house: false
     )
     Spaceship::ConnectAPI.token = token
-    certs = Spaceship::ConnectAPI::Certificate.all(
-      filter: {
-        certificateType: Spaceship::ConnectAPI::Certificate::CertificateType::IOS_DISTRIBUTION
-      }
-    )
-    certs.each do |cert|
-      UI.important("Revoking distribution certificate #{cert.id}")
-      cert.delete
+    certs = Spaceship::ConnectAPI::Certificate.all
+    dist_certs = certs.select { |cert| cert.certificate_type.to_s.include?("DISTRIBUTION") }
+    UI.important("Found #{dist_certs.count} distribution certificate(s) to revoke")
+    dist_certs.each do |cert|
+      UI.important("Revoking distribution certificate #{cert.id} (#{cert.certificate_type})")
+      Spaceship::ConnectAPI.delete_certificate(certificate_id: cert.id)
     end
   ensure
     File.delete(key_path) if defined?(key_path) && File.exist?(key_path)
