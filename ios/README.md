@@ -93,6 +93,22 @@ Geen alert: `{"alert": null}`
 
 ## Testen zonder auto
 
+### Web CarPlay-simulator (geen Mac nodig)
+
+Open in je browser:
+
+```
+https://flitsmaatje.readvanes.nl/carplay
+```
+
+(lokaal: `http://localhost:5068/carplay`)
+
+- Widget ziet eruit als op CarPlay Dashboard
+- Live data via `/api/nearby-alert` (zelfde als iOS-app)
+- **Mijn locatie** = GPS; **Demo-rit** = rijd langs een route; klik op kaart = handmatige positie
+
+### Met Mac + Xcode
+
 1. **Simulator → CarPlay** (Xcode → I/O → External Displays → CarPlay)
 2. Widget toevoegen via iPhone Simulator instellingen
 3. **Debug → Simulate Location** → Custom GPX met route langs een melding

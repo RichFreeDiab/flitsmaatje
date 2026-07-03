@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0c">
+  <title>FlitsMaatje — CarPlay Simulator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/css/carplay.css">
+</head>
+<body>
+
+  <div class="toolbar">
+    <div>
+      <h1>CarPlay Dashboard Simulator</h1>
+      <p>Preview van het FlitsMaatje-widget — zelfde API als de iOS-app</p>
+    </div>
+    <div class="toolbar-actions">
+      <button id="btn-gps" class="primary" type="button">📍 Mijn locatie</button>
+      <button id="btn-drive" type="button">🚗 Demo-rit</button>
+      <button id="btn-refresh" type="button">↻ Vernieuwen</button>
+      <button id="btn-demo-alert" type="button">Demo flitser</button>
+      <button id="btn-demo-clear" type="button">Demo leeg</button>
+    </div>
+    <div id="status-pill" class="status-pill">Laden…</div>
+  </div>
+
+  <div class="carplay-frame" aria-label="CarPlay dashboard simulatie">
+    <div class="carplay-statusbar">
+      <span id="clock">--:--</span>
+      <span>4G</span>
+      <span>🔋</span>
+    </div>
+
+    <aside class="widget-rail">
+      <h2>Widgets</h2>
+      <div id="flits-widget" class="flits-widget clear" aria-live="polite">
+        <div class="flits-widget-header">
+          <span class="flits-widget-icon shield">🛡️</span>
+          <span class="flits-widget-brand">FlitsMaatje</span>
+        </div>
+        <div class="flits-widget-label">Geen meldingen</div>
+        <div class="flits-widget-sub">Laden…</div>
+      </div>
+    </aside>
+
+    <main class="dashboard-main">
+      <div class="app-row" aria-hidden="true">
+        <div class="app-tile active" title="Kaarten">🗺️</div>
+        <div class="app-tile" title="Muziek">🎵</div>
+        <div class="app-tile" title="Telefoon">📞</div>
+      </div>
+      <section class="maps-panel">
+        <div id="nav-hint" class="maps-overlay">
+          <strong>Kaarten</strong>
+          Tik op de kaart om je positie te zetten
+        </div>
+        <div id="map"></div>
+      </section>
+    </main>
+  </div>
+
+  <p class="hint">
+    Dit is een <strong>webpreview</strong> — geen echte CarPlay. Op iPhone: TestFlight → app op achtergrond →
+    <code>Instellingen → CarPlay → Widgets → FlitsMaatje</code>.
+    Met Mac/Xcode: <code>I/O → External Displays → CarPlay</code>.
+    Positie: <span id="coords" class="coords">—</span>
+  </p>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/js/carplay.js"></script>
+  <script>
+    function tickClock() {
+      const el = document.getElementById("clock");
+      if (!el) return;
+      el.textContent = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+    }
+    tickClock();
+    setInterval(tickClock, 30000);
+  </script>
+</body>
+</html>

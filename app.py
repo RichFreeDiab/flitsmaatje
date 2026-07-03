@@ -304,6 +304,12 @@ def index():
     return send_from_directory(app.template_folder, "index.html")
 
 
+@app.route("/carplay")
+def carplay_simulator():
+    """Webpreview van het CarPlay Dashboard-widget (zelfde /api/nearby-alert als iOS)."""
+    return send_from_directory(app.template_folder, "carplay.html")
+
+
 @app.route("/sw.js")
 def service_worker():
     return send_from_directory(app.static_folder, "sw.js", mimetype="application/javascript")
