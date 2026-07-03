@@ -91,22 +91,28 @@ def app_group_capability_settings
   [{ key: "APP_GROUPS", value: APP_GROUP_ID }]
 end
 
-def ensure_app_groups_capability!(bundle_identifier:)
-  capability_type = Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
-  settings = app_group_capability_settings
-
+def verify_app_groups_linked!(bundle_identifier:)
   with_asc_api_token do
     bundle = Spaceship::ConnectAPI::BundleId.find(bundle_identifier)
     UI.user_error!("Bundle ID not found: #{bundle_identifier}") unless bundle
 
     caps = bundle.get_capabilities
-    has_app_groups = caps.any? { |c| c.capability_type.to_s == "APP_GROUPS" }
+    app_groups_cap = caps.find { |c| c.capability_type.to_s == "APP_GROUPS" }
+    settings_text = app_groups_cap&.settings.to_s
 
-    if has_app_groups
-      bundle.update_capability(capability_type, enabled: true, settings: settings)
-      UI.success("APP_GROUPS gekoppeld aan #{APP_GROUP_ID} voor #{bundle_identifier}")
+    if app_groups_cap && settings_text.include?(APP_GROUP_ID)
+      UI.success("APP_GROUPS bevat #{APP_GROUP_ID} voor #{bundle_identifier}")
+      return
+    end
+
+    if app_groups_cap
+      UI.user_error!(
+        "APP_GROUPS staat aan voor #{bundle_identifier} maar groep #{APP_GROUP_ID} ontbreekt — " \
+        "koppel in Developer Portal via Configure → Save"
+      )
     else
-      bundle.create_capability(capability_type, settings: settings)
+      capability_type = Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
+      bundle.create_capability(capability_type, settings: app_group_capability_settings)
       UI.success("APP_GROUPS aangemaakt met #{APP_GROUP_ID} voor #{bundle_identifier}")
     end
   end
@@ -114,8 +120,8 @@ end
 
 def prepare_carplay_signing!
   ensure_bundle_id!(identifier: WIDGET_BUNDLE_ID, name: "FlitsMaatje Widget")
-  ensure_app_groups_capability!(bundle_identifier: APP_BUNDLE_ID)
-  ensure_app_groups_capability!(bundle_identifier: WIDGET_BUNDLE_ID)
+  verify_app_groups_linked!(bundle_identifier: APP_BUNDLE_ID)
+  verify_app_groups_linked!(bundle_identifier: WIDGET_BUNDLE_ID)
 end
 
 def ensure_app_store_record!
