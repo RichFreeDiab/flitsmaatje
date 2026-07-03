@@ -55,16 +55,17 @@ via `WidgetCenter.reloadTimelines` ververst.
 
 ## CarPlay instellen
 
+**Navigatie** zit in de app zelf (tab Navigatie — Apple MapKit, turn-by-turn + spraak).
+
+Voor **CarPlay** (dashboard naast Kaarten):
+
 1. Installeer de app op je iPhone
 2. Open de app → geef **Altijd** locatietoestemming
-3. Laat tracking aan staan (blauwe balk = achtergrondlocatie actief)
-4. **Instellingen → Algemeen → CarPlay → [jouw auto] → Widgets**
-5. Voeg **FlitsMaatje** toe aan je dashboard
-6. Start navigatie met Kaarten of Google Maps in CarPlay
-7. Het FlitsMaatje-widget verschijnt **naast** je navigatie-app
+3. **Instellingen → Algemeen → CarPlay → [jouw auto] → Widgets**
+4. Voeg **FlitsMaatje** toe aan je dashboard
+5. Gebruik FlitsMaatje-navigatie op je telefoon, of Kaarten op het CarPlay-scherm — het widget toont flitsers
 
-> Op iOS 26 verschijnen widgets links van het CarPlay Dashboard. Op oudere CarPlay-systemen
-> werkt de achtergrondwaarschuwing via Live Activity (Lock Screen) en geluid.
+> Volledige turn-by-turn op het **CarPlay-beeldscherm** vereist een apart Apple CarPlay-navigatie-entitlement; FlitsMaatje toont daar het **widget** met flitsdata.
 
 ## API
 

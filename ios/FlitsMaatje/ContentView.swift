@@ -33,9 +33,6 @@ struct ContentView: View {
                 }
             }
         }
-        .onAppear {
-            location.requestPermissionAndStart()
-        }
     }
 
     private var speedPanel: some View {
@@ -147,10 +144,10 @@ struct ContentView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            Label("Laat de app op de achtergrond draaien tijdens rijden", systemImage: "1.circle")
+            Label("Ingebouwde navigatie: tab Navigatie — zoek of tik op kaart", systemImage: "1.circle")
             Label("Flitsalarm: geluid + trilling + melding", systemImage: "2.circle")
             Label("Boete-indicatie: indicatief, geen juridisch advies", systemImage: "3.circle")
-            Label("CarPlay: Instellingen → CarPlay → Widgets → FlitsMaatje", systemImage: "4.circle")
+            Label("CarPlay-scherm: widget naast Kaarten (geen volledige nav op CarPlay)", systemImage: "4.circle")
         }
         .font(.footnote)
         .foregroundStyle(.secondary)

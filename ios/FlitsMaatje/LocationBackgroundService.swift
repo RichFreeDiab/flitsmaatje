@@ -14,6 +14,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var speedLimit: Int?
     @Published var fineEstimate: FineEstimate?
     @Published var roadName: String?
+    @Published var lastLocation: CLLocation?
 
     private let manager = CLLocationManager()
     private var lastPollAt: Date = .distantPast
@@ -65,6 +66,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         speedLimit = nil
         fineEstimate = nil
         roadName = nil
+        lastLocation = nil
         resetAlarmState()
         endLiveActivity()
         persistSnapshot(lat: nil, lng: nil, alert: nil, message: "Tracking gestopt")
@@ -95,6 +97,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func handleLocation(_ location: CLLocation) async {
+        lastLocation = location
         updateCurrentSpeed(from: location)
 
         let lat = location.coordinate.latitude
