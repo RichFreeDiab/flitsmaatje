@@ -103,11 +103,11 @@ platform :ios do
     bundle = Spaceship::ConnectAPI::BundleId.create(
       identifier: identifier,
       name: name,
-      platform: Spaceship::ConnectAPI::BundleId::Platform::IOS
+      platform: "IOS"
     )
     Spaceship::ConnectAPI::BundleIdCapability.create(
       bundle_id_id: bundle.id,
-      capability_type: Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
+      capability_type: "APP_GROUPS"
     )
     UI.success("Created bundle ID: #{identifier}")
   ensure
