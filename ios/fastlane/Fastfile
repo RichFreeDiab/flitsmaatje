@@ -2,11 +2,45 @@ default_platform(:ios)
 
 APP_BUNDLE_ID = "nl.readvanes.flitsmaatje".freeze
 
+def with_asc_api_token
+  require "spaceship/connect_api"
+  require "base64"
+  require "tmpdir"
+
+  key_path = File.join(Dir.tmpdir, "AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
+  File.binwrite(key_path, Base64.strict_decode64(ENV.fetch("ASC_KEY_CONTENT")))
+  token = Spaceship::ConnectAPI::Token.create(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    filepath: key_path,
+    duration: 1200,
+    in_house: false
+  )
+  Spaceship::ConnectAPI.token = token
+  yield
+ensure
+  File.delete(key_path) if defined?(key_path) && key_path && File.exist?(key_path)
+end
+
+def revoke_all_distribution_certs!
+  with_asc_api_token do
+    certs = Spaceship::ConnectAPI::Certificate.all
+    dist = certs.select { |c| c.certificate_type.to_s.include?("DISTRIBUTION") }
+    UI.important("Revoking #{dist.count} distribution certificate(s)")
+    dist.each do |cert|
+      UI.important("  -> #{cert.id} (#{cert.certificate_type})")
+      Spaceship::ConnectAPI.delete_certificate(certificate_id: cert.id)
+    end
+  end
+end
+
 platform :ios do
   desc "Build en upload naar TestFlight (draait op GitHub Actions — geen Mac nodig)"
   lane :beta do
     setup_ci if ENV["CI"]
     api_key = asc_api_key
+
+    revoke_all_distribution_certs! if ENV["CI"]
 
     match(
       type: "appstore",
