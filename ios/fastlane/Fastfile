@@ -39,7 +39,7 @@ platform :ios do
 
     cert(api_key: api_key, output_path: "./build/certs", **keychain)
 
-    sigh(api_key: api_key, app_identifier: "nl.readvanes.flitsmaatje", output_path: "./build/profiles", filename: "app.mobileprovision", **keychain)
+    sigh(api_key: api_key, app_identifier: "nl.readvanes.flitsmaatje", output_path: "./build/profiles", filename: "app.mobileprovision")
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
       target_filter: "FlitsMaatje",
@@ -47,7 +47,7 @@ platform :ios do
       build_configuration: "Release"
     )
 
-    sigh(api_key: api_key, app_identifier: "nl.readvanes.flitsmaatje.widget", output_path: "./build/profiles", filename: "widget.mobileprovision", **keychain)
+    sigh(api_key: api_key, app_identifier: "nl.readvanes.flitsmaatje.widget", output_path: "./build/profiles", filename: "widget.mobileprovision")
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
       target_filter: "FlitsMaatjeWidget",
