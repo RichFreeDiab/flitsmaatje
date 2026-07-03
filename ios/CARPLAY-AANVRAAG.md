@@ -20,6 +20,12 @@ Na goedkeuring:
 1. [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list) → App ID `nl.readvanes.flitsmaatje`
 2. Schakel **CarPlay Maps App** (en eventueel Dashboard) in
 3. Sla op
+4. Voeg in `FlitsMaatje/FlitsMaatje.entitlements` toe:
+
+```xml
+<key>com.apple.developer.carplay-maps</key>
+<true/>
+```
 
 ## Stap 3 — Provisioning profiles vernieuwen
 

@@ -57,9 +57,7 @@ final class NavigationService: ObservableObject {
 
     func startNavigation(to destination: MKMapItem, from location: CLLocation) async {
         let request = MKDirections.Request()
-        request.source = MKMapItem(
-            placemark: MKPlacemark(coordinate: location.coordinate, coordinateRegion: .init())
-        )
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: location.coordinate))
         request.destination = destination
         request.transportType = .automobile
 
