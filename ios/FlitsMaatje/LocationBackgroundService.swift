@@ -53,7 +53,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         currentAlert = nil
         endLiveActivity()
         persistSnapshot(lat: nil, lng: nil, alert: nil, message: "Tracking gestopt")
-        WidgetCenter.shared.reloadTimelines(ofKind: "FlitsMaatjeWidget")
+        WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -106,7 +106,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 lastAlertId = nil
             }
 
-            WidgetCenter.shared.reloadTimelines(ofKind: "FlitsMaatjeWidget")
+            WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
         } catch {
             statusText = "Kon API niet bereiken"
             persistSnapshot(lat: lat, lng: lng, alert: currentAlert, message: statusText)
