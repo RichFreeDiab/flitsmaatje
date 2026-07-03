@@ -36,6 +36,18 @@ def revoke_all_distribution_certs!
   end
 end
 
+def log_profile_entitlements!(path, label)
+  return UI.important("#{label}: geen profile path") unless path && File.exist?(path)
+
+  xml = `security cms -D -i '#{path}' 2>/dev/null`
+  if xml.include?(APP_GROUP_ID)
+    UI.success("#{label}: profile bevat #{APP_GROUP_ID}")
+  else
+    UI.important("#{label}: profile mist #{APP_GROUP_ID}")
+    UI.important(xml[/com\.apple\.security\.application-groups[\s\S]{0,200}/])
+  end
+end
+
 def ensure_app_group_entity!
   UI.important("App Group #{APP_GROUP_ID} moet in Developer Portal aan beide bundle IDs gekoppeld zijn")
 end
@@ -113,6 +125,9 @@ platform :ios do
 
     prepare_carplay_signing!
 
+    UI.important("Wachten op Apple Portal-sync voor App Group profiles…")
+    sleep(90) if ENV["CI"]
+
     match(
       type: "appstore",
       api_key: api_key,
@@ -121,6 +136,9 @@ platform :ios do
       force: true,
       git_basic_authorization: match_git_auth
     )
+
+    log_profile_entitlements!(ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-path"], "Hoofdapp")
+    log_profile_entitlements!(ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-path"], "Widget")
 
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
@@ -176,7 +194,7 @@ platform :ios do
         signingStyle: "manual",
         teamID: ENV["APPLE_TEAM_ID"]
       },
-      xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual"
+      xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual -allowProvisioningUpdates"
     )
 
     ensure_app_store_record!
