@@ -28,6 +28,7 @@ platform :ios do
   lane :beta do
     setup_ci if ENV["CI"]
     api_key = asc_api_key
+    revoke_extra_distribution_certs(api_key: api_key) if ENV["CI"]
     match_opts = {
       type: "appstore",
       api_key: api_key,
@@ -69,6 +70,20 @@ platform :ios do
       skip_waiting_for_build_processing: true,
       changelog: ENV["FLITSMAATJE_CHANGELOG"] || "Nieuwe build"
     )
+  end
+
+  private_lane :revoke_extra_distribution_certs do |options|
+    require "spaceship/connect_api"
+    Spaceship::ConnectAPI.token = options[:api_key]
+    certs = Spaceship::ConnectAPI::Certificate.all(
+      filter: {
+        certificateType: Spaceship::ConnectAPI::Certificate::CertificateType::IOS_DISTRIBUTION
+      }
+    )
+    certs.each do |cert|
+      UI.important("Revoking distribution certificate #{cert.id}")
+      cert.delete
+    end
   end
 
   private_lane :match_git_auth do
