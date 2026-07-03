@@ -60,7 +60,10 @@ def ensure_bundle_id!(identifier:, name:)
 end
 
 def link_app_group!(bundle_identifier:)
-  settings = [{ key: "APP_GROUP_NAME", options: [{ key: APP_GROUP_ID }] }]
+  settings = [{
+    key: "APP_GROUP_IDS",
+    options: [{ key: APP_GROUP_ID, enabled: true }]
+  }]
 
   with_asc_api_token do
     bundle = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: bundle_identifier }).first
@@ -171,6 +174,14 @@ platform :ios do
       configuration: "Release",
       export_method: "app-store",
       output_directory: "./build",
+      export_options: {
+        provisioningProfiles: {
+          APP_BUNDLE_ID => ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-name"],
+          WIDGET_BUNDLE_ID => ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-name"]
+        },
+        signingStyle: "manual",
+        teamID: ENV["APPLE_TEAM_ID"]
+      },
       xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual"
     )
 
