@@ -52,7 +52,14 @@ def log_profile_entitlements!(path, label)
   end
 end
 
-def install_carplay_profiles!(api_key:)
+def install_distribution_certificate!(api_key:)
+  cert(
+    api_key: api_key,
+    readonly: true
+  )
+end
+
+def install_app_store_profiles!(api_key:)
   [APP_BUNDLE_ID, WIDGET_BUNDLE_ID].each do |app_id|
     profile_name = app_id == APP_BUNDLE_ID ? MAIN_PROFILE_NAME : WIDGET_PROFILE_NAME
     sigh(
@@ -63,7 +70,7 @@ def install_carplay_profiles!(api_key:)
       include_all_certificates: true,
       skip_certificate_verification: true,
       adhoc: false,
-      force: true
+      readonly: true
     )
   end
 end
@@ -124,15 +131,9 @@ platform :ios do
 
     prepare_carplay_signing!
 
-    match(
-      type: "appstore",
-      api_key: api_key,
-      app_identifier: APP_BUNDLE_ID,
-      readonly: true,
-      git_basic_authorization: match_git_auth
-    )
+    install_distribution_certificate!(api_key: api_key)
 
-    install_carplay_profiles!(api_key: api_key)
+    install_app_store_profiles!(api_key: api_key)
 
     log_profile_entitlements!(ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-path"], "Hoofdapp")
     log_profile_entitlements!(ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-path"], "Widget")
