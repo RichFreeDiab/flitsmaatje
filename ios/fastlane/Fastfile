@@ -1,40 +1,72 @@
 default_platform(:ios)
 
-platform :ios do
-  desc "Maak app-records aan in App Store Connect (eenmalig)"
-  lane :setup_app do
-    api_key = asc_api_key
-    produce(
-      api_key: api_key,
-      app_identifier: "nl.readvanes.flitsmaatje",
-      app_name: "FlitsMaatje",
-      language: "nl-NL",
-      app_version: "1.0",
-      sku: "flitsmaatje-ios",
-      team_id: ENV["APPLE_TEAM_ID"],
-      enable_services: { app_group: "on" }
-    )
-    produce(
-      api_key: api_key,
-      app_identifier: "nl.readvanes.flitsmaatje.widget",
-      app_name: "FlitsMaatjeWidget",
-      skip_itc: true,
-      team_id: ENV["APPLE_TEAM_ID"],
-      enable_services: { app_group: "on" }
-    )
+APP_GROUP_ID = "group.nl.readvanes.flitsmaatje".freeze
+APP_BUNDLE_ID = "nl.readvanes.flitsmaatje".freeze
+WIDGET_BUNDLE_ID = "nl.readvanes.flitsmaatje.widget".freeze
+
+def with_asc_api_token
+  require "spaceship/connect_api"
+  require "base64"
+  require "tmpdir"
+
+  key_path = File.join(Dir.tmpdir, "AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
+  File.binwrite(key_path, Base64.strict_decode64(ENV.fetch("ASC_KEY_CONTENT")))
+  token = Spaceship::ConnectAPI::Token.create(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    filepath: key_path,
+    duration: 1200,
+    in_house: false
+  )
+  Spaceship::ConnectAPI.token = token
+  yield
+ensure
+  File.delete(key_path) if defined?(key_path) && key_path && File.exist?(key_path)
+end
+
+def ensure_bundle_id!(identifier, name)
+  existing = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: identifier }).first
+  if existing
+    UI.success("Bundle ID already exists: #{identifier}")
+    return existing
   end
 
+  bundle = Spaceship::ConnectAPI::BundleId.create(
+    identifier: identifier,
+    name: name,
+    platform: "IOS"
+  )
+  UI.success("Created bundle ID: #{identifier}")
+  bundle
+end
+
+def ensure_app_group_capability!(identifier)
+  bundle = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: identifier }).first
+  UI.user_error!("Bundle ID not found: #{identifier}") unless bundle
+
+  caps = Spaceship::ConnectAPI::BundleIdCapability.all(bundle_id_id: bundle.id)
+  has_group = caps.any? { |cap| cap.capability_type.to_s == "APP_GROUPS" }
+  unless has_group
+    Spaceship::ConnectAPI::BundleIdCapability.create(
+      bundle_id_id: bundle.id,
+      capability_type: "APP_GROUPS"
+    )
+  end
+  UI.success("App Group capability ensured for #{identifier}")
+end
+
+platform :ios do
   desc "Build en upload naar TestFlight (draait op GitHub Actions — geen Mac nodig)"
   lane :beta do
     setup_ci if ENV["CI"]
     api_key = asc_api_key
 
-    ensure_bundle_id(
-      identifier: "nl.readvanes.flitsmaatje.widget",
-      name: "FlitsMaatjeWidget"
-    )
-    configure_app_group_for_bundle(identifier: "nl.readvanes.flitsmaatje")
-    configure_app_group_for_bundle(identifier: "nl.readvanes.flitsmaatje.widget")
+    with_asc_api_token do
+      ensure_bundle_id!(APP_BUNDLE_ID, "FlitsMaatje")
+      ensure_bundle_id!(WIDGET_BUNDLE_ID, "FlitsMaatjeWidget")
+      ensure_app_group_capability!(APP_BUNDLE_ID)
+      ensure_app_group_capability!(WIDGET_BUNDLE_ID)
+    end
 
     match_opts = {
       type: "appstore",
@@ -44,19 +76,19 @@ platform :ios do
       git_basic_authorization: match_git_auth
     }
 
-    match(**match_opts, app_identifier: "nl.readvanes.flitsmaatje")
+    match(**match_opts, app_identifier: APP_BUNDLE_ID)
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
       target_filter: "FlitsMaatje",
-      profile: ENV["sigh_nl.readvanes.flitsmaatje_appstore_profile-path"],
+      profile: ENV["sigh_#{APP_BUNDLE_ID}_appstore_profile-path"],
       build_configuration: "Release"
     )
 
-    match(**match_opts, app_identifier: "nl.readvanes.flitsmaatje.widget")
+    match(**match_opts, app_identifier: WIDGET_BUNDLE_ID)
     update_project_provisioning(
       xcodeproj: "FlitsMaatje.xcodeproj",
       target_filter: "FlitsMaatjeWidget",
-      profile: ENV["sigh_nl.readvanes.flitsmaatje.widget_appstore_profile-path"],
+      profile: ENV["sigh_#{WIDGET_BUNDLE_ID}_appstore_profile-path"],
       build_configuration: "Release"
     )
 
@@ -78,86 +110,6 @@ platform :ios do
       skip_waiting_for_build_processing: true,
       changelog: ENV["FLITSMAATJE_CHANGELOG"] || "Nieuwe build"
     )
-  end
-
-  private_lane :configure_app_group_for_bundle do |options|
-    with_asc_api_token do
-      group_id = "group.nl.readvanes.flitsmaatje"
-      group = Spaceship::ConnectAPI::BundleIdGroup.all(filter: { identifier: group_id }).first
-      unless group
-        group = Spaceship::ConnectAPI::BundleIdGroup.create(identifier: group_id, name: "FlitsMaatje")
-      end
-
-      bundle = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: options[:identifier] }).first
-      UI.user_error!("Bundle ID not found: #{options[:identifier]}") unless bundle
-
-      caps = Spaceship::ConnectAPI::BundleIdCapability.all(bundle_id_id: bundle.id)
-      unless caps.any? { |cap| cap.capability_type.to_s == "APP_GROUPS" }
-        Spaceship::ConnectAPI::BundleIdCapability.create(
-          bundle_id_id: bundle.id,
-          capability_type: "APP_GROUPS",
-          settings: [{ key: "APP_GROUP_NAME", options: [{ key: group_id }] }]
-        )
-      end
-      UI.success("App Group configured for #{options[:identifier]}")
-    end
-  end
-
-  private_lane :with_asc_api_token do
-    require "spaceship/connect_api"
-    require "base64"
-    require "tmpdir"
-
-    key_path = File.join(Dir.tmpdir, "AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
-    File.binwrite(key_path, Base64.strict_decode64(ENV.fetch("ASC_KEY_CONTENT")))
-    token = Spaceship::ConnectAPI::Token.create(
-      key_id: ENV.fetch("ASC_KEY_ID"),
-      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-      filepath: key_path,
-      duration: 1200,
-      in_house: false
-    )
-    Spaceship::ConnectAPI.token = token
-    yield
-  ensure
-    File.delete(key_path) if defined?(key_path) && File.exist?(key_path)
-  end
-
-  private_lane :ensure_bundle_id do |options|
-    with_asc_api_token do
-      identifier = options[:identifier]
-      name = options[:name]
-
-      existing = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: identifier }).first
-      if existing
-        UI.success("Bundle ID already exists: #{identifier}")
-        next
-      end
-
-      bundle = Spaceship::ConnectAPI::BundleId.create(
-        identifier: identifier,
-        name: name,
-        platform: "IOS"
-      )
-      Spaceship::ConnectAPI::BundleIdCapability.create(
-        bundle_id_id: bundle.id,
-        capability_type: "APP_GROUPS",
-        settings: [{ key: "APP_GROUP_NAME", options: [{ key: "group.nl.readvanes.flitsmaatje" }] }]
-      )
-      UI.success("Created bundle ID: #{identifier}")
-    end
-  end
-
-  private_lane :revoke_extra_distribution_certs do
-    with_asc_api_token do
-    certs = Spaceship::ConnectAPI::Certificate.all
-    dist_certs = certs.select { |cert| cert.certificate_type.to_s.include?("DISTRIBUTION") }
-    UI.important("Found #{dist_certs.count} distribution certificate(s) to revoke")
-    dist_certs.each do |cert|
-      UI.important("Revoking distribution certificate #{cert.id} (#{cert.certificate_type})")
-      Spaceship::ConnectAPI.delete_certificate(certificate_id: cert.id)
-    end
-    end
   end
 
   private_lane :match_git_auth do
