@@ -53,9 +53,13 @@ def log_profile_entitlements!(path, label)
 end
 
 def install_distribution_certificate!(api_key:)
-  cert(
+  match(
+    type: "appstore",
     api_key: api_key,
-    readonly: true
+    app_identifier: APP_BUNDLE_ID,
+    readonly: true,
+    skip_provisioning_profiles: true,
+    git_basic_authorization: match_git_auth
   )
 end
 
