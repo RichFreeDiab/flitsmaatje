@@ -54,11 +54,12 @@ end
 
 def sigh_profile_path(bundle_id)
   Actions.lane_context[:"sigh_#{bundle_id}_appstore_profile-path"] ||
-    File.expand_path("AppStore_#{bundle_id}.mobileprovision", __dir__)
+    File.expand_path("../AppStore_#{bundle_id}.mobileprovision", __dir__)
 end
 
 def sigh_profile_name(bundle_id)
-  Actions.lane_context[:"sigh_#{bundle_id}_appstore_profile-name"]
+  Actions.lane_context[:"sigh_#{bundle_id}_appstore_profile-name"] ||
+    (bundle_id == APP_BUNDLE_ID ? MAIN_PROFILE_NAME : WIDGET_PROFILE_NAME)
 end
 
 def install_distribution_certificate!(api_key:)
