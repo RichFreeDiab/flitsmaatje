@@ -26,7 +26,9 @@ jobs:
         run: bundle install --jobs 4 --retry 3
 
       - name: Genereer app-icoon
-        run: python3 ios/scripts/generate_icon.py
+        run: |
+          python3 -m pip install --break-system-packages pillow -q
+          python3 ios/scripts/generate_icon.py
 
       - name: Genereer Xcode-project
         working-directory: ios

@@ -2,12 +2,7 @@
 """Genereer een minimaal 1024x1024 app-icoon (vereist voor TestFlight)."""
 from pathlib import Path
 
-try:
-    from PIL import Image, ImageDraw, ImageFont
-except ImportError:
-    import subprocess
-    subprocess.check_call(["pip3", "install", "pillow", "-q"])
-    from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 OUT = Path(__file__).resolve().parent.parent / "FlitsMaatje/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
 OUT.parent.mkdir(parents=True, exist_ok=True)
