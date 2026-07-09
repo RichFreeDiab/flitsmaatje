@@ -1,0 +1,66 @@
+# TestFlight cloud-build — vereist Apple Developer + GitHub secrets.
+name: TestFlight (dispatch)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      # GitHub Actions macOS runners now enforce Homebrew tap trust. Some preinstalled taps (e.g. aws/tap)
+      # can break unrelated brew usage. Disable the check for CI reliability.
+      HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Homebrew: untap aws/tap (workaround)
+        run: brew untap aws/tap || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Installeer Ruby gems
+        working-directory: ios
+        run: bundle install --jobs 4 --retry 3
+
+      - name: Genereer app-icoon
+        run: |
+          python3 -m pip install --break-system-packages pillow -q
+          python3 ios/scripts/generate_icon.py
+
+      - name: Genereer Xcode-project
+        working-directory: ios
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          sed -i '' "s/DEVELOPMENT_TEAM: \"\"/DEVELOPMENT_TEAM: \"${APPLE_TEAM_ID}\"/" project.yml
+          xcodegen generate
+
+      - name: Build & upload TestFlight
+        working-directory: ios
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: bundle exec fastlane beta
+
