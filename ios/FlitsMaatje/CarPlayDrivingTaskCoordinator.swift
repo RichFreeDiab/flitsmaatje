@@ -51,12 +51,11 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
         lastPresentedAlertId = alert.id
 
         let alertTemplate = CPAlertTemplate(
-            titleVariants: ["\(alert.icon) \(alert.label)"],
+            titleVariants: ["\(alert.icon) \(alert.label) — over \(alert.distance_m) m"],
             actions: [
                 CPAlertAction(title: "OK", style: .default) { _ in }
             ]
         )
-        alertTemplate.subtitleVariants = ["Over \(alert.distance_m) m"]
 
         interfaceController?.presentTemplate(alertTemplate, animated: true)
 
