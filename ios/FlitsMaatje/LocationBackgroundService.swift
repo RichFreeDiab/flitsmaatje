@@ -188,6 +188,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastAlarmAt = Date()
         AlertNotifier.playFlitserAlarm()
         AlertNotifier.notifyFlitser(alert: alert)
+        AlertNotifier.speakFlitser(alert: alert)
     }
 
     private func resetAlarmState() {

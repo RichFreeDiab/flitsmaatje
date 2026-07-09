@@ -147,7 +147,7 @@ struct ContentView: View {
             Label("Ingebouwde navigatie: tab Navigatie — zoek of tik op kaart", systemImage: "1.circle")
             Label("Flitsalarm: geluid + trilling + melding", systemImage: "2.circle")
             Label("Boete-indicatie: indicatief, geen juridisch advies", systemImage: "3.circle")
-            Label("CarPlay-scherm: widget naast Kaarten (geen volledige nav op CarPlay)", systemImage: "4.circle")
+            Label("CarPlay: banner + spraak naast Flitsmeister/Kaarten (iOS 18.4+)", systemImage: "4.circle")
         }
         .font(.footnote)
         .foregroundStyle(.secondary)

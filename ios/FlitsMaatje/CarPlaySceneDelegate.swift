@@ -8,6 +8,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         to window: CPWindow
     ) {
         Task { @MainActor in
+            CarPlaySessionTracker.isForegroundOnCarPlay = true
             CarPlayDrivingTaskCoordinator.shared.attach(interfaceController: interfaceController)
         }
     }
@@ -18,6 +19,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         from window: CPWindow
     ) {
         Task { @MainActor in
+            CarPlaySessionTracker.isForegroundOnCarPlay = false
             CarPlayDrivingTaskCoordinator.shared.detach()
         }
     }
