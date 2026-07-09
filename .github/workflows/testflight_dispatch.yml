@@ -1,7 +1,7 @@
 # TestFlight cloud-build — vereist Apple Developer + GitHub secrets.
 name: TestFlight (dispatch)
 
-'on':
+on:
   workflow_dispatch: {}
 
 jobs:
