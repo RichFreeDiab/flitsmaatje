@@ -84,7 +84,10 @@ def install_app_store_profiles!(api_key:)
       include_all_certificates: true,
       skip_certificate_verification: true,
       adhoc: false,
-      readonly: true
+      # Main app profile must be regenerated when new capabilities are enabled (e.g. CarPlay Driving Task).
+      # Keep widget profile readonly to avoid churn.
+      readonly: app_id != APP_BUNDLE_ID,
+      force: app_id == APP_BUNDLE_ID
     )
   end
 end
