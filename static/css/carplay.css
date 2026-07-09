@@ -98,9 +98,8 @@ button.active {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 /* CarPlay scherm */
@@ -347,13 +346,13 @@ button.active {
   transform: translateX(-50%);
   z-index: 20;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: min(420px, 90%);
-  padding: 12px 16px;
+  align-items: flex-start;
+  gap: 14px;
+  width: min(520px, 92%);
+  padding: 14px 18px;
   border-radius: 16px;
-  background: rgba(28, 28, 34, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(28, 28, 34, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   animation: notif-in 0.35s ease;
 }
@@ -362,20 +361,110 @@ button.active {
   display: none;
 }
 
+.carplay-notif-text {
+  flex: 1;
+  min-width: 0;
+}
+
 .carplay-notif-icon {
-  font-size: 1.6rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  flex-shrink: 0;
 }
 
 .carplay-notif-title {
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #ffffff;
 }
 
 .carplay-notif-sub {
-  font-size: 0.82rem;
-  color: var(--muted);
-  margin-top: 2px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(245, 245, 247, 0.88);
+  margin-top: 4px;
+  line-height: 1.35;
 }
+
+.carplay-notif-body {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin-top: 8px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 69, 58, 0.22);
+  border: 1px solid rgba(255, 120, 100, 0.35);
+}
+
+.carplay-notif-body.hidden {
+  display: none;
+}
+
+.carplay-notif.speeding {
+  border-color: rgba(255, 69, 58, 0.55);
+  box-shadow: 0 12px 40px rgba(255, 69, 58, 0.2);
+}
+
+.carplay-notif.speeding .carplay-notif-title {
+  font-size: 1.15rem;
+  color: #ff8a80;
+}
+
+.carplay-notif-body .fine-amount {
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 2px;
+}
+
+.carplay-notif-body .fine-price {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.speed-hud {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+  border-radius: 14px;
+  padding: 10px 14px;
+  text-align: right;
+  border: 1px solid rgba(255, 69, 58, 0.35);
+}
+
+.speed-hud.hidden {
+  display: none;
+}
+
+#speed-hud-value {
+  font-size: 2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #ff6961;
+  line-height: 1;
+}
+
+.speed-hud-unit {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.speed-hud-limit {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.dot-speed { background: #ff9f0a; }
 
 @keyframes notif-in {
   from {

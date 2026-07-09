@@ -13,10 +13,11 @@
   <div class="toolbar">
     <div>
       <h1>CarPlay Demo — FlitsMaatje + Flitsmeister</h1>
-      <p>Banner, spraak en widget terwijl een andere app navigeert</p>
+      <p>Banner, boete-popup (stil) en flitsers terwijl Flitsmeister navigeert</p>
     </div>
     <div class="toolbar-actions">
       <button id="btn-full-demo" class="primary" type="button">▶ Volledige demo</button>
+      <button id="btn-demo-speed" type="button">🚨 Demo te hard</button>
       <button id="btn-drive" type="button">🚗 Demo-rit</button>
       <button id="btn-demo-alert" type="button">Demo flitser</button>
       <button id="btn-demo-clear" type="button">Leeg</button>
@@ -43,9 +44,10 @@
 
     <div id="carplay-notif" class="carplay-notif hidden" aria-live="assertive">
       <span id="notif-icon" class="carplay-notif-icon">📷</span>
-      <div>
+      <div class="carplay-notif-text">
         <div id="notif-title" class="carplay-notif-title">Vaste flitser</div>
         <div id="notif-sub" class="carplay-notif-sub">Over 200 meter</div>
+        <div id="notif-body" class="carplay-notif-body hidden"></div>
       </div>
     </div>
 
@@ -81,6 +83,11 @@
           <strong>Flitsmeister</strong>
           Route actief — FlitsMaatje waarschuwt op de achtergrond
         </div>
+        <div id="speed-hud" class="speed-hud hidden">
+          <span id="speed-hud-value">--</span>
+          <span class="speed-hud-unit">km/u</span>
+          <span id="speed-hud-limit" class="speed-hud-limit">limiet --</span>
+        </div>
         <div id="map"></div>
       </section>
 
@@ -97,13 +104,13 @@
   </div>
 
   <div class="legend">
-    <div class="legend-item"><span class="dot dot-banner"></span> CarPlay-banner (iOS 18.4+, naast navigatie)</div>
-    <div class="legend-item"><span class="dot dot-speech"></span> Gesproken waarschuwing via autoradio</div>
-    <div class="legend-item"><span class="dot dot-modal"></span> CPAlert-popup (als FlitsMaatje zelf open is)</div>
+    <div class="legend-item"><span class="dot dot-speed"></span> Stille boete-banner bij te hard (geen spraak)</div>
+    <div class="legend-item"><span class="dot dot-banner"></span> Flitser-banner + spraak (iOS 18.4+)</div>
+    <div class="legend-item"><span class="dot dot-modal"></span> CPAlert-popup (FlitsMaatje open op CarPlay)</div>
   </div>
 
   <p class="hint">
-    Webpreview — geen echte CarPlay. Op iPhone: TestFlight build <strong>78</strong> → locatie Altijd → Flitsmeister navigeert →
+    Webpreview — geen echte CarPlay. Op iPhone: TestFlight build <strong>79</strong> → locatie Altijd → Flitsmeister navigeert →
     FlitsMaatje op achtergrond. Zet <code>Meldingen → Tonen in CarPlay</code> aan.
     Positie: <span id="coords" class="coords">—</span>
   </p>

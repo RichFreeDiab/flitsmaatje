@@ -11,17 +11,22 @@
   const notifIconEl = document.getElementById("notif-icon");
   const notifTitleEl = document.getElementById("notif-title");
   const notifSubEl = document.getElementById("notif-sub");
+  const notifBodyEl = document.getElementById("notif-body");
   const alertModalEl = document.getElementById("carplay-alert-modal");
   const alertModalTitleEl = document.getElementById("alert-modal-title");
   const drivingTaskListEl = document.getElementById("driving-task-list");
   const panelNavEl = document.getElementById("panel-nav");
   const panelDrivingEl = document.getElementById("panel-driving-task");
   const speechToggle = document.getElementById("toggle-speech");
+  const speedHudEl = document.getElementById("speed-hud");
+  const speedHudValueEl = document.getElementById("speed-hud-value");
+  const speedHudLimitEl = document.getElementById("speed-hud-limit");
 
   let lat = 52.3676;
   let lng = 4.9041;
   let pollTimer = null;
   let driveTimer = null;
+  let speedDemoTimer = null;
   let alertDismissTimer = null;
   let modalDismissTimer = null;
   let mode = "manual";
@@ -29,6 +34,8 @@
   let lastAlertId = null;
   let passedThresholds = new Set();
   let lastSpokenAt = 0;
+  let demoSpeedKmh = null;
+  let demoSpeedLimit = 100;
 
   const demoRoutes = {
     amsterdam: {
@@ -107,17 +114,62 @@
     `;
   }
 
-  function showCarPlayNotif(alert) {
-    notifIconEl.textContent = alert.icon;
-    notifTitleEl.textContent = alert.label;
-    notifSubEl.textContent = `Over ${alert.distance_m} meter`;
+  function showCarPlayBanner({ icon, title, subtitle, body = "", kind = "flitser" }) {
+    notifIconEl.textContent = icon;
+    notifTitleEl.textContent = title;
+    notifSubEl.textContent = subtitle;
+    if (body) {
+      notifBodyEl.textContent = body;
+      notifBodyEl.classList.remove("hidden");
+    } else if (kind !== "speeding") {
+      notifBodyEl.textContent = "";
+      notifBodyEl.classList.add("hidden");
+    }
+    notifEl.classList.toggle("speeding", kind === "speeding");
     notifEl.classList.remove("hidden");
     clearTimeout(alertDismissTimer);
-    alertDismissTimer = setTimeout(hideCarPlayNotif, 7000);
+    alertDismissTimer = setTimeout(hideCarPlayNotif, kind === "speeding" ? 12000 : 7000);
+  }
+
+  function showCarPlayNotif(alert) {
+    showCarPlayBanner({
+      icon: alert.icon,
+      title: alert.label,
+      subtitle: `Over ${alert.distance_m} meter`,
+      kind: "flitser",
+    });
+  }
+
+  function showSpeedingBanner(speedKmh, limit, fine) {
+    const title = fine.bedrag
+      ? `Te hard — indicatief €${fine.bedrag}`
+      : `Te hard — ${fine.excess} km/u`;
+    const subtitle = `${speedKmh} km/u · limiet ${limit} · ${fine.excess} km/u te hard`;
+    notifBodyEl.innerHTML = fine.bedrag
+      ? `<span class="fine-amount">${fine.excess} km/u boven de limiet</span><span class="fine-price">Indicatief €${fine.bedrag} incl. adm.kosten</span>`
+      : `<span class="fine-price">${fine.excess} km/u te hard</span>`;
+    notifBodyEl.classList.remove("hidden");
+    showCarPlayBanner({
+      icon: "🚨",
+      title,
+      subtitle,
+      kind: "speeding",
+    });
+  }
+
+  function updateSpeedHud(speedKmh, limit) {
+    if (speedKmh == null) {
+      speedHudEl.classList.add("hidden");
+      return;
+    }
+    speedHudEl.classList.remove("hidden");
+    speedHudValueEl.textContent = String(speedKmh);
+    speedHudLimitEl.textContent = `limiet ${limit}`;
   }
 
   function hideCarPlayNotif() {
     notifEl.classList.add("hidden");
+    notifEl.classList.remove("speeding");
   }
 
   function showAlertModal(alert) {
@@ -228,6 +280,7 @@
   }
 
   async function fetchAlert() {
+    if (mode === "speed-demo") return;
     try {
       const res = await fetch(`${API}?lat=${lat}&lng=${lng}&radius_km=15`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -258,8 +311,57 @@
   function stopDriving() {
     if (driveTimer) clearInterval(driveTimer);
     driveTimer = null;
+    stopSpeedDemo();
     document.getElementById("btn-drive")?.classList.remove("active");
     document.getElementById("btn-full-demo")?.classList.remove("active");
+    document.getElementById("btn-demo-speed")?.classList.remove("active");
+  }
+
+  function stopSpeedDemo() {
+    if (speedDemoTimer) clearInterval(speedDemoTimer);
+    speedDemoTimer = null;
+    demoSpeedKmh = null;
+    updateSpeedHud(null);
+  }
+
+  function fineFor(speedKmh, limit) {
+    const excess = speedKmh - limit;
+    if (excess < 4) return null;
+    const bedrag = Math.min(990, 120 + excess * 9);
+    return { excess, bedrag };
+  }
+
+  function demoSpeeding() {
+    stopDriving();
+    stopPolling();
+    mode = "speed-demo";
+    setCarPlayApp("flitsmeister");
+    const limit = 100;
+    let speed = 96;
+    demoSpeedKmh = speed;
+    document.getElementById("btn-demo-speed")?.classList.add("active");
+    setStatus("Demo: te hard rijden — stille banner, geen spraak");
+
+    updateSpeedHud(speed, limit);
+    const firstFine = fineFor(speed, limit);
+    if (firstFine) showSpeedingBanner(speed, limit, firstFine);
+
+    speedDemoTimer = setInterval(() => {
+      speed += 4;
+      demoSpeedKmh = speed;
+      updateSpeedHud(speed, limit);
+      const fine = fineFor(speed, limit);
+      if (fine) {
+        showSpeedingBanner(speed, limit, fine);
+        setStatus(`🚨 ${speed} km/u · indicatief €${fine.bedrag} · ${fine.excess} km/u te hard`);
+      }
+      if (speed >= 132) {
+        stopSpeedDemo();
+        mode = "manual";
+        document.getElementById("btn-demo-speed")?.classList.remove("active");
+        setStatus("Demo te hard klaar — banner bleef live bijwerken zonder spraak");
+      }
+    }, 1400);
   }
 
   async function ensureDemoReport(route) {
@@ -328,23 +430,33 @@
 
   function demoClear() {
     stopDriving();
+    stopPolling();
+    mode = "manual";
     resetAlarmState();
     hideCarPlayNotif();
     hideAlertModal();
     renderWidget({ alert: null });
+    startPolling();
     setStatus("Demo gereset");
   }
 
   function fullDemo() {
     setCarPlayApp("flitsmeister");
-    setStatus("Stap 1/2: Flitsmeister navigeert — let op banner + spraak…");
-    simulateDrive("amsterdam", { fullDemo: true, flitsmeisterMode: true });
+    setStatus("Stap 1/3: te hard rijden — stille boete-banner…");
+    demoSpeeding();
+
+    setTimeout(() => {
+      stopSpeedDemo();
+      mode = "drive";
+      setStatus("Stap 2/3: Flitsmeister navigeert — flitser banner + spraak…");
+      simulateDrive("amsterdam", { fullDemo: true, flitsmeisterMode: true });
+    }, 9000);
 
     setTimeout(() => {
       if (mode !== "drive") return;
-      setStatus("Stap 2/2: schakel over naar FlitsMaatje (CPAlert)…");
+      setStatus("Stap 3/3: FlitsMaatje open op CarPlay (CPAlert)…");
       setCarPlayApp("flitsmaatje");
-    }, 14000);
+    }, 24000);
   }
 
   function initMap() {
@@ -380,6 +492,7 @@
   }
 
   document.getElementById("btn-full-demo")?.addEventListener("click", fullDemo);
+  document.getElementById("btn-demo-speed")?.addEventListener("click", demoSpeeding);
   document.getElementById("btn-drive")?.addEventListener("click", () => simulateDrive("amsterdam"));
   document.getElementById("btn-refresh")?.addEventListener("click", () => {
     stopDriving();

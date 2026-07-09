@@ -63,6 +63,37 @@ struct FineEstimate: Codable, Equatable {
         let limitText = limit.map { "limiet \($0)" } ?? "limiet onbekend"
         return "\(speed) · \(limitText)"
     }
+
+    /// Korte, leesbare regels voor CarPlay-notificaties (titel + ondertitel).
+    func carPlayNotificationTitle(speedKmh: Int?, limit: Int?) -> String? {
+        let liveExcess: Int
+        if let speedKmh, let limit {
+            liveExcess = speedKmh - limit
+        } else {
+            liveExcess = excess_kmh
+        }
+        guard liveExcess >= 4 else { return nil }
+
+        if om_zaak {
+            return "Te hard — mogelijk OM-zaak"
+        }
+        if let bedrag {
+            return "Te hard — indicatief €\(bedrag)"
+        }
+        return "Te hard — \(liveExcess) km/u"
+    }
+
+    func carPlayNotificationSubtitle(speedKmh: Int?, limit: Int?) -> String? {
+        guard carPlayNotificationTitle(speedKmh: speedKmh, limit: limit) != nil else { return nil }
+        let liveExcess: Int
+        if let speedKmh, let limit {
+            liveExcess = speedKmh - limit
+        } else {
+            liveExcess = excess_kmh
+        }
+        let speedLine = carPlaySubtitle(speedKmh: speedKmh, limit: limit)
+        return "\(speedLine) · \(liveExcess) km/u te hard"
+    }
 }
 
 struct SpeedCheckResponse: Codable {

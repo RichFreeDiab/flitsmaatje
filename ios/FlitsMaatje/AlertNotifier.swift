@@ -55,7 +55,7 @@ enum AlertNotifier {
 
     /// Stille, realtime CarPlay-popup bij te hard rijden — geen geluid, geen spraak.
     static func updateSpeedingPopup(speedKmh: Int?, limit: Int?, fine: FineEstimate) {
-        guard let body = fine.displayText(speedKmh: speedKmh, limit: limit) else {
+        guard let title = fine.carPlayNotificationTitle(speedKmh: speedKmh, limit: limit) else {
             clearSpeedingPopup()
             return
         }
@@ -63,9 +63,9 @@ enum AlertNotifier {
         guard !CarPlaySessionTracker.isForegroundOnCarPlay else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Te hard rijden"
-        content.subtitle = fine.carPlaySubtitle(speedKmh: speedKmh, limit: limit)
-        content.body = body
+        content.title = title
+        content.subtitle = fine.carPlayNotificationSubtitle(speedKmh: speedKmh, limit: limit) ?? ""
+        content.body = fine.displayText(speedKmh: speedKmh, limit: limit) ?? ""
         content.sound = nil
         content.categoryIdentifier = speedingCategoryId
         if #available(iOS 15.0, *) {
