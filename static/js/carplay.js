@@ -1,30 +1,53 @@
 (() => {
   const API = "/api/nearby-alert";
   const POLL_MS = 8000;
+  const ALARM_THRESHOLDS = [600, 400, 200, 100];
 
   const widgetEl = document.getElementById("flits-widget");
   const statusEl = document.getElementById("status-pill");
   const coordsEl = document.getElementById("coords");
   const navHintEl = document.getElementById("nav-hint");
+  const notifEl = document.getElementById("carplay-notif");
+  const notifIconEl = document.getElementById("notif-icon");
+  const notifTitleEl = document.getElementById("notif-title");
+  const notifSubEl = document.getElementById("notif-sub");
+  const alertModalEl = document.getElementById("carplay-alert-modal");
+  const alertModalTitleEl = document.getElementById("alert-modal-title");
+  const drivingTaskListEl = document.getElementById("driving-task-list");
+  const panelNavEl = document.getElementById("panel-nav");
+  const panelDrivingEl = document.getElementById("panel-driving-task");
+  const speechToggle = document.getElementById("toggle-speech");
 
   let lat = 52.3676;
   let lng = 4.9041;
   let pollTimer = null;
   let driveTimer = null;
+  let alertDismissTimer = null;
+  let modalDismissTimer = null;
   let mode = "manual";
+  let carPlayApp = "flitsmeister";
+  let lastAlertId = null;
+  let passedThresholds = new Set();
+  let lastSpokenAt = 0;
 
   const demoRoutes = {
     amsterdam: {
-      label: "Rijden richting demo-flitser (Amsterdam)",
+      label: "Demo-rit: Flitsmeister navigeert, FlitsMaatje waarschuwt",
       demoFlitser: { lat: 52.3688, lng: 4.9060 },
       points: [
         [52.3645, 4.8980],
         [52.3658, 4.9005],
+        [52.3665, 4.9018],
         [52.3670, 4.9025],
+        [52.3675, 4.9035],
+        [52.3680, 4.9045],
         [52.3682, 4.9048],
+        [52.3685, 4.9055],
+        [52.3688, 4.9060],
+        [52.3692, 4.9068],
         [52.3695, 4.9070],
-        [52.3710, 4.9095],
-        [52.3725, 4.9120],
+        [52.3705, 4.9085],
+        [52.3715, 4.9100],
       ],
     },
   };
@@ -41,6 +64,130 @@
     coordsEl.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   }
 
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function setCarPlayApp(app) {
+    carPlayApp = app;
+    document.querySelectorAll(".mode-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.mode === app);
+    });
+    document.querySelectorAll(".app-tile[data-app]").forEach((tile) => {
+      tile.classList.toggle("active", tile.dataset.app === app);
+    });
+
+    const isFlitsMaatje = app === "flitsmaatje";
+    panelNavEl.classList.toggle("hidden", isFlitsMaatje);
+    panelDrivingEl.classList.toggle("hidden", !isFlitsMaatje);
+
+    if (isFlitsMaatje) {
+      hideCarPlayNotif();
+      navHintEl.innerHTML = "<strong>FlitsMaatje</strong>Driving Task — lijst + alert";
+    } else {
+      hideAlertModal();
+      navHintEl.innerHTML = "<strong>Flitsmeister</strong>Route actief — FlitsMaatje waarschuwt op de achtergrond";
+    }
+  }
+
+  function renderDrivingTaskList(alert) {
+    if (!alert) {
+      drivingTaskListEl.innerHTML = '<p class="driving-task-empty">Geen meldingen in de buurt</p>';
+      return;
+    }
+    drivingTaskListEl.innerHTML = `
+      <div class="driving-task-item">
+        <strong>${escapeHtml(alert.icon)} ${escapeHtml(alert.label)}</strong>
+        <span>Over ${alert.distance_m} m — Dichtstbijzijnde melding</span>
+      </div>
+    `;
+  }
+
+  function showCarPlayNotif(alert) {
+    notifIconEl.textContent = alert.icon;
+    notifTitleEl.textContent = alert.label;
+    notifSubEl.textContent = `Over ${alert.distance_m} meter`;
+    notifEl.classList.remove("hidden");
+    clearTimeout(alertDismissTimer);
+    alertDismissTimer = setTimeout(hideCarPlayNotif, 7000);
+  }
+
+  function hideCarPlayNotif() {
+    notifEl.classList.add("hidden");
+  }
+
+  function showAlertModal(alert) {
+    alertModalTitleEl.textContent = `${alert.icon} ${alert.label} — over ${alert.distance_m} m`;
+    alertModalEl.classList.remove("hidden");
+    clearTimeout(modalDismissTimer);
+    modalDismissTimer = setTimeout(hideAlertModal, 7000);
+  }
+
+  function hideAlertModal() {
+    alertModalEl.classList.add("hidden");
+  }
+
+  function speakAlert(alert) {
+    if (!speechToggle?.checked) return;
+    const now = Date.now();
+    if (now - lastSpokenAt < 18000) return;
+    lastSpokenAt = now;
+
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(
+      `Let op. ${alert.label}. Over ${alert.distance_m} meter.`
+    );
+    utterance.lang = "nl-NL";
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function resetAlarmState() {
+    lastAlertId = null;
+    passedThresholds = new Set();
+  }
+
+  function handleAlarms(alert) {
+    if (!alert) {
+      resetAlarmState();
+      hideCarPlayNotif();
+      hideAlertModal();
+      return;
+    }
+
+    let shouldAlarm = false;
+    if (lastAlertId !== alert.id) {
+      resetAlarmState();
+      lastAlertId = alert.id;
+      shouldAlarm = true;
+    } else {
+      for (const threshold of ALARM_THRESHOLDS) {
+        if (alert.distance_m <= threshold && !passedThresholds.has(threshold)) {
+          passedThresholds.add(threshold);
+          shouldAlarm = true;
+          break;
+        }
+      }
+    }
+
+    if (!shouldAlarm) return;
+
+    if (carPlayApp === "flitsmeister") {
+      showCarPlayNotif(alert);
+      speakAlert(alert);
+      setStatus(`🔔 Banner + spraak: ${alert.label} over ${alert.distance_m} m`);
+    } else {
+      showAlertModal(alert);
+      speakAlert(alert);
+      setStatus(`⚠️ CPAlert: ${alert.label} over ${alert.distance_m} m`);
+    }
+  }
+
   function renderWidget(data) {
     const alert = data?.alert;
     if (alert) {
@@ -53,8 +200,8 @@
         <div class="flits-widget-label">${escapeHtml(alert.label)}</div>
         <div class="flits-widget-distance">${alert.distance_m} m</div>
       `;
-      navHintEl.innerHTML = `<strong>Navigatie actief</strong>Volg de route — widget toont waarschuwing`;
-      setStatus(`⚠️ ${alert.label} over ${alert.distance_m} m`);
+      renderDrivingTaskList(alert);
+      handleAlarms(alert);
       if (alertMarker) {
         alertMarker.setLatLng([alert.lat, alert.lng]);
         alertMarker.addTo(map);
@@ -69,18 +216,15 @@
         <div class="flits-widget-label">Geen meldingen</div>
         <div class="flits-widget-sub">Geen meldingen in de buurt</div>
       `;
-      navHintEl.innerHTML = `<strong>Kaarten</strong>Geen flitsers binnen bereik`;
-      setStatus("✓ Geen meldingen in de buurt");
+      renderDrivingTaskList(null);
+      resetAlarmState();
+      if (carPlayApp === "flitsmeister") {
+        setStatus("✓ Geen meldingen — Flitsmeister navigeert");
+      } else {
+        setStatus("✓ Geen meldingen in de buurt");
+      }
       if (alertMarker) alertMarker.remove();
     }
-  }
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
   }
 
   async function fetchAlert() {
@@ -88,10 +232,13 @@
       const res = await fetch(`${API}?lat=${lat}&lng=${lng}&radius_km=15`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (data?.alert) data.alert.id = data.alert.id || "live";
       renderWidget(data);
       formatCoords();
       if (marker) marker.setLatLng([lat, lng]);
-      if (map) map.panTo([lat, lng], { animate: true, duration: 0.4 });
+      if (map && carPlayApp === "flitsmeister") {
+        map.panTo([lat, lng], { animate: true, duration: 0.4 });
+      }
     } catch (err) {
       setStatus(`Fout bij ophalen: ${err.message}`);
     }
@@ -112,64 +259,92 @@
     if (driveTimer) clearInterval(driveTimer);
     driveTimer = null;
     document.getElementById("btn-drive")?.classList.remove("active");
-  }
-
-  function useGps() {
-    stopDriving();
-    mode = "gps";
-    setStatus("Locatie opvragen…");
-    if (!navigator.geolocation) {
-      setStatus("Geolocation niet beschikbaar in deze browser");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-        startPolling();
-      },
-      (err) => setStatus(`GPS geweigerd: ${err.message}`),
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
+    document.getElementById("btn-full-demo")?.classList.remove("active");
   }
 
   async function ensureDemoReport(route) {
-    const { lat, lng } = route.demoFlitser;
+    const { lat: fLat, lng: fLng } = route.demoFlitser;
     try {
       await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "flitser_vast", lat, lng }),
+        body: JSON.stringify({ type: "flitser_vast", lat: fLat, lng: fLng }),
       });
     } catch {
-      /* demo-rit werkt ook zonder seed */
+      /* demo werkt ook zonder seed */
     }
   }
 
-  function simulateDrive(routeKey) {
+  function simulateDrive(routeKey, options = {}) {
     stopDriving();
     mode = "drive";
     const route = demoRoutes[routeKey];
     if (!route) return;
 
-    ensureDemoReport(route).then(() => {
-    let idx = 0;
-    [lat, lng] = route.points[0];
-    document.getElementById("btn-drive").classList.add("active");
-    setStatus(route.label);
-    startPolling();
+    if (options.flitsmeisterMode !== false) {
+      setCarPlayApp("flitsmeister");
+    }
 
-    driveTimer = setInterval(() => {
-      idx += 1;
-      if (idx >= route.points.length) {
-        stopDriving();
-        setStatus("Rit klaar — widget zou flitser moeten tonen als er meldingen zijn");
-        return;
+    ensureDemoReport(route).then(() => {
+      let idx = 0;
+      [lat, lng] = route.points[0];
+      resetAlarmState();
+      lastSpokenAt = 0;
+      document.getElementById("btn-drive")?.classList.add("active");
+      if (options.fullDemo) {
+        document.getElementById("btn-full-demo")?.classList.add("active");
       }
-      [lat, lng] = route.points[idx];
-      fetchAlert();
-    }, 2500);
+      setStatus(route.label);
+      startPolling();
+
+      driveTimer = setInterval(() => {
+        idx += 1;
+        if (idx >= route.points.length) {
+          stopDriving();
+          setStatus("Demo klaar — je zou banners + spraak gezien moeten hebben");
+          return;
+        }
+        [lat, lng] = route.points[idx];
+        fetchAlert();
+      }, 2200);
     });
+  }
+
+  function demoAlert() {
+    stopDriving();
+    const demo = {
+      id: "demo",
+      icon: "📷",
+      label: "Vaste flitser",
+      distance_m: 200,
+      lat: lat + 0.002,
+      lng: lng + 0.002,
+    };
+    resetAlarmState();
+    lastSpokenAt = 0;
+    renderWidget({ alert: demo });
+    setStatus("Demo: flitser op 200 m");
+  }
+
+  function demoClear() {
+    stopDriving();
+    resetAlarmState();
+    hideCarPlayNotif();
+    hideAlertModal();
+    renderWidget({ alert: null });
+    setStatus("Demo gereset");
+  }
+
+  function fullDemo() {
+    setCarPlayApp("flitsmeister");
+    setStatus("Stap 1/2: Flitsmeister navigeert — let op banner + spraak…");
+    simulateDrive("amsterdam", { fullDemo: true, flitsmeisterMode: true });
+
+    setTimeout(() => {
+      if (mode !== "drive") return;
+      setStatus("Stap 2/2: schakel over naar FlitsMaatje (CPAlert)…");
+      setCarPlayApp("flitsmaatje");
+    }, 14000);
   }
 
   function initMap() {
@@ -199,36 +374,31 @@
       lat = e.latlng.lat;
       lng = e.latlng.lng;
       mode = "manual";
+      resetAlarmState();
       fetchAlert();
     });
   }
 
-  document.getElementById("btn-gps")?.addEventListener("click", useGps);
+  document.getElementById("btn-full-demo")?.addEventListener("click", fullDemo);
+  document.getElementById("btn-drive")?.addEventListener("click", () => simulateDrive("amsterdam"));
   document.getElementById("btn-refresh")?.addEventListener("click", () => {
     stopDriving();
     startPolling();
   });
-  document.getElementById("btn-drive")?.addEventListener("click", () => simulateDrive("amsterdam"));
-  document.getElementById("btn-demo-alert")?.addEventListener("click", () => {
-    stopDriving();
-    renderWidget({
-      alert: {
-        icon: "📷",
-        label: "Vaste flitser",
-        distance_m: 420,
-        lat: lat + 0.002,
-        lng: lng + 0.002,
-      },
-    });
-    setStatus("Demo: vaste flitser (alleen UI, geen API)");
+  document.getElementById("btn-demo-alert")?.addEventListener("click", demoAlert);
+  document.getElementById("btn-demo-clear")?.addEventListener("click", demoClear);
+  document.getElementById("alert-modal-ok")?.addEventListener("click", hideAlertModal);
+
+  document.querySelectorAll(".mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setCarPlayApp(btn.dataset.mode));
   });
-  document.getElementById("btn-demo-clear")?.addEventListener("click", () => {
-    stopDriving();
-    renderWidget({ alert: null });
-    setStatus("Demo: geen meldingen");
+
+  document.querySelectorAll(".app-tile[data-app]").forEach((tile) => {
+    tile.addEventListener("click", () => setCarPlayApp(tile.dataset.app));
   });
 
   initMap();
+  setCarPlayApp("flitsmeister");
   formatCoords();
   startPolling();
 })();

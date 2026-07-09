@@ -8,7 +8,10 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     speedPanel
-                    if let fineText = location.fineEstimate?.displayText {
+                    if let fineText = location.fineEstimate?.displayText(
+                        speedKmh: location.currentSpeedKmh,
+                        limit: location.speedLimit
+                    ) {
                         fineBanner(fineText)
                     }
                     if let alert = location.currentAlert {
@@ -147,7 +150,7 @@ struct ContentView: View {
             Label("Ingebouwde navigatie: tab Navigatie — zoek of tik op kaart", systemImage: "1.circle")
             Label("Flitsalarm: geluid + trilling + melding", systemImage: "2.circle")
             Label("Boete-indicatie: indicatief, geen juridisch advies", systemImage: "3.circle")
-            Label("CarPlay: banner + spraak naast Flitsmeister/Kaarten (iOS 18.4+)", systemImage: "4.circle")
+            Label("CarPlay: stille boete-popup bij te hard rijden (geen spraak)", systemImage: "4.circle")
         }
         .font(.footnote)
         .foregroundStyle(.secondary)

@@ -23,6 +23,20 @@ struct RootView: View {
         .onChange(of: location.currentAlert) { _, alert in
             CarPlayDrivingTaskCoordinator.shared.update(alert: alert)
         }
+        .onChange(of: location.fineEstimate) { _, _ in
+            CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
+                speedKmh: location.currentSpeedKmh,
+                limit: location.speedLimit,
+                fine: location.fineEstimate
+            )
+        }
+        .onChange(of: location.currentSpeedKmh) { _, _ in
+            CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
+                speedKmh: location.currentSpeedKmh,
+                limit: location.speedLimit,
+                fine: location.fineEstimate
+            )
+        }
         .onChange(of: location.lastLocation) { _, newLocation in
             guard let newLocation else { return }
             navigation.updateProgress(location: newLocation)

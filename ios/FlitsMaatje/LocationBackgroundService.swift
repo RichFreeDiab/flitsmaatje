@@ -23,6 +23,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var lastAlertId: String?
     private var passedDistanceThresholds: Set<Int> = []
     private var lastAlarmAt: Date = .distantPast
+    private var lastSpeedingSignature: String?
     private var liveActivity: Activity<FlitsMaatjeAttributes>?
 
     private let distanceAlarmThresholds = [600, 400, 200, 100]
@@ -68,6 +69,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         roadName = nil
         lastLocation = nil
         resetAlarmState()
+        clearSpeedingState()
         endLiveActivity()
         persistSnapshot(lat: nil, lng: nil, alert: nil, message: "Tracking gestopt")
         WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
@@ -139,12 +141,17 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private func updateCurrentSpeed(from location: CLLocation) {
         guard location.speed >= 0 else { return }
         currentSpeedKmh = Int((location.speed * 3.6).rounded())
+        handleSpeedingFine()
     }
 
     private func shouldRunSpeedCheck(now: Date, location: CLLocation) -> Bool {
-        guard now.timeIntervalSince(lastSpeedCheckAt) >= 4 else { return false }
+        let isSpeeding = isCurrentlySpeeding()
+        let minInterval: TimeInterval = isSpeeding ? 2 : 4
+        let minDistance: CLLocationDistance = isSpeeding ? 15 : 30
+
+        guard now.timeIntervalSince(lastSpeedCheckAt) >= minInterval else { return false }
         guard let last = lastSpeedCheckLocation else { return true }
-        return location.distance(from: last) >= 30
+        return location.distance(from: last) >= minDistance
     }
 
     private func fetchSpeedCheck(lat: Double, lng: Double) async {
@@ -155,12 +162,51 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             roadName = response.limit.road_name
             fineEstimate = response.fine
 
-            if currentAlert == nil, let fineText = response.fine?.displayText {
+            if currentAlert == nil, let fineText = response.fine?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) {
                 statusText = fineText
             }
+
+            handleSpeedingFine()
         } catch {
             // Snelheidslimiet is optioneel — flitsalarm blijft werken
         }
+    }
+
+    private func isCurrentlySpeeding() -> Bool {
+        if let speed = currentSpeedKmh, let limit = speedLimit, speed >= limit + 4 {
+            return true
+        }
+        return (fineEstimate?.excess_kmh ?? 0) >= 4
+    }
+
+    private func handleSpeedingFine() {
+        guard let fine = fineEstimate,
+              let body = fine.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) else {
+            clearSpeedingState()
+            return
+        }
+
+        let signature = "\(currentSpeedKmh ?? 0)-\(speedLimit ?? 0)-\(body)"
+        guard signature != lastSpeedingSignature else { return }
+        lastSpeedingSignature = signature
+
+        AlertNotifier.updateSpeedingPopup(speedKmh: currentSpeedKmh, limit: speedLimit, fine: fine)
+        CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
+            speedKmh: currentSpeedKmh,
+            limit: speedLimit,
+            fine: fine
+        )
+
+        if currentAlert == nil {
+            statusText = body
+        }
+    }
+
+    private func clearSpeedingState() {
+        guard lastSpeedingSignature != nil else { return }
+        lastSpeedingSignature = nil
+        AlertNotifier.clearSpeedingPopup()
+        CarPlayDrivingTaskCoordinator.shared.clearSpeeding()
     }
 
     private func handleFlitserAlarm(alert: NearbyAlert) {

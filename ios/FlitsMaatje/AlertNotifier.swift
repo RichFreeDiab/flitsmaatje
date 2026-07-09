@@ -6,8 +6,10 @@ import UserNotifications
 
 /// Geluid, trilling, CarPlay-notificatie en gesproken waarschuwing bij flitsers in de buurt.
 enum AlertNotifier {
-    private static let carPlayCategoryId = "flitser.carplay"
-    private static var lastNotificationAt: Date = .distantPast
+    private static let flitserCategoryId = "flitser.carplay"
+    private static let speedingCategoryId = "speeding.carplay"
+    private static let speedingNotificationId = "flitsmaatje.speeding.live"
+    private static var lastFlitserNotificationAt: Date = .distantPast
     private static var lastSpokenAt: Date = .distantPast
     private static let synthesizer = AVSpeechSynthesizer()
 
@@ -28,10 +30,9 @@ enum AlertNotifier {
     /// Toont een banner op CarPlay (iOS 18.4+) ook als Flitsmeister op het hoofdscherm staat.
     static func notifyFlitser(alert: NearbyAlert) {
         let now = Date()
-        guard now.timeIntervalSince(lastNotificationAt) >= 20 else { return }
-        lastNotificationAt = now
+        guard now.timeIntervalSince(lastFlitserNotificationAt) >= 20 else { return }
+        lastFlitserNotificationAt = now
 
-        // Native CPAlertTemplate heeft voorrang als FlitsMaatje zelf op CarPlay open staat.
         guard !CarPlaySessionTracker.isForegroundOnCarPlay else { return }
 
         let content = UNMutableNotificationContent()
@@ -39,7 +40,7 @@ enum AlertNotifier {
         content.subtitle = "Over \(alert.distance_m) meter"
         content.body = "\(alert.icon) FlitsMaatje"
         content.sound = .default
-        content.categoryIdentifier = carPlayCategoryId
+        content.categoryIdentifier = flitserCategoryId
         if #available(iOS 15.0, *) {
             content.interruptionLevel = .timeSensitive
         }
@@ -52,7 +53,39 @@ enum AlertNotifier {
         UNUserNotificationCenter.current().add(request)
     }
 
-    /// Gesproken waarschuwing via autoradio — werkt naast navigatie-apps op CarPlay.
+    /// Stille, realtime CarPlay-popup bij te hard rijden — geen geluid, geen spraak.
+    static func updateSpeedingPopup(speedKmh: Int?, limit: Int?, fine: FineEstimate) {
+        guard let body = fine.displayText(speedKmh: speedKmh, limit: limit) else {
+            clearSpeedingPopup()
+            return
+        }
+
+        guard !CarPlaySessionTracker.isForegroundOnCarPlay else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Te hard rijden"
+        content.subtitle = fine.carPlaySubtitle(speedKmh: speedKmh, limit: limit)
+        content.body = body
+        content.sound = nil
+        content.categoryIdentifier = speedingCategoryId
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = .timeSensitive
+        }
+
+        let request = UNNotificationRequest(
+            identifier: speedingNotificationId,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    static func clearSpeedingPopup() {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [speedingNotificationId])
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [speedingNotificationId])
+    }
+
+    /// Gesproken waarschuwing via autoradio — alleen voor flitsers, niet voor boetes.
     static func speakFlitser(alert: NearbyAlert) {
         let now = Date()
         guard now.timeIntervalSince(lastSpokenAt) >= 20 else { return }
@@ -70,13 +103,19 @@ enum AlertNotifier {
     }
 
     private static func registerCategories() {
-        let category = UNNotificationCategory(
-            identifier: carPlayCategoryId,
+        let flitser = UNNotificationCategory(
+            identifier: flitserCategoryId,
             actions: [],
             intentIdentifiers: [],
             options: [.allowInCarPlay]
         )
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+        let speeding = UNNotificationCategory(
+            identifier: speedingCategoryId,
+            actions: [],
+            intentIdentifiers: [],
+            options: [.allowInCarPlay]
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([flitser, speeding])
     }
 
     private static func shouldSpeakInCar() -> Bool {

@@ -39,6 +39,30 @@ struct FineEstimate: Codable, Equatable {
         }
         return "\(excess_kmh) km/u te hard"
     }
+
+    func displayText(speedKmh: Int?, limit: Int?) -> String? {
+        let liveExcess: Int
+        if let speedKmh, let limit {
+            liveExcess = speedKmh - limit
+        } else {
+            liveExcess = excess_kmh
+        }
+        guard liveExcess >= 4 else { return nil }
+
+        if om_zaak {
+            return "\(liveExcess) km/u te hard — geen vaste boete, mogelijk OM-zaak (dagvaarding)"
+        }
+        if let bedrag {
+            return "\(liveExcess) km/u te hard — indicatief €\(bedrag) (incl. adm.kosten)"
+        }
+        return "\(liveExcess) km/u te hard"
+    }
+
+    func carPlaySubtitle(speedKmh: Int?, limit: Int?) -> String {
+        let speed = speedKmh.map { "\($0) km/u" } ?? "— km/u"
+        let limitText = limit.map { "limiet \($0)" } ?? "limiet onbekend"
+        return "\(speed) · \(limitText)"
+    }
 }
 
 struct SpeedCheckResponse: Codable {

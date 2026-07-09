@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0c">
-  <title>FlitsMaatje — CarPlay Simulator</title>
+  <title>FlitsMaatje — CarPlay Demo</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="/static/css/carplay.css">
 </head>
@@ -12,24 +12,48 @@
 
   <div class="toolbar">
     <div>
-      <h1>CarPlay Dashboard Simulator</h1>
-      <p>Preview van het FlitsMaatje-widget — zelfde API als de iOS-app</p>
+      <h1>CarPlay Demo — FlitsMaatje + Flitsmeister</h1>
+      <p>Banner, spraak en widget terwijl een andere app navigeert</p>
     </div>
     <div class="toolbar-actions">
-      <button id="btn-gps" class="primary" type="button">📍 Mijn locatie</button>
+      <button id="btn-full-demo" class="primary" type="button">▶ Volledige demo</button>
       <button id="btn-drive" type="button">🚗 Demo-rit</button>
-      <button id="btn-refresh" type="button">↻ Vernieuwen</button>
       <button id="btn-demo-alert" type="button">Demo flitser</button>
-      <button id="btn-demo-clear" type="button">Demo leeg</button>
+      <button id="btn-demo-clear" type="button">Leeg</button>
+      <label class="toggle-label">
+        <input id="toggle-speech" type="checkbox" checked>
+        Spraak
+      </label>
     </div>
-    <div id="status-pill" class="status-pill">Laden…</div>
+    <div id="status-pill" class="status-pill">Klaar — start de volledige demo</div>
   </div>
 
-  <div class="carplay-frame" aria-label="CarPlay dashboard simulatie">
+  <div class="mode-bar">
+    <span class="mode-label">Actieve CarPlay-app:</span>
+    <button type="button" class="mode-btn active" data-mode="flitsmeister">🚗 Flitsmeister (navigatie)</button>
+    <button type="button" class="mode-btn" data-mode="flitsmaatje">🛡️ FlitsMaatje (Driving Task)</button>
+  </div>
+
+  <div class="carplay-frame" aria-label="CarPlay simulatie">
     <div class="carplay-statusbar">
       <span id="clock">--:--</span>
       <span>4G</span>
       <span>🔋</span>
+    </div>
+
+    <div id="carplay-notif" class="carplay-notif hidden" aria-live="assertive">
+      <span id="notif-icon" class="carplay-notif-icon">📷</span>
+      <div>
+        <div id="notif-title" class="carplay-notif-title">Vaste flitser</div>
+        <div id="notif-sub" class="carplay-notif-sub">Over 200 meter</div>
+      </div>
+    </div>
+
+    <div id="carplay-alert-modal" class="carplay-alert-modal hidden" role="alertdialog" aria-modal="true">
+      <div class="carplay-alert-box">
+        <div id="alert-modal-title" class="carplay-alert-title">📷 Vaste flitser — over 200 m</div>
+        <button id="alert-modal-ok" type="button" class="carplay-alert-ok">OK</button>
+      </div>
     </div>
 
     <aside class="widget-rail">
@@ -40,30 +64,47 @@
           <span class="flits-widget-brand">FlitsMaatje</span>
         </div>
         <div class="flits-widget-label">Geen meldingen</div>
-        <div class="flits-widget-sub">Laden…</div>
+        <div class="flits-widget-sub">Start de demo</div>
       </div>
     </aside>
 
     <main class="dashboard-main">
       <div class="app-row" aria-hidden="true">
-        <div class="app-tile active" title="Kaarten">🗺️</div>
+        <div class="app-tile" data-app="maps" title="Kaarten">🗺️</div>
+        <div class="app-tile active" data-app="flitsmeister" title="Flitsmeister">🚗</div>
+        <div class="app-tile" data-app="flitsmaatje" title="FlitsMaatje">🛡️</div>
         <div class="app-tile" title="Muziek">🎵</div>
-        <div class="app-tile" title="Telefoon">📞</div>
       </div>
-      <section class="maps-panel">
+
+      <section id="panel-nav" class="maps-panel">
         <div id="nav-hint" class="maps-overlay">
-          <strong>Kaarten</strong>
-          Tik op de kaart om je positie te zetten
+          <strong>Flitsmeister</strong>
+          Route actief — FlitsMaatje waarschuwt op de achtergrond
         </div>
         <div id="map"></div>
+      </section>
+
+      <section id="panel-driving-task" class="driving-task-panel hidden">
+        <header class="driving-task-header">
+          <span>FlitsMaatje</span>
+          <span class="driving-task-tab">Flitsers</span>
+        </header>
+        <div id="driving-task-list" class="driving-task-list">
+          <p class="driving-task-empty">Geen meldingen in de buurt</p>
+        </div>
       </section>
     </main>
   </div>
 
+  <div class="legend">
+    <div class="legend-item"><span class="dot dot-banner"></span> CarPlay-banner (iOS 18.4+, naast navigatie)</div>
+    <div class="legend-item"><span class="dot dot-speech"></span> Gesproken waarschuwing via autoradio</div>
+    <div class="legend-item"><span class="dot dot-modal"></span> CPAlert-popup (als FlitsMaatje zelf open is)</div>
+  </div>
+
   <p class="hint">
-    Dit is een <strong>webpreview</strong> — geen echte CarPlay. Op iPhone: TestFlight → app op achtergrond →
-    <code>Instellingen → CarPlay → Widgets → FlitsMaatje</code>.
-    Met Mac/Xcode: <code>I/O → External Displays → CarPlay</code>.
+    Webpreview — geen echte CarPlay. Op iPhone: TestFlight build <strong>78</strong> → locatie Altijd → Flitsmeister navigeert →
+    FlitsMaatje op achtergrond. Zet <code>Meldingen → Tonen in CarPlay</code> aan.
     Positie: <span id="coords" class="coords">—</span>
   </p>
 
