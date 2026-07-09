@@ -17,24 +17,15 @@ struct RootView: View {
                 }
         }
         .onAppear {
-            CarPlayNavigationCoordinator.shared.locationService = location
-            CarPlayNavigationCoordinator.shared.navigationService = navigation
+            CarPlayDrivingTaskCoordinator.shared.locationService = location
             location.requestPermissionAndStart()
         }
-        .onChange(of: navigation.route?.distance) { _, _ in
-            CarPlayNavigationCoordinator.shared.syncFromPhoneNavigation()
-        }
         .onChange(of: location.currentAlert) { _, alert in
-            if let alert {
-                CarPlayNavigationCoordinator.shared.handleFlitserAlert(alert)
-            } else {
-                CarPlayNavigationCoordinator.shared.clearFlitserAlertState()
-            }
+            CarPlayDrivingTaskCoordinator.shared.update(alert: alert)
         }
         .onChange(of: location.lastLocation) { _, newLocation in
             guard let newLocation else { return }
             navigation.updateProgress(location: newLocation)
-            CarPlayNavigationCoordinator.shared.updateNavigationProgress()
         }
         .onChange(of: location.isTracking) { _, tracking in
             if !tracking {

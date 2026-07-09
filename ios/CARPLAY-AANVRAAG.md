@@ -1,46 +1,40 @@
-# CarPlay-navigatie activeren
+# CarPlay Driving Task activeren
 
-FlitsMaatje is gebouwd als **CarPlay-navigatie-app** (kaart op het grote autoscherm, route, flitsalarm). Daarvoor moet Apple het **CarPlay Maps**-entitlement goedkeuren.
+FlitsMaatje is gebouwd als **CarPlay Driving Task app** (glanceable lijst + alert bij flitsers). Hiervoor is het **CarPlay Driving Task** entitlement nodig.
 
 ## Status
 
 | Stap | Status |
 |------|--------|
-| CarPlay-aanvraag (Navigation + 3 screenshots) | **Ingediend** — 3 jul 2026 |
-| Apple-goedkeuring per e-mail | Wachten (dagen–weken) |
-| CarPlay Maps App op App ID | Nog niet zichtbaar (normaal tot goedkeuring) |
-| Entitlement in app + TestFlight | Na goedkeuring |
+| Aanvraag ingediend | ✅ (initieel als Navigation) — 3 jul 2026 |
+| Apple-toewijzing Driving Task entitlement | ✅ **Toegekend** — 9 jul 2026 (Case-ID `20858474`) |
+| Capability op App ID geactiveerd + nieuwe profielen | Te doen (Developer Portal) |
+| Entitlement in app + TestFlight | Na nieuwe profielen |
 
-## Stap 1 — Aanvraag bij Apple ✅
+## Stap 1 — Apple-entitlement toegekend ✅
 
-Ingediend via [developer.apple.com/contact/carplay](https://developer.apple.com/contact/carplay):
+Apple Developer Relations heeft bevestigd dat **CarPlay Driving Task** aan het account is toegewezen (Case-ID `20858474`).
 
-- **App type:** Navigation (turn-by-turn)
-- **App name:** FlitsMaatje
-- **Bundle ID:** `nl.readvanes.flitsmaatje`
-- **Team ID:** `D358S348HY`
-- **3 screenshots:** navigatie, flitsalarm, dashboard-widget
-
-Apple antwoordt per e-mail met goedkeuring of vragen.
+Belangrijk: FlitsMaatje is **geen Navigation app** (geen routeplanning, geen turn-by-turn, geen zoek/browse van locaties). De CarPlay UI gebruikt Driving Task templates: **lijst + alert**.
 
 ## Stap 2 — App ID in Developer Portal
 
-Na goedkeuring:
+Nu (na toewijzing):
 
 1. [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list) → App ID `nl.readvanes.flitsmaatje`
-2. Schakel **CarPlay Maps App** (en eventueel Dashboard) in
+2. Schakel **CarPlay Driving Task App** in
 3. Sla op
 4. Voeg in `FlitsMaatje/FlitsMaatje.entitlements` toe:
 
 ```xml
-<key>com.apple.developer.carplay-maps</key>
+<key>com.apple.developer.carplay-driving-task</key>
 <true/>
 ```
 
 ## Stap 3 — Provisioning profiles vernieuwen
 
 1. Verwijder oude App Store-profielen voor FlitsMaatje (of laat ze verlopen)
-2. Maak nieuwe profielen aan **met** CarPlay Maps-capability
+2. Maak nieuwe profielen aan **met** CarPlay Driving Task capability
 3. Zorg dat Fastlane `sigh readonly` die profielen gebruikt (zoals nu)
 
 ## Stap 4 — TestFlight op je auto
@@ -48,8 +42,8 @@ Na goedkeuring:
 1. Installeer de nieuwste TestFlight-build
 2. iPhone: **Instellingen → Privacy → Locatiediensten → FlitsMaatje → Altijd**
 3. Koppel iPhone aan CarPlay (kabel of draadloos)
-4. Op het CarPlay-scherm: open **FlitsMaatje** (icoon tussen navigatie-apps)
-5. Zoek een bestemming → **Start** → flitsers verschijnen als CarPlay-waarschuwing
+4. Op het CarPlay-scherm: open **FlitsMaatje** (icoon tussen CarPlay-apps)
+5. Je ziet een **lijst** met de dichtstbijzijnde melding en krijgt een **alert** bij nadering
 
 ## Tot Apple goedkeurt
 
