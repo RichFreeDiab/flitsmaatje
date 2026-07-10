@@ -1,5 +1,8 @@
 import Foundation
 import OSLog
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum LogLevel: String {
     case debug = "DEBUG"
@@ -46,6 +49,7 @@ enum AppLogger {
     private static let maxFileBytes = 512_000
     private static let osLog = Logger(subsystem: subsystem, category: "app")
     private static let queue = DispatchQueue(label: "nl.readvanes.flitsmaatje.log", qos: .utility)
+    private static var didInstall = false
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -54,16 +58,24 @@ enum AppLogger {
         return formatter
     }()
 
+    private static var isMainApp: Bool {
+        !Bundle.main.bundleURL.pathExtension.contains("appex")
+    }
+
     static func install() {
+        guard isMainApp, !didInstall else { return }
+        didInstall = true
+
         NSSetUncaughtExceptionHandler { exception in
             let message = "CRASH \(exception.name.rawValue): \(exception.reason ?? "onbekend")"
             writeSync(message, level: .error)
-            for symbol in exception.callStackSymbols.prefix(12) {
+            for symbol in exception.callStackSymbols.prefix(16) {
                 writeSync("  \(symbol)", level: .error)
             }
+            uploadLogFile(reason: "crash")
         }
 
-        log("Logger actief")
+        log("Logger actief (main app)")
         exportToDocuments()
     }
 
@@ -104,14 +116,41 @@ enum AppLogger {
         return FileManager.default.temporaryDirectory.appendingPathComponent(logFileName)
     }
 
+    static func uploadLogFile(reason: String) {
+        guard isMainApp else { return }
+        queue.async {
+            guard let data = try? Data(contentsOf: logFileURL()),
+                  !data.isEmpty else { return }
+
+            var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("/api/diagnostic-log"))
+            request.httpMethod = "POST"
+            request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+            request.setValue(reason, forHTTPHeaderField: "X-Log-Reason")
+            request.setValue(deviceLabel(), forHTTPHeaderField: "X-Device-Id")
+            request.httpBody = data
+
+            URLSession.shared.dataTask(with: request).resume()
+        }
+    }
+
+    private static func deviceLabel() -> String {
+        #if canImport(UIKit)
+        return "\(UIDevice.current.model)-iOS\(UIDevice.current.systemVersion)"
+        #else
+        return "ios-device"
+        #endif
+    }
+
     private static func write(_ message: String, level: LogLevel) {
         queue.async {
             writeSync(message, level: level)
         }
         osLog.log(level: level.osLogType, "\(message, privacy: .public)")
-        let line = formattedLine(message, level: level)
-        Task { @MainActor in
-            AppLogStore.shared.append(line)
+        if isMainApp {
+            let line = formattedLine(message, level: level)
+            Task { @MainActor in
+                AppLogStore.shared.append(line)
+            }
         }
     }
 
@@ -130,6 +169,22 @@ enum AppLogger {
         handle.seekToEndOfFile()
         handle.write(data)
         trimIfNeeded(url: url, fileManager: fileManager)
+        if level == .error, isMainApp {
+            exportToDocuments()
+            uploadLogFile(reason: "error")
+        }
+    }
+
+    private static func exportToDocuments() {
+        guard isMainApp else { return }
+        let source = logFileURL()
+        guard FileManager.default.fileExists(atPath: source.path),
+              let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let dest = docs.appendingPathComponent("flitsmaatje-diagnostic.log")
+        try? FileManager.default.removeItem(at: dest)
+        try? FileManager.default.copyItem(at: source, to: dest)
     }
 
     private static func formattedLine(_ message: String, level: LogLevel) -> String {

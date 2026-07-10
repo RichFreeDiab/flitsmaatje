@@ -10,13 +10,19 @@ struct DiagnosticLogView: View {
                     Label("Logbestand delen", systemImage: "square.and.arrow.up")
                 }
 
+                Button {
+                    AppLogger.uploadLogFile(reason: "manual")
+                } label: {
+                    Label("Log naar server sturen", systemImage: "icloud.and.arrow.up")
+                }
+
                 Button(role: .destructive) {
                     store.clear()
                 } label: {
                     Label("Log wissen", systemImage: "trash")
                 }
             } footer: {
-                Text("Logs worden lokaal opgeslagen in de App Group. Deel het bestand na een crash zodat we kunnen zien wat er misging.")
+                Text("Logs worden automatisch naar de server gestuurd bij opstarten en crashes. Je kunt ze ook handmatig delen.")
             }
 
             Section("Recent") {

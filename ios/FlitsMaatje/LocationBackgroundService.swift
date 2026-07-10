@@ -118,8 +118,15 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     private func enableBackgroundLocationIfNeeded(_ enabled: Bool) {
         guard manager.allowsBackgroundLocationUpdates != enabled else { return }
+        let wasTracking = isTracking
+        if wasTracking {
+            manager.stopUpdatingLocation()
+        }
         manager.allowsBackgroundLocationUpdates = enabled
         manager.showsBackgroundLocationIndicator = enabled
+        if wasTracking {
+            manager.startUpdatingLocation()
+        }
     }
 
     private func startIfNeeded() {

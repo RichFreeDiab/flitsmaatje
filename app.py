@@ -332,6 +332,22 @@ def service_worker():
     return send_from_directory(app.static_folder, "sw.js", mimetype="application/javascript")
 
 
+DIAGNOSTIC_LOG_DIR = Path(__file__).parent / "diagnostic_logs"
+
+
+@app.route("/api/diagnostic-log", methods=["POST"])
+def diagnostic_log():
+    """Ontvang iOS-diagnostieklogs van TestFlight-builds (crash-onderzoek)."""
+    DIAGNOSTIC_LOG_DIR.mkdir(exist_ok=True)
+    body = request.get_data(as_text=True) or ""
+    reason = (request.headers.get("X-Log-Reason") or "unknown")[:40]
+    device = (request.headers.get("X-Device-Id") or "device")[:60]
+    safe_device = "".join(c if c.isalnum() or c in "-_" else "_" for c in device)
+    filename = f"{time.strftime('%Y%m%d-%H%M%S')}-{reason}-{safe_device}.log"
+    (DIAGNOSTIC_LOG_DIR / filename).write_text(body, encoding="utf-8")
+    return jsonify({"ok": True, "file": filename})
+
+
 @app.route("/api/speed-check", methods=["GET"])
 def speed_check():
     """Geeft de geldende snelheidslimiet op deze locatie + boete-indicatie

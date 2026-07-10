@@ -2,6 +2,7 @@ venv/
 __pycache__/
 *.pyc
 flitsmaatje.db
+diagnostic_logs/
 .DS_Store
 ios/*.xcodeproj
 ios/*.xcworkspace

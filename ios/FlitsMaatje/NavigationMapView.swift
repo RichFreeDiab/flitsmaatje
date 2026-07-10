@@ -5,7 +5,8 @@ struct NavigationMapView: View {
     @EnvironmentObject private var location: LocationBackgroundService
     @EnvironmentObject private var navigation: NavigationService
 
-    @State private var cameraPosition: MapCameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
+    @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var didCenterOnUser = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -24,6 +25,19 @@ struct NavigationMapView: View {
             .padding(.bottom, 16)
         }
         .ignoresSafeArea(edges: .bottom)
+        .onAppear {
+            AppLogger.log("NavigationMapView geladen")
+            centerOnUserIfPossible()
+        }
+        .onChange(of: location.lastLocation) { _, _ in
+            centerOnUserIfPossible()
+        }
+    }
+
+    private func centerOnUserIfPossible() {
+        guard !didCenterOnUser, location.lastLocation != nil else { return }
+        didCenterOnUser = true
+        cameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
     }
 
     private var mapLayer: some View {
