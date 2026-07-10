@@ -43,6 +43,14 @@ final class AppLogStore: ObservableObject {
     }
 }
 
+private func recordUnhandledException(_ exception: NSException) {
+    let message = "CRASH \(exception.name.rawValue): \(exception.reason ?? "onbekend")"
+    AppLogger.writeSyncFromCrashHandler(message)
+    for symbol in exception.callStackSymbols.prefix(16) {
+        AppLogger.writeSyncFromCrashHandler("  \(symbol)")
+    }
+}
+
 enum AppLogger {
     private static let subsystem = "nl.readvanes.flitsmaatje"
     private static let logFileName = "diagnostic.log"
@@ -66,17 +74,14 @@ enum AppLogger {
         guard isMainApp, !didInstall else { return }
         didInstall = true
 
-        NSSetUncaughtExceptionHandler { exception in
-            let message = "CRASH \(exception.name.rawValue): \(exception.reason ?? "onbekend")"
-            writeSync(message, level: .error)
-            for symbol in exception.callStackSymbols.prefix(16) {
-                writeSync("  \(symbol)", level: .error)
-            }
-            uploadLogFile(reason: "crash")
-        }
+        NSSetUncaughtExceptionHandler(recordUnhandledException)
 
         log("Logger actief (main app)")
         exportToDocuments()
+    }
+
+    static func writeSyncFromCrashHandler(_ message: String) {
+        writeSync(message, level: .error)
     }
 
     static func log(_ message: String, level: LogLevel = .info) {
@@ -171,7 +176,6 @@ enum AppLogger {
         trimIfNeeded(url: url, fileManager: fileManager)
         if level == .error, isMainApp {
             exportToDocuments()
-            uploadLogFile(reason: "error")
         }
     }
 
