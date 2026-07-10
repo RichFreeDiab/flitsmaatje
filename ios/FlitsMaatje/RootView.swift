@@ -17,6 +17,7 @@ struct RootView: View {
                 }
         }
         .onAppear {
+            AppLogger.log("RootView verschijnt")
             CarPlayDrivingTaskCoordinator.shared.locationService = location
             location.requestPermissionAndStart()
         }

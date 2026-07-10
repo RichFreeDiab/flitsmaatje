@@ -36,9 +36,11 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         manager.distanceFilter = 15
         manager.pausesLocationUpdatesAutomatically = false
         manager.activityType = .automotiveNavigation
+        AppLogger.log("LocationBackgroundService init")
     }
 
     func requestPermissionAndStart() {
+        AppLogger.log("Locatie: permissie aanvragen")
         AlertNotifier.requestPermissions()
         applyAuthorizationState()
         if manager.authorizationStatus == .notDetermined {
@@ -49,8 +51,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     func start() {
         guard CLLocationManager.locationServicesEnabled() else {
             statusText = "Locatieservices uitgeschakeld"
+            AppLogger.error("Locatie: services uitgeschakeld op apparaat")
             return
         }
+        AppLogger.log("Locatie: startUpdatingLocation (auth=\(manager.authorizationStatus.rawValue))")
         manager.startUpdatingLocation()
         isTracking = true
         statusText = "Achtergrond-tracking actief — flitsalarm + boete-indicatie"
@@ -58,6 +62,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     func stop() {
+        AppLogger.log("Locatie: stop")
         manager.stopUpdatingLocation()
         isTracking = false
         statusText = "Tracking gestopt"
@@ -88,9 +93,11 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func applyAuthorizationState() {
+        AppLogger.log("Locatie: autorisatie=\(manager.authorizationStatus.rawValue)")
         switch manager.authorizationStatus {
         case .authorizedAlways:
             enableBackgroundLocationIfNeeded(true)
+            AppLogger.log("Locatie: achtergrond-updates ingeschakeld")
             statusText = "Altijd-toestemming — ideaal voor CarPlay op de achtergrond"
             startIfNeeded()
         case .authorizedWhenInUse:
@@ -100,6 +107,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             manager.requestAlwaysAuthorization()
         case .denied, .restricted:
             statusText = "Geen locatietoestemming — ga naar Instellingen"
+            AppLogger.error("Locatie: geweigerd of beperkt")
             stop()
         case .notDetermined:
             statusText = "Wacht op locatietoestemming…"
@@ -155,6 +163,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
         } catch {
             statusText = "Kon API niet bereiken"
+            AppLogger.error("API nearby-alert mislukt: \(error.localizedDescription)")
             persistSnapshot(lat: lat, lng: lng, alert: currentAlert, message: statusText)
         }
     }
@@ -189,6 +198,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
             handleSpeedingFine()
         } catch {
+            AppLogger.error("API speed-check mislukt: \(error.localizedDescription)")
             // Snelheidslimiet is optioneel — flitsalarm blijft werken
         }
     }

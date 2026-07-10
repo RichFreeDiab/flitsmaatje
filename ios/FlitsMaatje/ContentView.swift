@@ -34,6 +34,14 @@ struct ContentView: View {
                         }
                     }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        DiagnosticLogView()
+                    } label: {
+                        Image(systemName: "doc.text.magnifyingglass")
+                    }
+                    .accessibilityLabel("Diagnostiek")
+                }
             }
         }
     }
@@ -151,6 +159,12 @@ struct ContentView: View {
             Label("Flitsalarm: geluid + trilling + melding", systemImage: "2.circle")
             Label("Boete-indicatie: indicatief, geen juridisch advies", systemImage: "3.circle")
             Label("CarPlay: stille boete-popup bij te hard rijden (geen spraak)", systemImage: "4.circle")
+
+            NavigationLink {
+                DiagnosticLogView()
+            } label: {
+                Label("Diagnostiek & logs", systemImage: "doc.text.magnifyingglass")
+            }
         }
         .font(.footnote)
         .foregroundStyle(.secondary)
