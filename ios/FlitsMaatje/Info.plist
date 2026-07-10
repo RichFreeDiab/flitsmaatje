@@ -39,12 +39,21 @@
 	<string>FlitsMaatje draait op de achtergrond tijdens het rijden om je te waarschuwen via het CarPlay-widget, ook als je met Kaarten of Google Maps navigeert.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>FlitsMaatje draait op de achtergrond tijdens het rijden om je te waarschuwen via het CarPlay-widget.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
 		<key>UISceneConfigurations</key>
 		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+				</dict>
+			</array>
 			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
 			<array>
 				<dict>

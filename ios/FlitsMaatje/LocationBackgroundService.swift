@@ -36,15 +36,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         manager.distanceFilter = 15
         manager.pausesLocationUpdatesAutomatically = false
         manager.activityType = .automotiveNavigation
-        manager.allowsBackgroundLocationUpdates = true
-        manager.showsBackgroundLocationIndicator = true
     }
 
     func requestPermissionAndStart() {
         AlertNotifier.requestPermissions()
-        manager.requestWhenInUseAuthorization()
-        manager.requestAlwaysAuthorization()
-        start()
+        applyAuthorizationState()
+        if manager.authorizationStatus == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+        }
     }
 
     func start() {
@@ -84,18 +83,40 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
-            switch manager.authorizationStatus {
-            case .authorizedAlways:
-                statusText = "Altijd-toestemming — ideaal voor CarPlay op de achtergrond"
-            case .authorizedWhenInUse:
-                statusText = "Alleen tijdens gebruik — zet op 'Altijd' voor achtergrondwaarschuwingen"
-            case .denied, .restricted:
-                statusText = "Geen locatietoestemming — ga naar Instellingen"
-                isTracking = false
-            default:
-                break
-            }
+            applyAuthorizationState()
         }
+    }
+
+    private func applyAuthorizationState() {
+        switch manager.authorizationStatus {
+        case .authorizedAlways:
+            enableBackgroundLocationIfNeeded(true)
+            statusText = "Altijd-toestemming — ideaal voor CarPlay op de achtergrond"
+            startIfNeeded()
+        case .authorizedWhenInUse:
+            enableBackgroundLocationIfNeeded(false)
+            statusText = "Alleen tijdens gebruik — zet op 'Altijd' voor achtergrondwaarschuwingen"
+            startIfNeeded()
+            manager.requestAlwaysAuthorization()
+        case .denied, .restricted:
+            statusText = "Geen locatietoestemming — ga naar Instellingen"
+            stop()
+        case .notDetermined:
+            statusText = "Wacht op locatietoestemming…"
+        @unknown default:
+            break
+        }
+    }
+
+    private func enableBackgroundLocationIfNeeded(_ enabled: Bool) {
+        guard manager.allowsBackgroundLocationUpdates != enabled else { return }
+        manager.allowsBackgroundLocationUpdates = enabled
+        manager.showsBackgroundLocationIndicator = enabled
+    }
+
+    private func startIfNeeded() {
+        guard !isTracking else { return }
+        start()
     }
 
     private func handleLocation(_ location: CLLocation) async {
