@@ -17,6 +17,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var lastLocation: CLLocation?
 
     private let manager = CLLocationManager()
+    private var didConfigureManager = false
+    private var locationProcessingTask: Task<Void, Never>?
     private var lastPollAt: Date = .distantPast
     private var lastSpeedCheckAt: Date = .distantPast
     private var lastSpeedCheckLocation: CLLocation?
@@ -24,23 +26,16 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var passedDistanceThresholds: Set<Int> = []
     private var lastAlarmAt: Date = .distantPast
     private var lastSpeedingSignature: String?
+    private var lastCarPlayRefreshAt: Date = .distantPast
     private var liveActivity: Activity<FlitsMaatjeAttributes>?
 
     private let distanceAlarmThresholds = [600, 400, 200, 100]
     private let alarmRepeatInterval: TimeInterval = 25
-
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        manager.distanceFilter = 15
-        manager.pausesLocationUpdatesAutomatically = false
-        manager.activityType = .automotiveNavigation
-        AppLogger.log("LocationBackgroundService init")
-    }
+    private let carPlayRefreshInterval: TimeInterval = 2
 
     func requestPermissionAndStart() {
         AppLogger.log("Locatie: permissie aanvragen")
+        configureManagerIfNeeded()
         AlertNotifier.requestPermissions()
         applyAuthorizationState()
         if manager.authorizationStatus == .notDetermined {
@@ -49,6 +44,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     func start() {
+        configureManagerIfNeeded()
         guard CLLocationManager.locationServicesEnabled() else {
             statusText = "Locatieservices uitgeschakeld"
             AppLogger.error("Locatie: services uitgeschakeld op apparaat")
@@ -63,6 +59,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     func stop() {
         AppLogger.log("Locatie: stop")
+        locationProcessingTask?.cancel()
+        locationProcessingTask = nil
         manager.stopUpdatingLocation()
         isTracking = false
         statusText = "Tracking gestopt"
@@ -82,7 +80,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         Task { @MainActor in
-            await handleLocation(location)
+            scheduleLocationProcessing(location)
         }
     }
 
@@ -92,12 +90,29 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
     }
 
+    private func configureManagerIfNeeded() {
+        guard !didConfigureManager else { return }
+        didConfigureManager = true
+        AppLogger.log("LocationBackgroundService configure")
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        manager.distanceFilter = 15
+        manager.pausesLocationUpdatesAutomatically = false
+        manager.activityType = .automotiveNavigation
+    }
+
+    private func scheduleLocationProcessing(_ location: CLLocation) {
+        locationProcessingTask?.cancel()
+        locationProcessingTask = Task {
+            await processLocation(location)
+        }
+    }
+
     private func applyAuthorizationState() {
         AppLogger.log("Locatie: autorisatie=\(manager.authorizationStatus.rawValue)")
         switch manager.authorizationStatus {
         case .authorizedAlways:
             enableBackgroundLocationIfNeeded(true)
-            AppLogger.log("Locatie: achtergrond-updates ingeschakeld")
             statusText = "Altijd-toestemming — ideaal voor CarPlay op de achtergrond"
             startIfNeeded()
         case .authorizedWhenInUse:
@@ -134,44 +149,77 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         start()
     }
 
-    private func handleLocation(_ location: CLLocation) async {
+    private func processLocation(_ location: CLLocation) async {
+        if Task.isCancelled { return }
+
         lastLocation = location
         updateCurrentSpeed(from: location)
 
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude
         let now = Date()
+        let speed = currentSpeedKmh
 
         if shouldRunSpeedCheck(now: now, location: location) {
             lastSpeedCheckAt = now
             lastSpeedCheckLocation = location
-            await fetchSpeedCheck(lat: lat, lng: lng)
+            await fetchSpeedCheckOffMain(lat: lat, lng: lng, speedKmh: speed)
         }
 
+        if Task.isCancelled { return }
         guard now.timeIntervalSince(lastPollAt) >= 8 else { return }
         lastPollAt = now
 
         do {
-            let alert = try await FlitsMaatjeAPI.fetchNearbyAlert(lat: lat, lng: lng)
-            currentAlert = alert
+            let alert = try await Task.detached(priority: .utility) {
+                try await FlitsMaatjeAPI.fetchNearbyAlert(lat: lat, lng: lng)
+            }.value
+            if Task.isCancelled { return }
 
+            currentAlert = alert
             if let alert {
                 statusText = "\(alert.label) over \(alert.distance_m) m"
                 persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)
                 updateLiveActivity(alert: alert)
                 handleFlitserAlarm(alert: alert)
+                refreshCarPlay(alert: alert)
             } else {
-                statusText = fineEstimate?.displayText ?? "Geen meldingen in de buurt"
+                statusText = fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
                 persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
                 endLiveActivity()
                 resetAlarmState()
+                refreshCarPlay(alert: nil)
             }
-
             WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
         } catch {
+            if Task.isCancelled { return }
             statusText = "Kon API niet bereiken"
             AppLogger.error("API nearby-alert mislukt: \(error.localizedDescription)")
             persistSnapshot(lat: lat, lng: lng, alert: currentAlert, message: statusText)
+        }
+    }
+
+    private func fetchSpeedCheckOffMain(lat: Double, lng: Double, speedKmh: Int?) async {
+        let speed = speedKmh.map(Double.init)
+        do {
+            let response = try await Task.detached(priority: .utility) {
+                try await FlitsMaatjeAPI.fetchSpeedCheck(lat: lat, lng: lng, speedKmh: speed)
+            }.value
+            if Task.isCancelled { return }
+
+            speedLimit = response.limit.maxspeed
+            roadName = response.limit.road_name
+            fineEstimate = response.fine
+
+            if currentAlert == nil,
+               let fineText = response.fine?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) {
+                statusText = fineText
+            }
+            handleSpeedingFine()
+        } catch {
+            if !Task.isCancelled {
+                AppLogger.error("API speed-check mislukt: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -183,31 +231,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     private func shouldRunSpeedCheck(now: Date, location: CLLocation) -> Bool {
         let isSpeeding = isCurrentlySpeeding()
-        let minInterval: TimeInterval = isSpeeding ? 2 : 4
-        let minDistance: CLLocationDistance = isSpeeding ? 15 : 30
+        let minInterval: TimeInterval = isSpeeding ? 3 : 5
+        let minDistance: CLLocationDistance = isSpeeding ? 20 : 40
 
         guard now.timeIntervalSince(lastSpeedCheckAt) >= minInterval else { return false }
         guard let last = lastSpeedCheckLocation else { return true }
         return location.distance(from: last) >= minDistance
-    }
-
-    private func fetchSpeedCheck(lat: Double, lng: Double) async {
-        let speed = currentSpeedKmh.map(Double.init)
-        do {
-            let response = try await FlitsMaatjeAPI.fetchSpeedCheck(lat: lat, lng: lng, speedKmh: speed)
-            speedLimit = response.limit.maxspeed
-            roadName = response.limit.road_name
-            fineEstimate = response.fine
-
-            if currentAlert == nil, let fineText = response.fine?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) {
-                statusText = fineText
-            }
-
-            handleSpeedingFine()
-        } catch {
-            AppLogger.error("API speed-check mislukt: \(error.localizedDescription)")
-            // Snelheidslimiet is optioneel — flitsalarm blijft werken
-        }
     }
 
     private func isCurrentlySpeeding() -> Bool {
@@ -229,11 +258,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastSpeedingSignature = signature
 
         AlertNotifier.updateSpeedingPopup(speedKmh: currentSpeedKmh, limit: speedLimit, fine: fine)
-        CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
-            speedKmh: currentSpeedKmh,
-            limit: speedLimit,
-            fine: fine
-        )
+        refreshCarPlaySpeeding()
 
         if currentAlert == nil {
             statusText = body
@@ -244,7 +269,25 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         guard lastSpeedingSignature != nil else { return }
         lastSpeedingSignature = nil
         AlertNotifier.clearSpeedingPopup()
-        CarPlayDrivingTaskCoordinator.shared.clearSpeeding()
+        refreshCarPlaySpeeding()
+    }
+
+    private func refreshCarPlay(alert: NearbyAlert?) {
+        let now = Date()
+        guard now.timeIntervalSince(lastCarPlayRefreshAt) >= carPlayRefreshInterval else { return }
+        lastCarPlayRefreshAt = now
+        CarPlayDrivingTaskCoordinator.shared.update(alert: alert)
+    }
+
+    private func refreshCarPlaySpeeding() {
+        let now = Date()
+        guard now.timeIntervalSince(lastCarPlayRefreshAt) >= carPlayRefreshInterval else { return }
+        lastCarPlayRefreshAt = now
+        CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
+            speedKmh: currentSpeedKmh,
+            limit: speedLimit,
+            fine: fineEstimate
+        )
     }
 
     private func handleFlitserAlarm(alert: NearbyAlert) {
@@ -322,7 +365,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 pushType: nil
             )
         } catch {
-            // Live Activity niet beschikbaar — widget blijft werken
+            AppLogger.error("Live Activity start mislukt: \(error.localizedDescription)")
         }
     }
 

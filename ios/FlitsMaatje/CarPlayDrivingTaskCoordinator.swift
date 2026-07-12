@@ -1,5 +1,6 @@
 import CarPlay
 import Foundation
+import UIKit
 
 /// CarPlay "Driving Task" UI: een glanceable lijst + een enkel-tap alert.
 ///

@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         AppLogger.install()
         AppLogger.log("AppDelegate didFinishLaunching")
-        AppLogger.uploadLogFile(reason: "launch")
         return true
     }
 
@@ -16,16 +15,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
-        let role = connectingSceneSession.role
-        let name = role == .carTemplateApplication ? "CarPlay" : "Default Configuration"
-        AppLogger.log("Scene verbinding: role=\(role.rawValue) config=\(name)")
-        return UISceneConfiguration(name: name, sessionRole: role)
+        if connectingSceneSession.role == .carTemplateApplication {
+            AppLogger.log("Scene config: CarPlay")
+            return UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)
+        }
+        AppLogger.log("Scene config: Default")
+        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
     }
 
-    func application(
-        _ application: UIApplication,
-        didDiscardSceneSessions sceneSessions: Set<UISceneSession>
-    ) {
-        AppLogger.log("Scene sessies verwijderd: \(sceneSessions.count)")
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        AppLogger.log("App actief")
+        AppLogger.uploadLogFile(reason: "active")
+    }
+
+    func applicationWillResignActive(_ application: UIApplication) {
+        AppLogger.log("App inactief")
+        AppLogger.flush()
+        AppLogger.uploadLogFile(reason: "background")
     }
 }

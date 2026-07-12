@@ -58,6 +58,7 @@ enum AppLogger {
     private static let osLog = Logger(subsystem: subsystem, category: "app")
     private static let queue = DispatchQueue(label: "nl.readvanes.flitsmaatje.log", qos: .utility)
     private static var didInstall = false
+    private static var uiUpdatesEnabled = false
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -73,11 +74,12 @@ enum AppLogger {
     static func install() {
         guard isMainApp, !didInstall else { return }
         didInstall = true
-
         NSSetUncaughtExceptionHandler(recordUnhandledException)
+        writeSync("Logger actief (main app)", level: .info)
+    }
 
-        log("Logger actief (main app)")
-        exportToDocuments()
+    static func enableUIUpdates() {
+        uiUpdatesEnabled = true
     }
 
     static func writeSyncFromCrashHandler(_ message: String) {
@@ -90,6 +92,10 @@ enum AppLogger {
 
     static func error(_ message: String) {
         write(message, level: .error)
+    }
+
+    static func flush() {
+        queue.sync {}
     }
 
     static func clear() {
@@ -124,16 +130,18 @@ enum AppLogger {
     static func uploadLogFile(reason: String) {
         guard isMainApp else { return }
         queue.async {
+            flush()
             guard let data = try? Data(contentsOf: logFileURL()),
                   !data.isEmpty else { return }
 
             var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("/api/diagnostic-log"))
             request.httpMethod = "POST"
+            request.timeoutInterval = 10
             request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.setValue(reason, forHTTPHeaderField: "X-Log-Reason")
             request.setValue(deviceLabel(), forHTTPHeaderField: "X-Device-Id")
+            request.setValue(appVersionLabel(), forHTTPHeaderField: "X-App-Version")
             request.httpBody = data
-
             URLSession.shared.dataTask(with: request).resume()
         }
     }
@@ -146,16 +154,21 @@ enum AppLogger {
         #endif
     }
 
+    private static func appVersionLabel() -> String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "v\(version)-\(build)"
+    }
+
     private static func write(_ message: String, level: LogLevel) {
         queue.async {
             writeSync(message, level: level)
         }
         osLog.log(level: level.osLogType, "\(message, privacy: .public)")
-        if isMainApp {
-            let line = formattedLine(message, level: level)
-            Task { @MainActor in
-                AppLogStore.shared.append(line)
-            }
+        guard isMainApp, uiUpdatesEnabled else { return }
+        let line = formattedLine(message, level: level)
+        Task { @MainActor in
+            AppLogStore.shared.append(line)
         }
     }
 
@@ -174,21 +187,6 @@ enum AppLogger {
         handle.seekToEndOfFile()
         handle.write(data)
         trimIfNeeded(url: url, fileManager: fileManager)
-        if level == .error, isMainApp {
-            exportToDocuments()
-        }
-    }
-
-    private static func exportToDocuments() {
-        guard isMainApp else { return }
-        let source = logFileURL()
-        guard FileManager.default.fileExists(atPath: source.path),
-              let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            return
-        }
-        let dest = docs.appendingPathComponent("flitsmaatje-diagnostic.log")
-        try? FileManager.default.removeItem(at: dest)
-        try? FileManager.default.copyItem(at: source, to: dest)
     }
 
     private static func formattedLine(_ message: String, level: LogLevel) -> String {

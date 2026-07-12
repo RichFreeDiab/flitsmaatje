@@ -342,10 +342,22 @@ def diagnostic_log():
     body = request.get_data(as_text=True) or ""
     reason = (request.headers.get("X-Log-Reason") or "unknown")[:40]
     device = (request.headers.get("X-Device-Id") or "device")[:60]
+    version = (request.headers.get("X-App-Version") or "unknown")[:20]
     safe_device = "".join(c if c.isalnum() or c in "-_" else "_" for c in device)
-    filename = f"{time.strftime('%Y%m%d-%H%M%S')}-{reason}-{safe_device}.log"
+    filename = f"{time.strftime('%Y%m%d-%H%M%S')}-{reason}-{version}-{safe_device}.log"
     (DIAGNOSTIC_LOG_DIR / filename).write_text(body, encoding="utf-8")
     return jsonify({"ok": True, "file": filename})
+
+
+@app.route("/api/diagnostic-logs", methods=["GET"])
+def diagnostic_logs_list():
+    """Overzicht van ontvangen diagnostieklogs (intern/debug)."""
+    DIAGNOSTIC_LOG_DIR.mkdir(exist_ok=True)
+    files = sorted(DIAGNOSTIC_LOG_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return jsonify([
+        {"file": f.name, "bytes": f.stat().st_size, "mtime": f.stat().st_mtime}
+        for f in files[:30]
+    ])
 
 
 @app.route("/api/speed-check", methods=["GET"])

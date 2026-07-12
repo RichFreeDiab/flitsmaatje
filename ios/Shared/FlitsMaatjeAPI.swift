@@ -6,6 +6,14 @@ enum FlitsMaatjeAPI {
         case badResponse
     }
 
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 12
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     static func fetchNearbyAlert(lat: Double, lng: Double, radiusKm: Double = AppConfig.pollRadiusKm) async throws -> NearbyAlert? {
         var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/nearby-alert"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -15,7 +23,7 @@ enum FlitsMaatjeAPI {
         ]
         guard let url = components?.url else { throw APIError.badURL }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.badResponse
         }
@@ -35,7 +43,7 @@ enum FlitsMaatjeAPI {
         components?.queryItems = query
         guard let url = components?.url else { throw APIError.badURL }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.badResponse
         }
