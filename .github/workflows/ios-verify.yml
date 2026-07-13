@@ -1,0 +1,75 @@
+# Snelle iOS compile-check (simulator) + CarPlay-selftest — géén TestFlight.
+# Draait automatisch bij push; TestFlight blijft handmatig.
+name: iOS Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  carplay-selftest:
+    name: CarPlay selftest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python dependencies
+        run: |
+          python3 -m pip install --break-system-packages flask gunicorn -q
+
+      - name: Start Flask
+        run: |
+          gunicorn -b 127.0.0.1:5068 -w 1 app:app --timeout 30 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:5068/ && break
+            sleep 1
+          done
+
+      - name: Run CarPlay selftest
+        run: python3 scripts/carplay_selftest.py http://127.0.0.1:5068
+
+      - name: CarPlay demo page
+        run: curl -sf http://127.0.0.1:5068/carplay | rg -q "CarPlay Demo"
+
+  ios-simulator-build:
+    name: iOS simulator compile
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Genereer app-icoon
+        run: |
+          python3 -m pip install pillow -q
+          python3 ios/scripts/generate_icon.py
+
+      - name: Genereer Xcode-project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build voor iOS Simulator (geen signing)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project FlitsMaatje.xcodeproj \
+            -scheme FlitsMaatje \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | xcbeautify

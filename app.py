@@ -360,6 +360,23 @@ def diagnostic_logs_list():
     ])
 
 
+@app.route("/api/carplay-selftest", methods=["GET"])
+def carplay_selftest():
+    """Simuleer iOS-opstart + CarPlay-gedrag — draait vóór TestFlight-deploy."""
+    import importlib.util
+
+    script = Path(__file__).parent / "scripts" / "carplay_selftest.py"
+    spec = importlib.util.spec_from_file_location("carplay_selftest", script)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    base = request.url_root.rstrip("/")
+    seed = request.args.get("seed", "1") != "0"
+    result = module.run_selftest(base_url=base, seed_demo=seed)
+    return jsonify(result.as_dict()), (200 if result.ok else 500)
+
+
 @app.route("/api/speed-check", methods=["GET"])
 def speed_check():
     """Geeft de geldende snelheidslimiet op deze locatie + boete-indicatie

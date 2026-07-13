@@ -16,6 +16,8 @@
       <p>Banner, boete-popup (stil) en flitsers terwijl Flitsmeister navigeert</p>
     </div>
     <div class="toolbar-actions">
+      <button id="btn-selftest" type="button" title="Zelfde checks als CI vóór TestFlight">✓ Selftest</button>
+      <button id="btn-boot-sim" type="button">📱 Simuleer opstart</button>
       <button id="btn-full-demo" class="primary" type="button">▶ Volledige demo</button>
       <button id="btn-demo-speed" type="button">🚨 Demo te hard</button>
       <button id="btn-drive" type="button">🚗 Demo-rit</button>
@@ -103,6 +105,17 @@
     </main>
   </div>
 
+  <div id="boot-sim-panel" class="boot-sim-panel hidden" aria-live="polite">
+    <h3>iOS-opstart simulatie</h3>
+    <ol id="boot-sim-stages" class="boot-sim-stages"></ol>
+    <p id="boot-sim-result" class="boot-sim-result"></p>
+  </div>
+
+  <div id="selftest-panel" class="selftest-panel hidden" aria-live="polite">
+    <h3>Selftest resultaat</h3>
+    <pre id="selftest-output" class="selftest-output"></pre>
+  </div>
+
   <div class="legend">
     <div class="legend-item"><span class="dot dot-speed"></span> Stille boete-banner bij te hard (geen spraak)</div>
     <div class="legend-item"><span class="dot dot-banner"></span> Flitser-banner + spraak (iOS 18.4+)</div>
@@ -110,8 +123,9 @@
   </div>
 
   <p class="hint">
-    Webpreview — geen echte CarPlay. Op iPhone: TestFlight build <strong>79</strong> → locatie Altijd → Flitsmeister navigeert →
-    FlitsMaatje op achtergrond. Zet <code>Meldingen → Tonen in CarPlay</code> aan.
+    <strong>Lokaal testen vóór TestFlight:</strong> <code>./scripts/verify_before_testflight.sh</code> of open
+    <a href="/api/carplay-selftest">/api/carplay-selftest</a>.
+    Webpreview op <a href="https://flitsmaatje.readvanes.nl/carplay">flitsmaatje.readvanes.nl/carplay</a>.
     Positie: <span id="coords" class="coords">—</span>
   </p>
 

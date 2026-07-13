@@ -630,3 +630,68 @@ button.active {
     min-height: 220px;
   }
 }
+
+.boot-sim-panel,
+.selftest-panel {
+  width: min(1100px, 100%);
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+
+.boot-sim-panel.hidden,
+.selftest-panel.hidden {
+  display: none;
+}
+
+.boot-sim-panel h3,
+.selftest-panel h3 {
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+}
+
+.boot-sim-stages {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.boot-sim-stages li {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.boot-sim-stages li.done {
+  color: var(--green);
+}
+
+.boot-sim-stages li.fail {
+  color: var(--red);
+}
+
+.boot-sim-stages li.pending {
+  color: var(--muted);
+}
+
+.boot-sim-result {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.selftest-output {
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 12px;
+  border-radius: 10px;
+}

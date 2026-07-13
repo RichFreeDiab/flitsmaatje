@@ -459,6 +459,67 @@
     }, 24000);
   }
 
+  const BOOT_STAGES = [
+    { id: "logger-installed", label: "Logger actief", delay: 200 },
+    { id: "didFinishLaunching", label: "AppDelegate didFinishLaunching", delay: 350 },
+    { id: "scene-from-plist", label: "Scene via Info.plist (geen custom delegate)", delay: 500 },
+    { id: "rootview-ready", label: "RootView klaar — Status-tab zichtbaar", delay: 800 },
+    { id: "location-permission-start", label: "Locatie: permissie aanvragen", delay: 1100 },
+    { id: "location-activate", label: "Locatie: actief na scenePhase .active", delay: 1400 },
+    { id: "location-tracking-active", label: "GPS-tracking gestart", delay: 1700 },
+  ];
+
+  async function simulateBoot() {
+    const panel = document.getElementById("boot-sim-panel");
+    const list = document.getElementById("boot-sim-stages");
+    const resultEl = document.getElementById("boot-sim-result");
+    if (!panel || !list || !resultEl) return;
+
+    panel.classList.remove("hidden");
+    list.innerHTML = BOOT_STAGES.map(
+      (s) => `<li class="pending" data-id="${s.id}">⏳ ${s.label}</li>`
+    ).join("");
+    resultEl.textContent = "Simuleert iOS-opstart (build 86+)…";
+    setStatus("Boot-simulatie…");
+
+    for (const stage of BOOT_STAGES) {
+      await new Promise((r) => setTimeout(r, stage.delay));
+      const li = list.querySelector(`[data-id="${stage.id}"]`);
+      if (li) {
+        li.className = "done";
+        li.textContent = `✓ ${stage.label}`;
+      }
+    }
+
+    resultEl.textContent = "Opstart OK — app zou nu het Status-scherm tonen.";
+    setStatus("✓ Boot-simulatie geslaagd");
+  }
+
+  async function runSelfTest() {
+    const panel = document.getElementById("selftest-panel");
+    const output = document.getElementById("selftest-output");
+    if (!panel || !output) return;
+
+    panel.classList.remove("hidden");
+    output.textContent = "Selftest draait…";
+    setStatus("Selftest…");
+
+    try {
+      const res = await fetch("/api/carplay-selftest");
+      const data = await res.json();
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.ok) {
+        setStatus(`✓ Selftest geslaagd (${data.checks?.length || 0} checks)`);
+      } else {
+        const failed = (data.checks || []).filter((c) => !c.ok).map((c) => c.name).join(", ");
+        setStatus(`✗ Selftest gefaald: ${failed}`);
+      }
+    } catch (err) {
+      output.textContent = String(err);
+      setStatus(`Selftest fout: ${err.message}`);
+    }
+  }
+
   function initMap() {
     map = L.map("map", { zoomControl: false, attributionControl: false }).setView([lat, lng], 14);
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
@@ -492,6 +553,8 @@
   }
 
   document.getElementById("btn-full-demo")?.addEventListener("click", fullDemo);
+  document.getElementById("btn-selftest")?.addEventListener("click", runSelfTest);
+  document.getElementById("btn-boot-sim")?.addEventListener("click", simulateBoot);
   document.getElementById("btn-demo-speed")?.addEventListener("click", demoSpeeding);
   document.getElementById("btn-drive")?.addEventListener("click", () => simulateDrive("amsterdam"));
   document.getElementById("btn-refresh")?.addEventListener("click", () => {

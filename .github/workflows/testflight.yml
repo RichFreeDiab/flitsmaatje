@@ -1,4 +1,5 @@
-# TestFlight cloud-build — vereist Apple Developer + GitHub secrets.
+# TestFlight — alleen handmatig, nadat ios-verify.yml groen is.
+# Lokaal eerst: ./scripts/verify_before_testflight.sh
 name: TestFlight
 
 on:
