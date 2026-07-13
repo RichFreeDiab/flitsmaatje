@@ -20,7 +20,15 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         manager.authorizationStatus == .authorizedWhenInUse
     }
 
-    private let manager = CLLocationManager()
+    private lazy var manager: CLLocationManager = {
+        let m = CLLocationManager()
+        m.delegate = self
+        m.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        m.distanceFilter = 15
+        m.pausesLocationUpdatesAutomatically = false
+        m.activityType = .automotiveNavigation
+        return m
+    }()
     private var didConfigureManager = false
     private var locationProcessingTask: Task<Void, Never>?
     private var lastPollAt: Date = .distantPast
@@ -116,11 +124,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         guard !didConfigureManager else { return }
         didConfigureManager = true
         AppLogger.log("LocationBackgroundService configure")
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        manager.distanceFilter = 15
-        manager.pausesLocationUpdatesAutomatically = false
-        manager.activityType = .automotiveNavigation
+        _ = manager
     }
 
     private func scheduleLocationProcessing(_ location: CLLocation) {

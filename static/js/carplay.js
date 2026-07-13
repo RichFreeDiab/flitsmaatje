@@ -460,13 +460,16 @@
   }
 
   const BOOT_STAGES = [
-    { id: "logger-installed", label: "Logger actief", delay: 200 },
-    { id: "didFinishLaunching", label: "AppDelegate didFinishLaunching", delay: 350 },
-    { id: "scene-from-plist", label: "Scene via Info.plist (geen custom delegate)", delay: 500 },
-    { id: "rootview-ready", label: "RootView klaar — Status-tab zichtbaar", delay: 800 },
-    { id: "location-permission-start", label: "Locatie: permissie aanvragen", delay: 1100 },
-    { id: "location-activate", label: "Locatie: actief na scenePhase .active", delay: 1400 },
-    { id: "location-tracking-active", label: "GPS-tracking gestart", delay: 1700 },
+    { id: "process-start", label: "Process gestart (BootLogger)", delay: 100 },
+    { id: "didFinishLaunching", label: "AppDelegate didFinishLaunching", delay: 250 },
+    { id: "location-service-created", label: "Locatieservice aangemaakt", delay: 400 },
+    { id: "phone-scene-willConnect", label: "Telefoon-scene verbindt", delay: 550 },
+    { id: "phone-window-visible", label: "UIWindow zichtbaar (UIKit)", delay: 700 },
+    { id: "logger-installed", label: "Logger actief", delay: 850 },
+    { id: "rootview-ready", label: "RootView klaar — Status-tab zichtbaar", delay: 1000 },
+    { id: "location-permission-start", label: "Locatie: permissie aanvragen", delay: 1300 },
+    { id: "location-activate", label: "Locatie: actief na scenePhase .active", delay: 1600 },
+    { id: "location-tracking-active", label: "GPS-tracking gestart", delay: 1900 },
   ];
 
   async function simulateBoot() {

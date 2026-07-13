@@ -66,10 +66,13 @@ class CarPlaySimulator:
         self.boot_stages.append(stage)
 
     def simulate_launch(self) -> None:
-        self.mark_boot("logger-installed")
+        self.mark_boot("process-start")
         self.mark_boot("didFinishLaunching")
-        # Geen custom scene-config in AppDelegate (build 86 fix)
-        self.mark_boot("scene-from-plist")
+        self.mark_boot("location-service-created")
+        self.mark_boot("scene-config-phone")
+        self.mark_boot("phone-scene-willConnect")
+        self.mark_boot("phone-window-visible")
+        self.mark_boot("logger-installed")
         self.mark_boot("rootview-ready")
         self.auth_status = "authorized_always"
         self.mark_boot("location-permission-start")
@@ -167,9 +170,11 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
     # --- Boot simulatie ---
     sim.simulate_launch()
     required_stages = [
-        "logger-installed",
+        "process-start",
         "didFinishLaunching",
-        "scene-from-plist",
+        "location-service-created",
+        "phone-window-visible",
+        "logger-installed",
         "rootview-ready",
         "location-activate",
         "location-tracking-active",

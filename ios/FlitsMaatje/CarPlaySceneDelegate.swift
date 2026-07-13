@@ -7,6 +7,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         didConnect interfaceController: CPInterfaceController,
         to window: CPWindow
     ) {
+        BootLogger.mark("carplay-connected")
         Task { @MainActor in
             AppLogger.log("CarPlay: verbonden")
             CarPlaySessionTracker.isForegroundOnCarPlay = true

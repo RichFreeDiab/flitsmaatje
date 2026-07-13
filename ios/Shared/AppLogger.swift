@@ -45,6 +45,7 @@ final class AppLogStore: ObservableObject {
 
 private func recordUnhandledException(_ exception: NSException) {
     let message = "CRASH \(exception.name.rawValue): \(exception.reason ?? "onbekend")"
+    BootLogger.mark(message)
     AppLogger.writeSyncFromCrashHandler(message)
     for symbol in exception.callStackSymbols.prefix(16) {
         AppLogger.writeSyncFromCrashHandler("  \(symbol)")
@@ -138,17 +139,37 @@ enum AppLogger {
             flush()
             guard let data = try? Data(contentsOf: logFileURL()),
                   !data.isEmpty else { return }
-
-            var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("/api/diagnostic-log"))
-            request.httpMethod = "POST"
-            request.timeoutInterval = 10
-            request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
-            request.setValue(reason, forHTTPHeaderField: "X-Log-Reason")
-            request.setValue(deviceLabel(), forHTTPHeaderField: "X-Device-Id")
-            request.setValue(appVersionLabel(), forHTTPHeaderField: "X-App-Version")
-            request.httpBody = data
-            URLSession.shared.dataTask(with: request).resume()
+            uploadData(data, reason: reason)
         }
+    }
+
+    static func uploadRaw(_ body: String, reason: String) {
+        guard isMainApp, let data = body.data(using: .utf8), !data.isEmpty else { return }
+        queue.async {
+            uploadData(data, reason: reason)
+        }
+    }
+
+    static func readAllSync() -> String {
+        queue.sync {
+            guard let data = try? Data(contentsOf: logFileURL()),
+                  let text = String(data: data, encoding: .utf8) else {
+                return ""
+            }
+            return text
+        }
+    }
+
+    private static func uploadData(_ data: Data, reason: String) {
+        var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("/api/diagnostic-log"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue(reason, forHTTPHeaderField: "X-Log-Reason")
+        request.setValue(deviceLabel(), forHTTPHeaderField: "X-Device-Id")
+        request.setValue(appVersionLabel(), forHTTPHeaderField: "X-App-Version")
+        request.httpBody = data
+        URLSession.shared.dataTask(with: request).resume()
     }
 
     private static func deviceLabel() -> String {
