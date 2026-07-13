@@ -32,7 +32,7 @@ jobs:
         run: python3 scripts/carplay_selftest.py http://127.0.0.1:5068
 
       - name: CarPlay demo page
-        run: curl -sf http://127.0.0.1:5068/carplay | rg -q "CarPlay Demo"
+        run: curl -sf http://127.0.0.1:5068/carplay | grep -q "CarPlay Demo"
 
   ios-simulator-build:
     name: iOS simulator compile
