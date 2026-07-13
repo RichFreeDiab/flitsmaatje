@@ -364,11 +364,13 @@ def diagnostic_logs_list():
 def carplay_selftest():
     """Simuleer iOS-opstart + CarPlay-gedrag — draait vóór TestFlight-deploy."""
     import importlib.util
+    import sys
 
     script = Path(__file__).parent / "scripts" / "carplay_selftest.py"
     spec = importlib.util.spec_from_file_location("carplay_selftest", script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules["carplay_selftest"] = module
     spec.loader.exec_module(module)
 
     base = request.url_root.rstrip("/")
