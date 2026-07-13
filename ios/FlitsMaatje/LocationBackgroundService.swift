@@ -16,6 +16,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var roadName: String?
     @Published var lastLocation: CLLocation?
 
+    var managerAuthorizationIsWhenInUse: Bool {
+        manager.authorizationStatus == .authorizedWhenInUse
+    }
+
     private let manager = CLLocationManager()
     private var didConfigureManager = false
     private var locationProcessingTask: Task<Void, Never>?
@@ -28,26 +32,44 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var lastSpeedingSignature: String?
     private var lastCarPlayRefreshAt: Date = .distantPast
     private var liveActivity: Activity<FlitsMaatjeAttributes>?
+    private var isAppActive = false
 
     private let distanceAlarmThresholds = [600, 400, 200, 100]
     private let alarmRepeatInterval: TimeInterval = 25
     private let carPlayRefreshInterval: TimeInterval = 2
 
     func requestPermissionAndStart() {
-        AppLogger.log("Locatie: permissie aanvragen")
+        AppLogger.markBootStage("location-permission-start")
         configureManagerIfNeeded()
         AlertNotifier.requestPermissions()
-        applyAuthorizationState()
         if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
+        } else {
+            applyAuthorizationState()
         }
+    }
+
+    func activateWhenReady() {
+        isAppActive = true
+        AppLogger.markBootStage("location-activate")
+        applyAuthorizationState()
+    }
+
+    func requestAlwaysPermission() {
+        guard manager.authorizationStatus == .authorizedWhenInUse else { return }
+        AppLogger.log("Locatie: Altijd-toestemming aanvragen")
+        manager.requestAlwaysAuthorization()
     }
 
     func start() {
         configureManagerIfNeeded()
-        guard CLLocationManager.locationServicesEnabled() else {
-            statusText = "Locatieservices uitgeschakeld"
-            AppLogger.error("Locatie: services uitgeschakeld op apparaat")
+        guard isAppActive else {
+            AppLogger.log("Locatie: start uitgesteld tot app actief is")
+            return
+        }
+        guard manager.authorizationStatus == .authorizedAlways ||
+              manager.authorizationStatus == .authorizedWhenInUse else {
+            AppLogger.log("Locatie: nog geen toestemming")
             return
         }
         AppLogger.log("Locatie: startUpdatingLocation (auth=\(manager.authorizationStatus.rawValue))")
@@ -112,14 +134,19 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         AppLogger.log("Locatie: autorisatie=\(manager.authorizationStatus.rawValue)")
         switch manager.authorizationStatus {
         case .authorizedAlways:
-            enableBackgroundLocationIfNeeded(true)
+            if isAppActive {
+                enableBackgroundLocationIfNeeded(true)
+            }
             statusText = "Altijd-toestemming — ideaal voor CarPlay op de achtergrond"
-            startIfNeeded()
+            if isAppActive {
+                startIfNeeded()
+            }
         case .authorizedWhenInUse:
             enableBackgroundLocationIfNeeded(false)
-            statusText = "Alleen tijdens gebruik — zet op 'Altijd' voor achtergrondwaarschuwingen"
-            startIfNeeded()
-            manager.requestAlwaysAuthorization()
+            statusText = "Alleen tijdens gebruik — tik hieronder voor Altijd"
+            if isAppActive {
+                startIfNeeded()
+            }
         case .denied, .restricted:
             statusText = "Geen locatietoestemming — ga naar Instellingen"
             AppLogger.error("Locatie: geweigerd of beperkt")
@@ -132,6 +159,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func enableBackgroundLocationIfNeeded(_ enabled: Bool) {
+        guard isAppActive else { return }
         guard manager.allowsBackgroundLocationUpdates != enabled else { return }
         let wasTracking = isTracking
         if wasTracking {
@@ -139,6 +167,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
         manager.allowsBackgroundLocationUpdates = enabled
         manager.showsBackgroundLocationIndicator = enabled
+        AppLogger.log("Locatie: achtergrond-updates=\(enabled)")
         if wasTracking {
             manager.startUpdatingLocation()
         }

@@ -41,8 +41,9 @@ struct RootView: View {
             bootstrapIfNeeded()
         }
         .onChange(of: scenePhase) { _, phase in
-            AppLogger.log("Scene phase: \(String(describing: phase))")
+            AppLogger.markBootStage("scenePhase-\(phase)")
             if phase == .active {
+                location.activateWhenReady()
                 AppLogger.uploadLogFile(reason: "scene-active")
             } else if phase == .background {
                 AppLogger.flush()
@@ -67,13 +68,14 @@ struct RootView: View {
         guard !didBootstrap else { return }
         didBootstrap = true
         AppLogger.enableUIUpdates()
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-        AppLogger.log("RootView klaar — v\(version) (\(build))")
+        AppLogger.markBootStage("rootview-ready")
         CarPlayDrivingTaskCoordinator.shared.locationService = location
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000)
             location.requestPermissionAndStart()
+            if scenePhase == .active {
+                location.activateWhenReady()
+            }
             AppLogger.uploadLogFile(reason: "boot")
         }
     }

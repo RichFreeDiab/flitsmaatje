@@ -160,6 +160,13 @@ struct ContentView: View {
             Label("Boete-indicatie: indicatief, geen juridisch advies", systemImage: "3.circle")
             Label("CarPlay: stille boete-popup bij te hard rijden (geen spraak)", systemImage: "4.circle")
 
+            if location.managerAuthorizationIsWhenInUse {
+                Button("Zet locatie op Altijd (aanbevolen)") {
+                    location.requestAlwaysPermission()
+                }
+                .font(.footnote.weight(.semibold))
+            }
+
             NavigationLink {
                 DiagnosticLogView()
             } label: {

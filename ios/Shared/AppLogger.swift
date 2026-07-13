@@ -75,7 +75,12 @@ enum AppLogger {
         guard isMainApp, !didInstall else { return }
         didInstall = true
         NSSetUncaughtExceptionHandler(recordUnhandledException)
-        writeSync("Logger actief (main app)", level: .info)
+        markBootStage("logger-installed")
+        uploadLogFile(reason: "previous-session")
+    }
+
+    static func markBootStage(_ stage: String) {
+        writeSync("BOOT \(stage)", level: .info)
     }
 
     static func enableUIUpdates() {
