@@ -1,5 +1,4 @@
-# TestFlight — alleen handmatig, nadat ios-verify.yml groen is.
-# Lokaal eerst: ./scripts/verify_before_testflight.sh
+# Handmatig TestFlight (optioneel) — normaal gaat deploy via ios-verify.yml na groene checks.
 name: TestFlight
 
 on:
