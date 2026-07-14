@@ -128,6 +128,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-          FLITSMAATJE_CHANGELOG: "iOS 26 fix: lege SceneDelegate + async boot-log"
+          FLITSMAATJE_CHANGELOG: "iOS 26 fix + build-nummer fix (TestFlight zichtbaar)"
         run: bundle exec fastlane beta

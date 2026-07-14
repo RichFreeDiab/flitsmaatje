@@ -192,9 +192,16 @@ platform :ios do
       bundle_identifier: WIDGET_BUNDLE_ID
     )
 
+    latest_build = latest_testflight_build_number(
+      api_key: api_key,
+      initial_build_number: 0
+    )
+    next_build = latest_build + 1
+    UI.important("Volgende build-nummer: #{next_build} (laatste in TestFlight: #{latest_build})")
+
     increment_build_number(
       xcodeproj: "FlitsMaatje.xcodeproj",
-      build_number: ENV["GITHUB_RUN_NUMBER"] || Time.now.to_i.to_s
+      build_number: next_build.to_s
     )
 
     build_app(
