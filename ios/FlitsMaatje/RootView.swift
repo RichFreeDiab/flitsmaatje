@@ -28,8 +28,8 @@ struct RootView: View {
                 VStack(spacing: 20) {
                     Text("FlitsMaatje")
                         .font(.largeTitle.bold())
-                    if let bootstrapError {
-                        Text(bootstrapError)
+                    if let error = bootstrapError {
+                        Text(error)
                             .font(.footnote)
                             .foregroundStyle(.red)
                             .multilineTextAlignment(.center)
