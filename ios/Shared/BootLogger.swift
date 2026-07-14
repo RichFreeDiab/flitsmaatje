@@ -6,13 +6,18 @@ enum BootLogger {
     private static let maxBytes = 64_000
     private static var didWriteProcessStart = false
 
-    private static var logPath: String {
-        if let url = FileManager.default.containerURL(
+    private static var logPaths: [String] {
+        var paths: [String] = []
+        if let group = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: AppConfig.appGroupID
         ) {
-            return url.appendingPathComponent(fileName).path
+            paths.append(group.appendingPathComponent(fileName).path)
         }
-        return (NSTemporaryDirectory() as NSString).appendingPathComponent(fileName)
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            paths.append(docs.appendingPathComponent(fileName).path)
+        }
+        paths.append((NSTemporaryDirectory() as NSString).appendingPathComponent(fileName))
+        return Array(Set(paths))
     }
 
     static func mark(_ message: String) {
@@ -24,11 +29,14 @@ enum BootLogger {
     }
 
     static func readAll() -> String {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: logPath)),
-              let text = String(data: data, encoding: .utf8) else {
-            return ""
+        for path in logPaths {
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let text = String(data: data, encoding: .utf8), !text.isEmpty else {
+                continue
+            }
+            return text
         }
-        return text
+        return ""
     }
 
     static func upload() {
@@ -63,23 +71,17 @@ enum BootLogger {
         let line = "[\(isoTimestamp())] \(message)\n"
         guard let data = line.data(using: .utf8) else { return }
 
-        let path = logPath
-        if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: nil)
-        }
-
-        if let handle = FileHandle(forWritingAtPath: path) {
-            defer { try? handle.close() }
-            handle.seekToEndOfFile()
-            handle.write(data)
-        } else if let url = URL(string: "file://\(path)") {
-            if let handle = try? FileHandle(forWritingTo: url) {
-                defer { try? handle.close() }
-                try? handle.seekToEnd()
-                try? handle.write(contentsOf: data)
+        for path in logPaths {
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil)
             }
+            if let handle = FileHandle(forWritingAtPath: path) {
+                defer { try? handle.close() }
+                handle.seekToEndOfFile()
+                handle.write(data)
+            }
+            trimIfNeeded(path: path)
         }
-        trimIfNeeded(path: path)
     }
 
     private static func isoTimestamp() -> String {

@@ -67,14 +67,14 @@ class CarPlaySimulator:
 
     def simulate_launch(self) -> None:
         self.mark_boot("process-start")
-        self.mark_boot("swiftui-app-init")
         self.mark_boot("didFinishLaunching")
         self.mark_boot("logger-installed")
         self.mark_boot("phone-scene-willConnect")
+        self.mark_boot("phone-window-visible")
         self.mark_boot("rootview-onAppear")
-        self.mark_boot("bootstrap-start")
+        self.mark_boot("user-start-tap")
         self.mark_boot("location-created")
-        self.mark_boot("rootview-ready")
+        self.mark_boot("bootstrap-complete")
         self.auth_status = "authorized_always"
         self.mark_boot("location-permission-start")
         self.is_app_active = True
@@ -175,10 +175,9 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         "didFinishLaunching",
         "logger-installed",
         "phone-scene-willConnect",
+        "phone-window-visible",
         "rootview-onAppear",
-        "bootstrap-start",
         "location-created",
-        "rootview-ready",
         "location-activate",
         "location-tracking-active",
     ]
