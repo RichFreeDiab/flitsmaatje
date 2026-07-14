@@ -141,6 +141,30 @@ def ensure_app_store_record!
   end
 end
 
+def next_testflight_build_number(api_key:)
+  asc_latest = latest_testflight_build_number(
+    api_key: api_key,
+    app_identifier: APP_BUNDLE_ID,
+    initial_build_number: 0
+  )
+
+  spaceship_latest = 0
+  with_asc_api_token do
+    app = Spaceship::ConnectAPI::App.all(filter: { bundleId: APP_BUNDLE_ID }).first
+    if app
+      builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, limit: 30, sort: "-uploadedDate")
+      spaceship_latest = builds.map { |b| b.version.to_i }.max || 0
+    end
+  end
+
+  latest = [asc_latest, spaceship_latest].max
+  next_build = latest + 1
+  UI.important(
+    "Build-nummer: #{next_build} (fastlane=#{asc_latest}, spaceship=#{spaceship_latest})"
+  )
+  next_build
+end
+
 platform :ios do
   desc "Build en upload naar TestFlight (draait op GitHub Actions — geen Mac nodig)"
   lane :beta do
@@ -192,12 +216,7 @@ platform :ios do
       bundle_identifier: WIDGET_BUNDLE_ID
     )
 
-    latest_build = latest_testflight_build_number(
-      api_key: api_key,
-      initial_build_number: 0
-    )
-    next_build = latest_build + 1
-    UI.important("Volgende build-nummer: #{next_build} (laatste in TestFlight: #{latest_build})")
+    next_build = next_testflight_build_number(api_key: api_key)
 
     increment_build_number(
       xcodeproj: "FlitsMaatje.xcodeproj",

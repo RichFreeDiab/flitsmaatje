@@ -128,5 +128,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLITSMAATJE_CHANGELOG: "iOS 26 fix + build-nummer fix (TestFlight zichtbaar)"
+          FLITSMAATJE_CHANGELOG: "iOS 26 crashfix — build 87+ zichtbaar in TestFlight"
         run: bundle exec fastlane beta
