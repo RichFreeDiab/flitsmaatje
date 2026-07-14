@@ -128,5 +128,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLITSMAATJE_CHANGELOG: "Crashfix na Start: GPS-volgorde iOS 26"
+          FLITSMAATJE_CHANGELOG: "Build 92: veilig startscherm, geen zware UI bij Start"
         run: bundle exec fastlane beta

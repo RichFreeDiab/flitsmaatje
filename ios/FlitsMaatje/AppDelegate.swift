@@ -8,4 +8,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         true
     }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        DispatchQueue.global(qos: .utility).async {
+            BootLogger.uploadSync(timeout: 3)
+        }
+    }
 }

@@ -16,6 +16,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var roadName: String?
     @Published var lastLocation: CLLocation?
 
+    var managerAuthorizationIsAlways: Bool {
+        manager.authorizationStatus == .authorizedAlways
+    }
+
     var managerAuthorizationIsWhenInUse: Bool {
         manager.authorizationStatus == .authorizedWhenInUse
     }
@@ -46,27 +50,39 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private let alarmRepeatInterval: TimeInterval = 25
     private let carPlayRefreshInterval: TimeInterval = 2
 
-    func requestPermissionAndStart() {
-        AppLogger.markBootStage("location-permission-start")
+    func prepareForUse() {
+        AppLogger.markBootStage("location-prepare")
         configureManagerIfNeeded()
-        DispatchQueue.main.async {
-            AlertNotifier.requestPermissions()
-        }
         if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
-        } else {
-            applyAuthorizationState()
+        }
+    }
+
+    /// Alleen voorgrond-GPS — geen achtergrondvlag (crash op iOS 26).
+    func activateForegroundOnly() {
+        isAppActive = true
+        AppLogger.markBootStage("location-activate-foreground")
+        applyAuthorizationState(allowBackground: false)
+    }
+
+    func requestPermissionAndStart() {
+        prepareForUse()
+        DispatchQueue.main.async {
+            AlertNotifier.requestPermissions()
         }
     }
 
     func activateWhenReady() {
         isAppActive = true
         AppLogger.markBootStage("location-activate")
-        applyAuthorizationState()
+        applyAuthorizationState(allowBackground: manager.authorizationStatus == .authorizedAlways)
     }
 
     func requestAlwaysPermission() {
-        guard manager.authorizationStatus == .authorizedWhenInUse else { return }
+        guard manager.authorizationStatus == .authorizedWhenInUse else {
+            enableBackgroundTrackingIfAuthorized()
+            return
+        }
         AppLogger.log("Locatie: Altijd-toestemming aanvragen")
         manager.requestAlwaysAuthorization()
     }
@@ -76,8 +92,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             AppLogger.log("Locatie: start uitgesteld tot app actief is")
             return
         }
-        let useBackground = manager.authorizationStatus == .authorizedAlways
-        startTracking(enableBackground: useBackground)
+        startTracking(enableBackground: false)
+    }
+
+    func enableBackgroundTrackingIfAuthorized() {
+        guard manager.authorizationStatus == .authorizedAlways else { return }
+        startTracking(enableBackground: true)
     }
 
     func stop() {
@@ -109,7 +129,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
-            applyAuthorizationState()
+            applyAuthorizationState(allowBackground: false)
         }
     }
 
@@ -127,16 +147,18 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
     }
 
-    private func applyAuthorizationState() {
+    private func applyAuthorizationState(allowBackground: Bool) {
         AppLogger.log("Locatie: autorisatie=\(manager.authorizationStatus.rawValue)")
         switch manager.authorizationStatus {
         case .authorizedAlways:
-            statusText = "Altijd-toestemming — ideaal voor CarPlay op de achtergrond"
+            statusText = allowBackground
+                ? "Altijd-toestemming — achtergrond actief"
+                : "Altijd-toestemming — tik voor achtergrond/CarPlay"
             if isAppActive {
-                startTracking(enableBackground: true)
+                startTracking(enableBackground: allowBackground)
             }
         case .authorizedWhenInUse:
-            statusText = "Alleen tijdens gebruik — tik hieronder voor Altijd"
+            statusText = "Tracking actief tijdens gebruik"
             if isAppActive {
                 startTracking(enableBackground: false)
             }
@@ -172,9 +194,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
         let wantsBackground = enableBackground && manager.authorizationStatus == .authorizedAlways
         if wantsBackground && !manager.allowsBackgroundLocationUpdates {
-            manager.allowsBackgroundLocationUpdates = true
-            manager.showsBackgroundLocationIndicator = true
-            AppLogger.log("Locatie: achtergrond-updates=aan")
+            // Extra vertraging: achtergrond pas na stabiele voorgrond-GPS
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self, self.isTracking, self.manager.authorizationStatus == .authorizedAlways else { return }
+                self.manager.allowsBackgroundLocationUpdates = true
+                self.manager.showsBackgroundLocationIndicator = true
+                AppLogger.log("Locatie: achtergrond-updates=aan")
+                self.statusText = "Achtergrond-tracking actief"
+            }
         } else if !wantsBackground && manager.allowsBackgroundLocationUpdates {
             manager.allowsBackgroundLocationUpdates = false
             manager.showsBackgroundLocationIndicator = false
@@ -386,30 +413,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     // MARK: - Live Activity
 
     private func updateLiveActivity(alert: NearbyAlert) {
-        let state = FlitsMaatjeAttributes.ContentState(
-            reportType: alert.type,
-            label: alert.label,
-            distanceMeters: alert.distance_m,
-            icon: alert.icon
-        )
-
-        if let liveActivity {
-            Task { await liveActivity.update(ActivityContent(state: state, staleDate: Date().addingTimeInterval(60))) }
-            return
-        }
-
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-
-        let attributes = FlitsMaatjeAttributes(startedAt: Date())
-        do {
-            liveActivity = try Activity.request(
-                attributes: attributes,
-                content: ActivityContent(state: state, staleDate: Date().addingTimeInterval(60)),
-                pushType: nil
-            )
-        } catch {
-            AppLogger.error("Live Activity start mislukt: \(error.localizedDescription)")
-        }
+        // Uitgeschakeld — Live Activity veroorzaakte instabiliteit op iOS 26.
     }
 
     private func endLiveActivity() {
