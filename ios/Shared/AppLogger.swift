@@ -150,6 +150,17 @@ enum AppLogger {
         }
     }
 
+    static func uploadRawSync(_ body: String, reason: String, timeout: TimeInterval = 2.5) {
+        guard isMainApp, let data = body.data(using: .utf8), !data.isEmpty else { return }
+        let sem = DispatchSemaphore(value: 0)
+        queue.async {
+            uploadData(data, reason: reason) {
+                sem.signal()
+            }
+        }
+        _ = sem.wait(timeout: .now() + timeout)
+    }
+
     static func readAllSync() -> String {
         queue.sync {
             guard let data = try? Data(contentsOf: logFileURL()),
@@ -160,16 +171,18 @@ enum AppLogger {
         }
     }
 
-    private static func uploadData(_ data: Data, reason: String) {
+    private static func uploadData(_ data: Data, reason: String, completion: (() -> Void)? = nil) {
         var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("/api/diagnostic-log"))
         request.httpMethod = "POST"
-        request.timeoutInterval = 10
+        request.timeoutInterval = 8
         request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.setValue(reason, forHTTPHeaderField: "X-Log-Reason")
         request.setValue(deviceLabel(), forHTTPHeaderField: "X-Device-Id")
         request.setValue(appVersionLabel(), forHTTPHeaderField: "X-App-Version")
         request.httpBody = data
-        URLSession.shared.dataTask(with: request).resume()
+        URLSession.shared.dataTask(with: request) { _, _, _ in
+            completion?()
+        }.resume()
     }
 
     private static func deviceLabel() -> String {

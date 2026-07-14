@@ -45,6 +45,11 @@ enum BootLogger {
     }
 
     static func upload() {
+        uploadSync(timeout: 0.1)
+    }
+
+    /// Blokkeert kort zodat logs de server bereiken vóór een crash.
+    static func uploadSync(timeout: TimeInterval = 2.5) {
         let boot = readAll()
         let diagnostic = AppLogger.readAllSync()
         let body = """
@@ -53,7 +58,7 @@ enum BootLogger {
         === DIAGNOSTIC LOG ===
         \(diagnostic.isEmpty ? "(leeg)" : diagnostic)
         """
-        AppLogger.uploadRaw(body, reason: "boot")
+        AppLogger.uploadRawSync(body, reason: "boot", timeout: timeout)
     }
 
     private static func isoTimestamp() -> String {

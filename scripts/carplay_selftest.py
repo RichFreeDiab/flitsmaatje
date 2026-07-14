@@ -68,11 +68,9 @@ class CarPlaySimulator:
     def simulate_launch(self) -> None:
         self.mark_boot("process-start")
         self.mark_boot("didFinishLaunching")
-        self.mark_boot("location-service-created")
-        self.mark_boot("scene-config-phone")
-        self.mark_boot("phone-scene-willConnect")
-        self.mark_boot("phone-window-visible")
         self.mark_boot("logger-installed")
+        self.mark_boot("bootstrap-start")
+        self.mark_boot("location-created")
         self.mark_boot("rootview-ready")
         self.auth_status = "authorized_always"
         self.mark_boot("location-permission-start")
@@ -172,9 +170,9 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
     required_stages = [
         "process-start",
         "didFinishLaunching",
-        "location-service-created",
-        "phone-window-visible",
         "logger-installed",
+        "bootstrap-start",
+        "location-created",
         "rootview-ready",
         "location-activate",
         "location-tracking-active",
