@@ -3,6 +3,7 @@ import CoreLocation
 import Foundation
 import UIKit
 
+@MainActor
 final class LocationBackgroundService: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isTracking = false
     @Published var statusText = "Wacht op locatietoestemming…"
