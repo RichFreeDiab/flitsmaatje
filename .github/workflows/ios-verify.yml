@@ -128,5 +128,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLITSMAATJE_CHANGELOG: "Build 93: Start zonder GPS, GPS aparte knop"
+          FLITSMAATJE_CHANGELOG: "Build 94: licht dashboard zonder NavigationStack"
         run: bundle exec fastlane beta

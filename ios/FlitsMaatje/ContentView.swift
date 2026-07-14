@@ -1,10 +1,12 @@
 import SwiftUI
 
+/// Licht dashboard — geen NavigationStack/DiagnosticLogView (crash op iOS 26).
 struct ContentView: View {
     @EnvironmentObject private var location: LocationBackgroundService
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            header
             ScrollView {
                 VStack(spacing: 16) {
                     speedPanel
@@ -23,27 +25,27 @@ struct ContentView: View {
                 }
                 .padding()
             }
-            .navigationTitle("FlitsMaatje")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(location.isTracking ? "Stop" : "Start") {
-                        if location.isTracking {
-                            location.stop()
-                        } else {
-                            location.start()
-                        }
-                    }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        DiagnosticLogView()
-                    } label: {
-                        Image(systemName: "doc.text.magnifyingglass")
-                    }
-                    .accessibilityLabel("Diagnostiek")
+        }
+        .background(Color(.systemBackground))
+    }
+
+    private var header: some View {
+        HStack {
+            Text("FlitsMaatje")
+                .font(.title2.bold())
+            Spacer()
+            Button(location.isTracking ? "Stop" : "Start") {
+                if location.isTracking {
+                    location.stop()
+                } else {
+                    location.start()
                 }
             }
+            .buttonStyle(.bordered)
         }
+        .padding(.horizontal)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemBackground))
     }
 
     private var speedPanel: some View {
@@ -57,14 +59,12 @@ struct ContentView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-
             Spacer()
-
             if let limit = location.speedLimit {
                 VStack(spacing: 4) {
                     ZStack {
                         Circle()
-                            .strokeBorder(isSpeeding ? Color.red : Color.white.opacity(0.25), lineWidth: 3)
+                            .strokeBorder(isSpeeding ? Color.red : Color.gray.opacity(0.3), lineWidth: 3)
                             .frame(width: 56, height: 56)
                         Text("\(limit)")
                             .font(.title3.bold().monospacedDigit())
@@ -84,13 +84,12 @@ struct ContentView: View {
     }
 
     private var isSpeeding: Bool {
-        location.fineEstimate?.excess_kmh ?? 0 >= 4
+        (location.fineEstimate?.excess_kmh ?? 0) >= 4
     }
 
     private func fineBanner(_ text: String) -> some View {
         HStack(spacing: 10) {
-            Text("🚨")
-                .font(.title2)
+            Text("🚨").font(.title2)
             Text(text)
                 .font(.subheadline.weight(.semibold))
                 .multilineTextAlignment(.leading)
@@ -107,8 +106,7 @@ struct ContentView: View {
             HStack {
                 Text(alert.icon).font(.largeTitle)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(alert.label)
-                        .font(.headline)
+                    Text(alert.label).font(.headline)
                     Text("over \(alert.distance_m) m")
                         .font(.title2.bold().monospacedDigit())
                         .foregroundStyle(.red)
@@ -117,18 +115,10 @@ struct ContentView: View {
                 Image(systemName: location.isTracking ? "bell.fill" : "bell.slash")
                     .foregroundStyle(.orange)
             }
-            Text("Alarm bij naderen (600 → 400 → 200 → 100 m) + elke 25 s")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding()
         .frame(maxWidth: .infinity)
         .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.red.opacity(0.35), lineWidth: 1)
-        )
     }
 
     private var clearCard: some View {
@@ -155,26 +145,26 @@ struct ContentView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            Label("Ingebouwde navigatie: tab Navigatie — zoek of tik op kaart", systemImage: "1.circle")
-            Label("Flitsalarm: geluid + trilling + melding", systemImage: "2.circle")
-            Label("Boete-indicatie: indicatief, geen juridisch advies", systemImage: "3.circle")
-            Label("CarPlay: stille boete-popup bij te hard rijden (geen spraak)", systemImage: "4.circle")
-
             if location.managerAuthorizationIsWhenInUse {
-                Button("Zet locatie op Altijd (aanbevolen)") {
+                Button("Zet locatie op Altijd (CarPlay)") {
                     location.requestAlwaysPermission()
+                }
+                .font(.footnote.weight(.semibold))
+            } else if location.managerAuthorizationIsAlways {
+                Button("Achtergrond-tracking aanzetten") {
+                    location.enableBackgroundTrackingIfAuthorized()
                 }
                 .font(.footnote.weight(.semibold))
             }
 
-            NavigationLink {
-                DiagnosticLogView()
-            } label: {
-                Label("Diagnostiek & logs", systemImage: "doc.text.magnifyingglass")
+            Button("Log naar server sturen") {
+                AppLogger.install()
+                AppLogger.enableUIUpdates()
+                AppLogger.uploadLogFile(reason: "manual-dashboard")
+                BootLogger.uploadAsync()
             }
+            .font(.footnote)
         }
-        .font(.footnote)
-        .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

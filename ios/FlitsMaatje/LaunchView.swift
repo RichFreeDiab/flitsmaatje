@@ -32,8 +32,7 @@ struct LaunchView: View {
         case .running:
             if let location {
                 RunningShellView(location: location) {
-                    AppLogger.install()
-                    AppLogger.enableUIUpdates()
+                    BootLogger.mark("dashboard-tap")
                     phase = .dashboard
                 }
             }
@@ -42,7 +41,11 @@ struct LaunchView: View {
                 ContentView()
                     .environmentObject(location)
                     .onAppear {
-                        CarPlayDrivingTaskCoordinator.shared.locationService = location
+                        BootLogger.mark("dashboard-visible")
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            CarPlayDrivingTaskCoordinator.shared.locationService = location
+                        }
                     }
             }
         }

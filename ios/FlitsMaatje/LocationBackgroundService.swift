@@ -135,7 +135,6 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         _ = manager
     }
 
-    @MainActor
     private func scheduleLocationProcessing(_ location: CLLocation) {
         locationProcessingTask?.cancel()
         locationProcessingTask = Task {
@@ -143,7 +142,6 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
     }
 
-    @MainActor
     private func applyAuthorizationState(allowBackground: Bool) {
         AppLogger.log("Locatie: autorisatie=\(manager.authorizationStatus.rawValue)")
         switch manager.authorizationStatus {
@@ -171,7 +169,6 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     /// Apple vereist: eerst startUpdatingLocation, dán pas allowsBackgroundLocationUpdates.
-    @MainActor
     private func startTracking(enableBackground: Bool) {
         configureManagerIfNeeded()
         guard isAppActive else { return }
