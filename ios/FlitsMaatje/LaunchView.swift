@@ -1,53 +1,48 @@
 import SwiftUI
 
-struct RootView: View {
+/// Minimale opstart — geen GPS, geen CarPlay, geen logging tot de gebruiker start.
+struct LaunchView: View {
+    @State private var isRunning = false
     @State private var location: LocationBackgroundService?
-    @State private var isStarting = false
 
     var body: some View {
         Group {
-            if let location {
+            if isRunning, let location {
                 ContentView()
                     .environmentObject(location)
                     .onChange(of: location.currentAlert) { _, alert in
                         CarPlayDrivingTaskCoordinator.shared.update(alert: alert)
                     }
             } else {
-                VStack(spacing: 24) {
+                VStack(spacing: 28) {
                     Text("FlitsMaatje")
-                        .font(.largeTitle.bold())
-                    Text("Flitsers & boete-indicatie")
-                        .font(.subheadline)
+                        .font(.system(size: 34, weight: .bold))
+                    Text("Klaar om te rijden")
                         .foregroundStyle(.secondary)
-                    Button(isStarting ? "Starten…" : "Start FlitsMaatje") {
-                        startApp()
+                    Button(action: start) {
+                        Text("Start")
+                            .font(.title3.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isStarting)
+                    .padding(.horizontal, 32)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemBackground))
             }
-        }
-        .onAppear {
-            BootLogger.mark("rootview-onAppear")
-            BootLogger.uploadAsync()
         }
     }
 
-    private func startApp() {
-        guard !isStarting else { return }
-        isStarting = true
-        BootLogger.mark("user-start-tap")
-
+    private func start() {
+        AppLogger.install()
+        AppLogger.enableUIUpdates()
         let service = LocationBackgroundService()
         location = service
+        isRunning = true
         CarPlayDrivingTaskCoordinator.shared.locationService = service
-        BootLogger.mark("location-created")
-
         service.requestPermissionAndStart()
         service.activateWhenReady()
-        BootLogger.mark("bootstrap-complete")
-        BootLogger.uploadAsync()
-        isStarting = false
+        AppLogger.markBootStage("user-started")
     }
 }

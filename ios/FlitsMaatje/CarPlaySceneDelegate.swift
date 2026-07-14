@@ -7,9 +7,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         didConnect interfaceController: CPInterfaceController,
         to window: CPWindow
     ) {
-        BootLogger.mark("carplay-connected")
         Task { @MainActor in
-            AppLogger.log("CarPlay: verbonden")
             CarPlaySessionTracker.isForegroundOnCarPlay = true
             CarPlayDrivingTaskCoordinator.shared.attach(interfaceController: interfaceController)
         }
@@ -21,7 +19,6 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         from window: CPWindow
     ) {
         Task { @MainActor in
-            AppLogger.log("CarPlay: verbroken")
             CarPlaySessionTracker.isForegroundOnCarPlay = false
             CarPlayDrivingTaskCoordinator.shared.detach()
         }

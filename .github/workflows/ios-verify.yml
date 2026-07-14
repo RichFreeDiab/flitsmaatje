@@ -128,5 +128,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLITSMAATJE_CHANGELOG: "iOS 26: UIKit-venster + handmatige start (build 89)"
+          FLITSMAATJE_CHANGELOG: "Nucleaire opstartfix: nul code bij launch, Start-knop"
         run: bundle exec fastlane beta
