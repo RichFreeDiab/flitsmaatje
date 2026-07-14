@@ -4,6 +4,7 @@ import Foundation
 enum BootLogger {
     private static let fileName = "boot.log"
     private static let maxBytes = 64_000
+    private static var didWriteProcessStart = false
 
     private static var logPath: String {
         if let url = FileManager.default.containerURL(
@@ -14,29 +15,15 @@ enum BootLogger {
         return (NSTemporaryDirectory() as NSString).appendingPathComponent(fileName)
     }
 
-    private static let booted: Void = {
-        mark("process-start")
-    }()
-
     static func mark(_ message: String) {
-        _ = booted
-        let line = "[\(isoTimestamp())] \(message)\n"
-        guard let data = line.data(using: .utf8) else { return }
-
-        let path = logPath
-        if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: nil)
+        if !didWriteProcessStart {
+            didWriteProcessStart = true
+            writeLine("process-start")
         }
-
-        guard let handle = FileHandle(forWritingAtPath: path) else { return }
-        defer { try? handle.close() }
-        handle.seekToEndOfFile()
-        handle.write(data)
-        trimIfNeeded(path: path)
+        writeLine(message)
     }
 
     static func readAll() -> String {
-        _ = booted
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: logPath)),
               let text = String(data: data, encoding: .utf8) else {
             return ""
@@ -48,7 +35,6 @@ enum BootLogger {
         uploadAsync()
     }
 
-    /// Upload op achtergrond — blokkeert nooit de main thread (iOS 26 launch watchdog).
     static func uploadAsync() {
         let boot = readAll()
         let diagnostic = AppLogger.readAllSync()
@@ -61,7 +47,6 @@ enum BootLogger {
         AppLogger.uploadRaw(body, reason: "boot")
     }
 
-    /// Alleen vanaf achtergrondthreads gebruiken.
     static func uploadSync(timeout: TimeInterval = 2.5) {
         let boot = readAll()
         let diagnostic = AppLogger.readAllSync()
@@ -72,6 +57,29 @@ enum BootLogger {
         \(diagnostic.isEmpty ? "(leeg)" : diagnostic)
         """
         AppLogger.uploadRawSync(body, reason: "boot", timeout: timeout)
+    }
+
+    private static func writeLine(_ message: String) {
+        let line = "[\(isoTimestamp())] \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+
+        let path = logPath
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
+        }
+
+        if let handle = FileHandle(forWritingAtPath: path) {
+            defer { try? handle.close() }
+            handle.seekToEndOfFile()
+            handle.write(data)
+        } else if let url = URL(string: "file://\(path)") {
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+            }
+        }
+        trimIfNeeded(path: path)
     }
 
     private static func isoTimestamp() -> String {
