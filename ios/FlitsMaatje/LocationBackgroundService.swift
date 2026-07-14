@@ -1,11 +1,8 @@
-import ActivityKit
 import AVFoundation
 import CoreLocation
 import Foundation
 import UIKit
-import WidgetKit
 
-@MainActor
 final class LocationBackgroundService: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isTracking = false
     @Published var statusText = "Wacht op locatietoestemming…"
@@ -43,7 +40,6 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var lastAlarmAt: Date = .distantPast
     private var lastSpeedingSignature: String?
     private var lastCarPlayRefreshAt: Date = .distantPast
-    private var liveActivity: Activity<FlitsMaatjeAttributes>?
     private var isAppActive = false
 
     private let distanceAlarmThresholds = [600, 400, 200, 100]
@@ -51,7 +47,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private let carPlayRefreshInterval: TimeInterval = 2
 
     func prepareForUse() {
-        AppLogger.markBootStage("location-prepare")
+        BootLogger.mark("location-prepare")
         configureManagerIfNeeded()
         if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
@@ -61,7 +57,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     /// Alleen voorgrond-GPS — geen achtergrondvlag (crash op iOS 26).
     func activateForegroundOnly() {
         isAppActive = true
-        AppLogger.markBootStage("location-activate-foreground")
+        BootLogger.mark("location-activate-foreground")
         applyAuthorizationState(allowBackground: false)
     }
 
@@ -115,21 +111,19 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastLocation = nil
         resetAlarmState()
         clearSpeedingState()
-        endLiveActivity()
         persistSnapshot(lat: nil, lng: nil, alert: nil, message: "Tracking gestopt")
-        WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         Task { @MainActor in
-            scheduleLocationProcessing(location)
+            self.scheduleLocationProcessing(location)
         }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
-            applyAuthorizationState(allowBackground: false)
+            self.applyAuthorizationState(allowBackground: false)
         }
     }
 
@@ -140,6 +134,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         _ = manager
     }
 
+    @MainActor
     private func scheduleLocationProcessing(_ location: CLLocation) {
         locationProcessingTask?.cancel()
         locationProcessingTask = Task {
@@ -147,6 +142,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
     }
 
+    @MainActor
     private func applyAuthorizationState(allowBackground: Bool) {
         AppLogger.log("Locatie: autorisatie=\(manager.authorizationStatus.rawValue)")
         switch manager.authorizationStatus {
@@ -174,6 +170,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     /// Apple vereist: eerst startUpdatingLocation, dán pas allowsBackgroundLocationUpdates.
+    @MainActor
     private func startTracking(enableBackground: Bool) {
         configureManagerIfNeeded()
         guard isAppActive else { return }
@@ -250,17 +247,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             if let alert {
                 statusText = "\(alert.label) over \(alert.distance_m) m"
                 persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)
-                updateLiveActivity(alert: alert)
                 handleFlitserAlarm(alert: alert)
                 refreshCarPlay(alert: alert)
             } else {
                 statusText = fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
                 persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
-                endLiveActivity()
                 resetAlarmState()
                 refreshCarPlay(alert: nil)
             }
-            WidgetCenter.shared.reloadTimelines(ofKind: AppConfig.widgetKind)
         } catch {
             if Task.isCancelled { return }
             statusText = "Kon API niet bereiken"
@@ -408,19 +402,5 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private func configureAudioSession() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
-    }
-
-    // MARK: - Live Activity
-
-    private func updateLiveActivity(alert: NearbyAlert) {
-        // Uitgeschakeld — Live Activity veroorzaakte instabiliteit op iOS 26.
-    }
-
-    private func endLiveActivity() {
-        guard let liveActivity else { return }
-        Task {
-            await liveActivity.end(nil, dismissalPolicy: .immediate)
-        }
-        self.liveActivity = nil
     }
 }

@@ -128,5 +128,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLITSMAATJE_CHANGELOG: "Build 92: veilig startscherm, geen zware UI bij Start"
+          FLITSMAATJE_CHANGELOG: "Build 93: Start zonder GPS, GPS aparte knop"
         run: bundle exec fastlane beta

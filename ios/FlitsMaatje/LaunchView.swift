@@ -8,7 +8,8 @@ struct LaunchView: View {
 
     private enum Phase {
         case idle
-        case starting
+        case armed
+        case gpsStarting
         case running
         case dashboard
     }
@@ -17,7 +18,9 @@ struct LaunchView: View {
         switch phase {
         case .idle:
             idleView
-        case .starting:
+        case .armed:
+            armedView
+        case .gpsStarting:
             VStack(spacing: 20) {
                 ProgressView()
                 Text(statusMessage)
@@ -26,19 +29,21 @@ struct LaunchView: View {
                     .padding(.horizontal)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .running, .dashboard:
+        case .running:
             if let location {
-                if phase == .dashboard {
-                    ContentView()
-                        .environmentObject(location)
-                        .onAppear {
-                            CarPlayDrivingTaskCoordinator.shared.locationService = location
-                        }
-                } else {
-                    RunningShellView(location: location) {
-                        phase = .dashboard
-                    }
+                RunningShellView(location: location) {
+                    AppLogger.install()
+                    AppLogger.enableUIUpdates()
+                    phase = .dashboard
                 }
+            }
+        case .dashboard:
+            if let location {
+                ContentView()
+                    .environmentObject(location)
+                    .onAppear {
+                        CarPlayDrivingTaskCoordinator.shared.locationService = location
+                    }
             }
         }
     }
@@ -49,7 +54,7 @@ struct LaunchView: View {
                 .font(.system(size: 34, weight: .bold))
             Text(statusMessage)
                 .foregroundStyle(.secondary)
-            Button(action: start) {
+            Button(action: armApp) {
                 Text("Start")
                     .font(.title3.bold())
                     .frame(maxWidth: .infinity)
@@ -62,36 +67,65 @@ struct LaunchView: View {
         .background(Color(.systemBackground))
     }
 
-    private func start() {
-        phase = .starting
-        statusMessage = "Locatie voorbereiden…"
+    private var armedView: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.green)
+            Text("App is gestart")
+                .font(.title2.bold())
+            Text("Tik hieronder om GPS te activeren.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            Button(action: startGPS) {
+                Text("GPS inschakelen")
+                    .font(.title3.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Stap 1: alleen UI — geen logger, geen GPS, geen zware objecten.
+    private func armApp() {
+        BootLogger.mark("start-tap")
+        BootLogger.uploadAsync()
+        phase = .armed
+    }
+
+    /// Stap 2: GPS pas na bevestiging.
+    private func startGPS() {
+        phase = .gpsStarting
+        statusMessage = "GPS voorbereiden…"
+        BootLogger.mark("gps-tap")
 
         Task {
-            AppLogger.install()
-            AppLogger.enableUIUpdates()
-            AppLogger.markBootStage("user-started")
-            AppLogger.flush()
-            AppLogger.uploadLogFile(reason: "start-tap")
-
+            BootLogger.mark("gps-before-service")
             let service = LocationBackgroundService()
             location = service
+            BootLogger.mark("gps-service-created")
 
-            statusMessage = "Toestemming controleren…"
+            statusMessage = "Locatie toestemming…"
             service.prepareForUse()
-            try? await Task.sleep(nanoseconds: 400_000_000)
+            BootLogger.mark("gps-prepared")
+
+            try? await Task.sleep(nanoseconds: 600_000_000)
 
             statusMessage = "GPS starten…"
             service.activateForegroundOnly()
-            try? await Task.sleep(nanoseconds: 800_000_000)
+            BootLogger.mark("gps-active")
 
-            AppLogger.markBootStage("user-started-complete")
-            AppLogger.uploadLogFile(reason: "start-complete")
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            BootLogger.uploadAsync()
             phase = .running
         }
     }
 }
 
-/// Lichtgewicht scherm vóór het volledige dashboard — voorkomt crash bij zware UI.
 private struct RunningShellView: View {
     @ObservedObject var location: LocationBackgroundService
     let onOpenDashboard: () -> Void
