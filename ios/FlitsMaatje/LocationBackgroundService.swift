@@ -49,7 +49,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     func requestPermissionAndStart() {
         AppLogger.markBootStage("location-permission-start")
         configureManagerIfNeeded()
-        AlertNotifier.requestPermissions()
+        DispatchQueue.main.async {
+            AlertNotifier.requestPermissions()
+        }
         if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
         } else {
@@ -70,21 +72,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     func start() {
-        configureManagerIfNeeded()
         guard isAppActive else {
             AppLogger.log("Locatie: start uitgesteld tot app actief is")
             return
         }
-        guard manager.authorizationStatus == .authorizedAlways ||
-              manager.authorizationStatus == .authorizedWhenInUse else {
-            AppLogger.log("Locatie: nog geen toestemming")
-            return
-        }
-        AppLogger.log("Locatie: startUpdatingLocation (auth=\(manager.authorizationStatus.rawValue))")
-        manager.startUpdatingLocation()
-        isTracking = true
-        statusText = "Achtergrond-tracking actief — flitsalarm + boete-indicatie"
-        configureAudioSession()
+        let useBackground = manager.authorizationStatus == .authorizedAlways
+        startTracking(enableBackground: useBackground)
     }
 
     func stop() {
@@ -138,18 +131,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         AppLogger.log("Locatie: autorisatie=\(manager.authorizationStatus.rawValue)")
         switch manager.authorizationStatus {
         case .authorizedAlways:
-            if isAppActive {
-                enableBackgroundLocationIfNeeded(true)
-            }
             statusText = "Altijd-toestemming — ideaal voor CarPlay op de achtergrond"
             if isAppActive {
-                startIfNeeded()
+                startTracking(enableBackground: true)
             }
         case .authorizedWhenInUse:
-            enableBackgroundLocationIfNeeded(false)
             statusText = "Alleen tijdens gebruik — tik hieronder voor Altijd"
             if isAppActive {
-                startIfNeeded()
+                startTracking(enableBackground: false)
             }
         case .denied, .restricted:
             statusText = "Geen locatietoestemming — ga naar Instellingen"
@@ -162,24 +151,45 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
     }
 
-    private func enableBackgroundLocationIfNeeded(_ enabled: Bool) {
+    /// Apple vereist: eerst startUpdatingLocation, dán pas allowsBackgroundLocationUpdates.
+    private func startTracking(enableBackground: Bool) {
+        configureManagerIfNeeded()
         guard isAppActive else { return }
-        guard manager.allowsBackgroundLocationUpdates != enabled else { return }
-        let wasTracking = isTracking
-        if wasTracking {
-            manager.stopUpdatingLocation()
+        guard manager.authorizationStatus == .authorizedAlways ||
+              manager.authorizationStatus == .authorizedWhenInUse else {
+            AppLogger.log("Locatie: nog geen toestemming")
+            return
         }
-        manager.allowsBackgroundLocationUpdates = enabled
-        manager.showsBackgroundLocationIndicator = enabled
-        AppLogger.log("Locatie: achtergrond-updates=\(enabled)")
-        if wasTracking {
+
+        if !isTracking {
+            AppLogger.log("Locatie: startUpdatingLocation (auth=\(manager.authorizationStatus.rawValue))")
+            manager.allowsBackgroundLocationUpdates = false
+            manager.showsBackgroundLocationIndicator = false
             manager.startUpdatingLocation()
+            isTracking = true
+            configureAudioSession()
         }
+
+        let wantsBackground = enableBackground && manager.authorizationStatus == .authorizedAlways
+        if wantsBackground && !manager.allowsBackgroundLocationUpdates {
+            manager.allowsBackgroundLocationUpdates = true
+            manager.showsBackgroundLocationIndicator = true
+            AppLogger.log("Locatie: achtergrond-updates=aan")
+        } else if !wantsBackground && manager.allowsBackgroundLocationUpdates {
+            manager.allowsBackgroundLocationUpdates = false
+            manager.showsBackgroundLocationIndicator = false
+            AppLogger.log("Locatie: achtergrond-updates=uit")
+        }
+
+        statusText = wantsBackground
+            ? "Achtergrond-tracking actief — flitsalarm + boete-indicatie"
+            : "Tracking actief — flitsalarm + boete-indicatie"
     }
 
     private func startIfNeeded() {
         guard !isTracking else { return }
-        start()
+        let useBackground = manager.authorizationStatus == .authorizedAlways
+        startTracking(enableBackground: useBackground)
     }
 
     private func processLocation(_ location: CLLocation) async {

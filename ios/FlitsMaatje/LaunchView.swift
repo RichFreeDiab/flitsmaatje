@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Minimale opstart — geen GPS, geen CarPlay, geen logging tot de gebruiker start.
 struct LaunchView: View {
     @State private var isRunning = false
     @State private var location: LocationBackgroundService?
+    @State private var statusMessage = "Klaar om te rijden"
 
     var body: some View {
         Group {
@@ -17,8 +17,10 @@ struct LaunchView: View {
                 VStack(spacing: 28) {
                     Text("FlitsMaatje")
                         .font(.system(size: 34, weight: .bold))
-                    Text("Klaar om te rijden")
+                    Text(statusMessage)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                     Button(action: start) {
                         Text("Start")
                             .font(.title3.bold())
@@ -35,14 +37,23 @@ struct LaunchView: View {
     }
 
     private func start() {
+        statusMessage = "Bezig met starten…"
         AppLogger.install()
         AppLogger.enableUIUpdates()
+
         let service = LocationBackgroundService()
         location = service
         isRunning = true
-        CarPlayDrivingTaskCoordinator.shared.locationService = service
-        service.requestPermissionAndStart()
-        service.activateWhenReady()
-        AppLogger.markBootStage("user-started")
+
+        Task { @MainActor in
+            AppLogger.markBootStage("user-started")
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            service.requestPermissionAndStart()
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            service.activateWhenReady()
+            CarPlayDrivingTaskCoordinator.shared.locationService = service
+            AppLogger.markBootStage("user-started-complete")
+            AppLogger.uploadLogFile(reason: "started")
+        }
     }
 }

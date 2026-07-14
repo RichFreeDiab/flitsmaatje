@@ -128,5 +128,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLITSMAATJE_CHANGELOG: "Nucleaire opstartfix: nul code bij launch, Start-knop"
+          FLITSMAATJE_CHANGELOG: "Crashfix na Start: GPS-volgorde iOS 26"
         run: bundle exec fastlane beta
