@@ -461,14 +461,17 @@
 
   const BOOT_STAGES = [
     { id: "process-start", label: "Process gestart (BootLogger)", delay: 100 },
-    { id: "didFinishLaunching", label: "AppDelegate didFinishLaunching", delay: 250 },
-    { id: "logger-installed", label: "Logger actief + sync upload", delay: 500 },
-    { id: "bootstrap-start", label: "UI zichtbaar — bootstrap start", delay: 750 },
-    { id: "location-created", label: "Locatieservice aangemaakt", delay: 950 },
-    { id: "rootview-ready", label: "RootView klaar — Status-tab zichtbaar", delay: 1150 },
-    { id: "location-permission-start", label: "Locatie: permissie aanvragen", delay: 1450 },
-    { id: "location-activate", label: "Locatie: actief na scenePhase .active", delay: 1750 },
-    { id: "location-tracking-active", label: "GPS-tracking gestart", delay: 2050 },
+    { id: "swiftui-app-init", label: "SwiftUI App init", delay: 200 },
+    { id: "didFinishLaunching", label: "AppDelegate didFinishLaunching", delay: 350 },
+    { id: "logger-installed", label: "Logger actief", delay: 500 },
+    { id: "phone-scene-willConnect", label: "Phone-scene verbonden (iOS 26)", delay: 650 },
+    { id: "rootview-onAppear", label: "RootView zichtbaar", delay: 800 },
+    { id: "bootstrap-start", label: "Bootstrap start", delay: 950 },
+    { id: "location-created", label: "Locatieservice aangemaakt", delay: 1150 },
+    { id: "rootview-ready", label: "App klaar", delay: 1300 },
+    { id: "location-permission-start", label: "Locatie: permissie", delay: 1600 },
+    { id: "location-activate", label: "Locatie actief", delay: 1900 },
+    { id: "location-tracking-active", label: "GPS-tracking", delay: 2200 },
   ];
 
   async function simulateBoot() {

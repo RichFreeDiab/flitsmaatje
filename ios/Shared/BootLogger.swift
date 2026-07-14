@@ -45,10 +45,23 @@ enum BootLogger {
     }
 
     static func upload() {
-        uploadSync(timeout: 0.1)
+        uploadAsync()
     }
 
-    /// Blokkeert kort zodat logs de server bereiken vóór een crash.
+    /// Upload op achtergrond — blokkeert nooit de main thread (iOS 26 launch watchdog).
+    static func uploadAsync() {
+        let boot = readAll()
+        let diagnostic = AppLogger.readAllSync()
+        let body = """
+        === BOOT LOG ===
+        \(boot.isEmpty ? "(leeg)" : boot)
+        === DIAGNOSTIC LOG ===
+        \(diagnostic.isEmpty ? "(leeg)" : diagnostic)
+        """
+        AppLogger.uploadRaw(body, reason: "boot")
+    }
+
+    /// Alleen vanaf achtergrondthreads gebruiken.
     static func uploadSync(timeout: TimeInterval = 2.5) {
         let boot = readAll()
         let diagnostic = AppLogger.readAllSync()

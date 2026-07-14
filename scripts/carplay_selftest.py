@@ -67,8 +67,11 @@ class CarPlaySimulator:
 
     def simulate_launch(self) -> None:
         self.mark_boot("process-start")
+        self.mark_boot("swiftui-app-init")
         self.mark_boot("didFinishLaunching")
         self.mark_boot("logger-installed")
+        self.mark_boot("phone-scene-willConnect")
+        self.mark_boot("rootview-onAppear")
         self.mark_boot("bootstrap-start")
         self.mark_boot("location-created")
         self.mark_boot("rootview-ready")
@@ -171,6 +174,8 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         "process-start",
         "didFinishLaunching",
         "logger-installed",
+        "phone-scene-willConnect",
+        "rootview-onAppear",
         "bootstrap-start",
         "location-created",
         "rootview-ready",
