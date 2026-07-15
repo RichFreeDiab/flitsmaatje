@@ -32,6 +32,9 @@ struct FlitsMaatjeProvider: TimelineProvider {
                     lng: 4.89,
                     confirms: 3
                 ),
+                speedKmh: 50,
+                speedLimitKmh: 50,
+                fineText: nil,
                 statusMessage: "Vaste flitser over 420 m"
             )
         )
@@ -61,7 +64,9 @@ struct FlitsMaatjeWidgetView: View {
 
     var body: some View {
         Group {
-            if let alert = entry.snapshot.alert {
+            if entry.snapshot.speedKmh != nil || entry.snapshot.speedLimitKmh != nil || entry.snapshot.fineText != nil {
+                drivingView
+            } else if let alert = entry.snapshot.alert {
                 alertView(alert)
             } else {
                 clearView
@@ -78,6 +83,36 @@ struct FlitsMaatjeWidgetView: View {
                 Color.black.opacity(0.85)
             }
         }
+    }
+
+    private var drivingView: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Image(systemName: "speedometer")
+                    .foregroundStyle(.yellow)
+                Text("FlitsMaatje").font(.caption2.weight(.semibold))
+                Spacer()
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("\(entry.snapshot.speedKmh ?? 0)")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                Text("km/u").font(.caption)
+            }
+            if let limit = entry.snapshot.speedLimitKmh {
+                Text("Limiet \(limit) km/u")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            if let fine = entry.snapshot.fineText {
+                Text(fine)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private func alertView(_ alert: NearbyAlert) -> some View {
@@ -146,6 +181,9 @@ struct FlitsMaatjeWidgetView: View {
                 lng: 0,
                 confirms: 2
             ),
+            speedKmh: 82,
+            speedLimitKmh: 80,
+            fineText: "Mogelijke boete: € 35",
             statusMessage: "Mobiele flitser over 650 m"
         )
     )

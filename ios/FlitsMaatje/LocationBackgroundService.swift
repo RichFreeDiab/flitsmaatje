@@ -392,6 +392,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             latitude: lat,
             longitude: lng,
             alert: alert,
+            speedKmh: currentSpeedKmh,
+            speedLimitKmh: speedLimit,
+            fineText: fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit),
             statusMessage: message
         )
         SharedStore.save(snapshot)

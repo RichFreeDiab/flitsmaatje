@@ -107,6 +107,9 @@ struct WidgetSnapshot: Codable, Equatable {
     var latitude: Double?
     var longitude: Double?
     var alert: NearbyAlert?
+    var speedKmh: Int?
+    var speedLimitKmh: Int?
+    var fineText: String?
     var statusMessage: String
 
     static let clear = WidgetSnapshot(
@@ -114,6 +117,9 @@ struct WidgetSnapshot: Codable, Equatable {
         latitude: nil,
         longitude: nil,
         alert: nil,
+        speedKmh: nil,
+        speedLimitKmh: nil,
+        fineText: nil,
         statusMessage: "Geen meldingen in de buurt"
     )
 }
