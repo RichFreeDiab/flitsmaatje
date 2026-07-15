@@ -4,8 +4,7 @@ import UIKit
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didConnect interfaceController: CPInterfaceController,
-        to window: CPWindow
+        didConnect interfaceController: CPInterfaceController
     ) {
         Task { @MainActor in
             CarPlaySessionTracker.isForegroundOnCarPlay = true
@@ -15,8 +14,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didDisconnect interfaceController: CPInterfaceController,
-        from window: CPWindow
+        didDisconnect interfaceController: CPInterfaceController
     ) {
         Task { @MainActor in
             CarPlaySessionTracker.isForegroundOnCarPlay = false
