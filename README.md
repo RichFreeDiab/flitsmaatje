@@ -77,7 +77,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=/pad/naar/apps/flitsmaatje
-ExecStart=/pad/naar/apps/flitsmaatje/venv/bin/gunicorn -w 2 -b 127.0.0.1:5065 app:app
+ExecStart=/pad/naar/apps/flitsmaatje/venv/bin/gunicorn -w 2 -b 127.0.0.1:5068 app:app --timeout 30
 Restart=always
 
 [Install]

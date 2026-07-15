@@ -10,6 +10,7 @@ Functies:
 - Achtergrondtaak ruimt verlopen meldingen op (lazy, bij elke GET)
 """
 
+import os
 import sqlite3
 import time
 import math
@@ -77,7 +78,9 @@ DENY_THRESHOLD = -3
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
+        g.db = sqlite3.connect(DB_PATH, timeout=15)
+        g.db.execute("PRAGMA busy_timeout = 15000")
+        g.db.execute("PRAGMA journal_mode = WAL")
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -582,4 +585,6 @@ def vote_report(report_id):
 init_db()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5068, debug=True)
+    port = int(os.environ.get("PORT", "5068"))
+    debug = os.environ.get("FLITSMAATJE_DEBUG", "0").lower() in {"1", "true", "yes"}
+    app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=debug)

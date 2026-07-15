@@ -110,6 +110,9 @@ struct LaunchView: View {
             BootLogger.mark("gps-before-service")
             let service = LocationBackgroundService()
             location = service
+            // CarPlay may connect before the phone dashboard is opened. Keep the
+            // shared coordinator connected to the live GPS service immediately.
+            CarPlayDrivingTaskCoordinator.shared.locationService = service
             BootLogger.mark("gps-service-created")
 
             statusMessage = "Locatie toestemming…"
