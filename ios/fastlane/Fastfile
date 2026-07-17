@@ -92,8 +92,9 @@ def install_app_store_profiles!(api_key:)
       # so we only add keys when needed.
       opts[:force] = true
     else
-      # Keep widget profile readonly to avoid churn.
-      opts[:readonly] = true
+      # Regenerate the widget profile too: App Group assignments must be
+      # reflected in both targets' provisioning profiles.
+      opts[:force] = true
     end
 
     sigh(**opts)
