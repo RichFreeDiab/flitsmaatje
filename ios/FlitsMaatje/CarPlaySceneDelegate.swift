@@ -12,7 +12,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CarPlaySessionTracker.isForegroundOnCarPlay = true
             let mapViewController = CarPlayMapViewController()
             self.mapViewController = mapViewController
-            templateApplicationScene.carWindow?.rootViewController = mapViewController
+            templateApplicationScene.carWindow.rootViewController = mapViewController
 
             let mapTemplate = CPMapTemplate()
             mapTemplate.title = "FlitsMaatje"
