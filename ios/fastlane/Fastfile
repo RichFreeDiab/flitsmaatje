@@ -238,8 +238,8 @@ platform :ios do
         teamID: ENV["APPLE_TEAM_ID"]
       },
       xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual -allowProvisioningUpdates",
-      xcpretty: false,
-      output_style: "raw"
+      disable_xcpretty: true,
+      buildlog_path: "./build/logs"
     )
 
     ensure_app_store_record!
