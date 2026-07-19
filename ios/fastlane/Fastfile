@@ -244,11 +244,23 @@ platform :ios do
 
     ensure_app_store_record!
 
-    upload_to_testflight(
-      api_key: api_key,
-      skip_waiting_for_build_processing: true,
-      changelog: ENV["FLITSMAATJE_CHANGELOG"] || "CarPlay Dashboard-widget + achtergrondwaarschuwingen"
-    )
+    upload_attempt = 0
+    begin
+      upload_attempt += 1
+      upload_to_testflight(
+        api_key: api_key,
+        skip_waiting_for_build_processing: true,
+        changelog: ENV["FLITSMAATJE_CHANGELOG"] || "CarPlay Dashboard-widget + achtergrondwaarschuwingen"
+      )
+    rescue StandardError => error
+      retryable_upload_error = error.message.include?("buildUpload") || error.message.include?("409")
+      raise unless retryable_upload_error && upload_attempt < 3
+
+      wait_seconds = upload_attempt * 30
+      UI.important("App Store Connect uploadconflict (409); nieuwe poging over #{wait_seconds} seconden")
+      sleep(wait_seconds)
+      retry
+    end
   end
 
   private_lane :match_git_auth do
