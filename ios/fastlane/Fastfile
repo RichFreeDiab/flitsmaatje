@@ -159,7 +159,9 @@ def next_testflight_build_number(api_key:)
   end
 
   latest = [asc_latest, spaceship_latest].max
-  next_build = latest + 1
+  # App Store Connect can reserve a build number even when the upload job
+  # later fails. Leave one safety step so a retry never reuses that number.
+  next_build = latest + 2
   UI.important(
     "Build-nummer: #{next_build} (fastlane=#{asc_latest}, spaceship=#{spaceship_latest})"
   )
