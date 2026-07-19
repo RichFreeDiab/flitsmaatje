@@ -64,3 +64,13 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: bundle exec fastlane beta
 
+      - name: Bewaar volledige buildlogs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-build-logs-${{ github.run_number }}
+          if-no-files-found: warn
+          path: |
+            ios/build/**
+            ~/Library/Logs/gym/**
+
