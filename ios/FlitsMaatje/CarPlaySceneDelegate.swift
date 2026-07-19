@@ -15,7 +15,6 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             templateApplicationScene.carWindow.rootViewController = mapViewController
 
             let mapTemplate = CPMapTemplate()
-            mapTemplate.title = "FlitsMaatje"
             mapTemplate.trailingNavigationBarButtons = [
                 CPBarButton(title: "Mijn locatie") { [weak mapViewController] _ in
                     mapViewController?.recenter()
