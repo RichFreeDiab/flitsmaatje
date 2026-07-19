@@ -112,6 +112,15 @@ struct LaunchView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .padding(.horizontal, 32)
+
+                Button(action: openNavigation) {
+                    Label("Navigatie openen", systemImage: "map")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+                .padding(.horizontal, 32)
             }
             Spacer()
         }
