@@ -6,13 +6,14 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didConnect interfaceController: CPInterfaceController
+        didConnect interfaceController: CPInterfaceController,
+        to window: CPWindow
     ) {
         Task { @MainActor in
             CarPlaySessionTracker.isForegroundOnCarPlay = true
             let mapViewController = CarPlayMapViewController()
             self.mapViewController = mapViewController
-            templateApplicationScene.carWindow.rootViewController = mapViewController
+            window.rootViewController = mapViewController
 
             let mapTemplate = CPMapTemplate()
             mapTemplate.trailingNavigationBarButtons = [
@@ -26,7 +27,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didDisconnect interfaceController: CPInterfaceController
+        didDisconnect interfaceController: CPInterfaceController,
+        from window: CPWindow
     ) {
         Task { @MainActor in
             CarPlaySessionTracker.isForegroundOnCarPlay = false
