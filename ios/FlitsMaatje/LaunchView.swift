@@ -4,7 +4,11 @@ import SwiftUI
 struct LaunchView: View {
     @State private var phase: Phase = .idle
     @State private var location: LocationBackgroundService?
+    @State private var navigationService: NavigationService?
     @State private var statusMessage = "Klaar om te rijden"
+    @State private var openNavigationAfterGPS = false
+    @State private var showLocationHelp = false
+    @State private var showAbout = false
 
     private enum Phase {
         case idle
@@ -12,6 +16,7 @@ struct LaunchView: View {
         case gpsStarting
         case running
         case dashboard
+        case navigation
     }
 
     var body: some View {
@@ -48,26 +53,80 @@ struct LaunchView: View {
                         }
                     }
             }
+        case .navigation:
+            if let location, let navigationService {
+                NavigationMapView()
+                    .environmentObject(location)
+                    .environmentObject(navigationService)
+            }
         }
     }
 
     private var idleView: some View {
-        VStack(spacing: 28) {
-            Text("FlitsMaatje")
-                .font(.system(size: 34, weight: .bold))
-            Text(statusMessage)
-                .foregroundStyle(.secondary)
-            Button(action: armApp) {
-                Text("Start")
-                    .font(.title3.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+        VStack(spacing: 0) {
+            HStack {
+                Text("FlitsMaatje")
+                    .font(.title2.bold())
+                Spacer()
+                Menu {
+                    Button(action: armApp) {
+                        Label("Snelheidsdashboard", systemImage: "speedometer")
+                    }
+                    Button(action: openNavigation) {
+                        Label("Navigatie", systemImage: "map")
+                    }
+                    Divider()
+                    Button { showLocationHelp = true } label: {
+                        Label("GPS & CarPlay", systemImage: "car.fill")
+                    }
+                    Button { showAbout = true } label: {
+                        Label("Over FlitsMaatje", systemImage: "info.circle")
+                    }
+                } label: {
+                    Label("Menu", systemImage: "line.3.horizontal")
+                        .labelStyle(.iconOnly)
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Navigatiemenu")
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.horizontal, 32)
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+            .background(Color(.secondarySystemBackground))
+
+            Spacer()
+
+            VStack(spacing: 28) {
+                Image(systemName: "speedometer")
+                    .font(.system(size: 54))
+                    .foregroundStyle(.blue)
+                Text("Klaar om te rijden")
+                    .font(.title2.bold())
+                Text(statusMessage)
+                    .foregroundStyle(.secondary)
+                Button(action: armApp) {
+                    Text("Start")
+                        .font(.title3.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.horizontal, 32)
+            }
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+        .alert("GPS & CarPlay", isPresented: $showLocationHelp) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Start de app en geef locatietoestemming. Kies daarna in Instellingen > CarPlay > jouw auto > Widgets voor FlitsMaatje.")
+        }
+        .alert("Over FlitsMaatje", isPresented: $showAbout) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Snelheid, snelheidslimiet, flitsers en navigatie in één app.")
+        }
     }
 
     private var armedView: some View {
@@ -95,9 +154,15 @@ struct LaunchView: View {
 
     /// Stap 1: alleen UI — geen logger, geen GPS, geen zware objecten.
     private func armApp() {
+        openNavigationAfterGPS = false
         BootLogger.mark("start-tap")
         BootLogger.uploadAsync()
         phase = .armed
+    }
+
+    private func openNavigation() {
+        openNavigationAfterGPS = true
+        startGPS()
     }
 
     /// Stap 2: GPS pas na bevestiging.
@@ -110,6 +175,7 @@ struct LaunchView: View {
             BootLogger.mark("gps-before-service")
             let service = LocationBackgroundService()
             location = service
+            navigationService = NavigationService()
             // CarPlay may connect before the phone dashboard is opened. Keep the
             // shared coordinator connected to the live GPS service immediately.
             CarPlayDrivingTaskCoordinator.shared.locationService = service
@@ -127,7 +193,7 @@ struct LaunchView: View {
 
             try? await Task.sleep(nanoseconds: 400_000_000)
             BootLogger.uploadAsync()
-            phase = .running
+            phase = openNavigationAfterGPS ? .navigation : .running
         }
     }
 }
