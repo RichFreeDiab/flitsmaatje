@@ -19,7 +19,7 @@
   const info = document.getElementById("route-info");
   let routeLayer = null;
   let steps = [];
-  let nextStep = 0;
+  let nextStep = 0;\n  let destinationQuery = "";\n  let routeCoordinates = [];\n  let lastRerouteAt = 0;
 
   const icons = { depart: "🚗", arrive: "🏁", left: "↰", right: "↱", straight: "↑", uturn: "↩" };
 
@@ -90,7 +90,7 @@
       if (!r) throw Error("Route niet gevonden");
 
       if (routeLayer && window.flitsmaatjeMap) window.flitsmaatjeMap.removeLayer(routeLayer);
-      if (window.flitsmaatjeMap && r.geometry) {
+      routeCoordinates = r.geometry && r.geometry.coordinates ? r.geometry.coordinates.map(c => ({lat:c[1], lng:c[0]})) : [];\n      if (window.flitsmaatjeMap && r.geometry) {
         routeLayer = L.geoJSON(r.geometry, {style:{color:"#e8482c",weight:6,opacity:.85}}).addTo(window.flitsmaatjeMap);
         window.flitsmaatjeMap.fitBounds(routeLayer.getBounds(), {padding:[40,40]});
       }
