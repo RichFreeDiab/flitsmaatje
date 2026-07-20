@@ -17,6 +17,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         to window: CPWindow
     ) {
         Task { @MainActor in
+            AppLogger.log("CarPlay connect")
             self.interfaceController = interfaceController
             CarPlaySessionTracker.isForegroundOnCarPlay = true
 
@@ -53,6 +54,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CarPlayDrivingTaskCoordinator.shared.detach()
             navigationSession?.cancelTrip()
             navigationSession = nil
+            AppLogger.log("CarPlay disconnect")
             self.locationService?.stop()
             self.locationService = nil
             self.mapViewController = nil
@@ -62,6 +64,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     }
 
     private func presentSearch() {
+        AppLogger.log("CarPlay search opened")
         let template = CPSearchTemplate()
         template.delegate = self
         searchTemplate = template
@@ -74,6 +77,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         completionHandler: @escaping ([CPListItem]) -> Void
     ) {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppLogger.log("CarPlay search query length=\\(query.count)")
         guard query.count >= 2 else {
             completionHandler([])
             return
@@ -89,6 +93,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 let item = CPListItem(text: title, detailText: detail.isEmpty ? nil : detail)
                 item.handler = { [weak self] _, completion in
                     Task { @MainActor in
+                        AppLogger.log("CarPlay destination selected")
                         await self?.startRoute(to: coordinate, title: title)
                         completion()
                     }
@@ -108,6 +113,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     }
 
     private func startRoute(to coordinate: CLLocationCoordinate2D, title: String) async {
+        AppLogger.log("CarPlay route calculation started")
         guard let origin = mapViewController?.mapView.userLocation.location,
               let mapTemplate else { return }
 
@@ -161,6 +167,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 maneuverTravelEstimates: currentEstimate
             )
             navigationSession?.resumeTrip(withUpdatedRouteInformation: info)
+            AppLogger.log("CarPlay navigation session started maneuvers=\\(maneuvers.count)")
             interfaceController?.popTemplate(animated: true)
         } catch {
             mapViewController?.showNavigationError("Route berekenen mislukt")
