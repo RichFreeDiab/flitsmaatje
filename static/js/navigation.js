@@ -39,6 +39,14 @@
     return icon + " " + (mod ? mod.replaceAll("-", " ") : type) + road;
   }
 
+  function distanceMeters(a, b) {
+    const rad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * rad;
+    const dLng = (b.lng - a.lng) * rad;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+    return 6371000 * 2 * Math.asin(Math.sqrt(x));
+  }
+
   function renderStep() {
     const step = steps[nextStep];
     if (!step) {
@@ -106,6 +114,24 @@
 
   button.onclick = route;
   input.onkeydown = e => { if (e.key === "Enter") route(); };
+
+  window.addEventListener("flitsmaatje:position", (event) => {
+    const p = event.detail;
+    const step = steps[nextStep];
+    if (!step || !step.maneuver || !step.maneuver.location) return;
+    const target = {lat: step.maneuver.location[1], lng: step.maneuver.location[0]};
+    if (distanceMeters(p, target) <= 35) {
+      nextStep += 1;
+      renderStep();
+      const spoken = steps[nextStep];
+      if (spoken && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(instruction(spoken));
+        utterance.lang = "nl-NL";
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  });
 
   async function keepScreenOn() {
     try {
