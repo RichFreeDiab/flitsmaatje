@@ -3,6 +3,7 @@ import UIKit
 
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var mapViewController: CarPlayMapViewController?
+    private var locationService: LocationBackgroundService?
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
@@ -34,6 +35,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CarPlaySessionTracker.isForegroundOnCarPlay = false
             CarPlayDrivingTaskCoordinator.shared.detach()
             self.mapViewController = nil
+            self.locationService?.stop()
+            self.locationService = nil
         }
     }
 }
