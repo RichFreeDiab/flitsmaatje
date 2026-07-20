@@ -63,6 +63,7 @@
   async function route() {
     const query = input.value.trim();
     if (!query) return;
+    destinationQuery = query;
     button.disabled = true;
     button.textContent = "Zoeken...";
     info.hidden = true;
@@ -124,7 +125,16 @@
     const step = steps[nextStep];
     if (!step || !step.maneuver || !step.maneuver.location) return;
     const target = {lat: step.maneuver.location[1], lng: step.maneuver.location[0]};
-    if (distanceMeters(p, target) <= 35) {
+    if (routeCoordinates.length && Date.now() - lastRerouteAt > 15000) {
+      const nearest = Math.min(...routeCoordinates.map(point => distanceMeters(p, point)));
+      if (nearest > 120 && destinationQuery) {
+        lastRerouteAt = Date.now();
+        input.value = destinationQuery;
+        route();
+        return;
+      }
+    }
+    if (distanceMeters(p, target) <= 60) {
       nextStep += 1;
       renderStep();
       const spoken = steps[nextStep];
