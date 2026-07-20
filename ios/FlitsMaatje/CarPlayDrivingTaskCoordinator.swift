@@ -19,9 +19,7 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
     func attach(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
 
-        let template = makeListTemplate()
-        self.listTemplate = template
-        interfaceController.setRootTemplate(template, animated: false)
+        self.listTemplate = makeListTemplate()
     }
 
     func detach() {
