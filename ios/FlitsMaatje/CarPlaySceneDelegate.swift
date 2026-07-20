@@ -147,13 +147,13 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 maneuver.notificationInstructionVariants = [step.instructions]
                 maneuver.maneuverType = .followRoad
                 maneuver.initialTravelEstimates = CPTravelEstimates(
-                    distanceRemaining: step.distance,
+                    distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
                     timeRemaining: step.expectedTravelTime
                 )
                 return maneuver
             }
             let tripEstimates = CPTravelEstimates(
-                distanceRemaining: route.distance,
+                distanceRemaining: Measurement(value: route.distance, unit: UnitLength.meters),
                 timeRemaining: route.expectedTravelTime
             )
             let current = maneuvers.first.map { [$0] } ?? []
@@ -166,7 +166,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 tripTravelEstimates: tripEstimates,
                 maneuverTravelEstimates: currentEstimate
             )
-            navigationSession?.resumeTrip(withUpdatedRouteInformation: info)
+            navigationSession?.resumeTrip(updatedRouteInformation: info)
             AppLogger.log("CarPlay navigation session started maneuvers=\\(maneuvers.count)")
             interfaceController?.popTemplate(animated: true)
         } catch {
