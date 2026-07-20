@@ -81,10 +81,10 @@
       const r = data.routes && data.routes[0];
       if (!r) throw Error("Route niet gevonden");
 
-      if (routeLayer && window.map) window.map.removeLayer(routeLayer);
-      if (window.map && r.geometry) {
-        routeLayer = L.geoJSON(r.geometry, {style:{color:"#e8482c",weight:6,opacity:.85}}).addTo(window.map);
-        window.map.fitBounds(routeLayer.getBounds(), {padding:[40,40]});
+      if (routeLayer && window.flitsmaatjeMap) window.flitsmaatjeMap.removeLayer(routeLayer);
+      if (window.flitsmaatjeMap && r.geometry) {
+        routeLayer = L.geoJSON(r.geometry, {style:{color:"#e8482c",weight:6,opacity:.85}}).addTo(window.flitsmaatjeMap);
+        window.flitsmaatjeMap.fitBounds(routeLayer.getBounds(), {padding:[40,40]});
       }
 
       steps = (r.legs || []).flatMap(leg => leg.steps || []).filter(step => step.maneuver);
