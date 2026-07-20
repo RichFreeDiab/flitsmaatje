@@ -98,6 +98,11 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         mapView.removeOverlays(mapView.overlays)
     }
 
+    func showNavigationError(_ message: String) {
+        alertLabel.text = "⚠️ " + message
+        alertLabel.textColor = .systemRed
+    }
+
     func recenter() {
         mapView.userTrackingMode = .followWithHeading
     }
