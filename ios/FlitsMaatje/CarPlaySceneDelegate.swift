@@ -127,7 +127,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 routeChoices: [
                     CPRouteChoice(
                         summaryVariants: [title],
-                        additionalInformationVariants: [route.expectedTravelTime.formattedDuration],
+                        additionalInformationVariants: [String(format: "%.0f min", route.expectedTravelTime / 60.0)],
                         selectionSummaryVariants: [title]
                     )
                 ]
