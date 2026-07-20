@@ -328,6 +328,7 @@ const originalRenderReports = renderReports;
 renderReports = function (reports) {
   reports.forEach((r) => (typeCache[r.id] = r.type));
   originalRenderReports(reports);
+  checkProximityWarnings();
 };
 
 // --- Snelheidslimiet + boete-indicatie (Overpass/OSM via backend) ---
