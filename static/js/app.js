@@ -64,7 +64,7 @@ const SPEED_CHECK_MIN_INTERVAL_MS = 4000;
 let lastSpeedCheckTime = 0;
 
 function initMap(lat, lng) {
-  map = L.map("map", { zoomControl: true }).setView([lat, lng], 15);
+  map = L.map("map", { zoomControl: true }).setView([lat, lng], 15);\n  window.flitsmaatjeMap = map;
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap contributors",
     maxZoom: 19,
