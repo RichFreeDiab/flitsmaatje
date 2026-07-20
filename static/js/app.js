@@ -56,7 +56,7 @@ const reportFab = document.getElementById("report-fab");
 const reportMenu = document.getElementById("report-menu");
 const reportCancel = document.getElementById("report-cancel");
 
-let currentSpeedKmh = null;
+let currentSpeedKmh = null;\nlet currentHeading = null;
 let lastSpeedCheckPos = null;     // laatste positie waarvoor we /api/speed-check hebben aangeroepen
 let speedCheckTimer = null;
 const SPEED_CHECK_MIN_DISTANCE_M = 30;  // alleen opnieuw checken na zoveel meter verplaatsing
@@ -79,7 +79,7 @@ function initMap(lat, lng) {
   userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
 }
 
-function haversineMeters(lat1, lng1, lat2, lng2) {
+function bearingDegrees(lat1, lng1, lat2, lng2) {\n  const p1 = lat1 * Math.PI / 180;\n  const p2 = lat2 * Math.PI / 180;\n  const dl = (lng2 - lng1) * Math.PI / 180;\n  return (Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) * 180 / Math.PI + 360) % 360;\n}\n\nfunction haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const p1 = (lat1 * Math.PI) / 180;
   const p2 = (lat2 * Math.PI) / 180;
@@ -112,7 +112,7 @@ function updateSpeed(position) {
 function onPosition(position) {
   const lat = position.coords.latitude;
   const lng = position.coords.longitude;
-  userPos = { lat, lng };
+  userPos = { lat, lng };\n  if (position.coords.heading !== null && Number.isFinite(position.coords.heading)) currentHeading = position.coords.heading;
 
   if (!map) {
     initMap(lat, lng);
@@ -179,7 +179,7 @@ function renderReports(reports) {
       iconSize: [28, 28],
       iconAnchor: [14, 14],
     });
-    const marker = L.marker([r.lat, r.lng], { icon }).addTo(map);
+    const marker = L.marker([r.lat, r.lng], { icon }).addTo(map);\n    marker.report = r;
     marker.bindPopup(buildPopupHtml(r));
     marker.on("popupopen", (e) => attachVoteHandlers(e.popup, r.id));
     markers[r.id] = marker;
@@ -423,7 +423,7 @@ document.querySelectorAll(".report-btn").forEach((btn) => {
       await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, lat: userPos.lat, lng: userPos.lng }),
+        body: JSON.stringify({ type, lat: userPos.lat, lng: userPos.lng, heading: currentHeading }),
       });
       fetchReports();
     } catch (e) {
