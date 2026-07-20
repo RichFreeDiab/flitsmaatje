@@ -14,13 +14,12 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
     private(set) weak var interfaceController: CPInterfaceController?
     private var listTemplate: CPListTemplate?
     private var lastPresentedAlertId: String?
+    private var lastPresentedFineText: String?
 
     func attach(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
 
-        let template = makeListTemplate()
-        self.listTemplate = template
-        interfaceController.setRootTemplate(template, animated: false)
+        self.listTemplate = makeListTemplate()
     }
 
     func detach() {
@@ -38,9 +37,17 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
     func updateSpeeding(speedKmh: Int?, limit: Int?, fine: FineEstimate?) {
         guard interfaceController != nil else { return }
         refreshList()
+        guard let fine, let body = fine.displayText(speedKmh: speedKmh, limit: limit) else {
+            lastPresentedFineText = nil
+            return
+        }
+        guard lastPresentedFineText != body else { return }
+        lastPresentedFineText = body
+        presentSpeedingAlert(speedKmh: speedKmh, limit: limit, fine: fine)
     }
 
     func clearSpeeding() {
+        lastPresentedFineText = nil
         refreshList()
     }
 

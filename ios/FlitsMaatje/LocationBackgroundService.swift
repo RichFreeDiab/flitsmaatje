@@ -218,6 +218,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         if Task.isCancelled { return }
 
         lastLocation = location
+        AppLogger.log("GPS update accuracy=\\(Int(location.horizontalAccuracy))m speed=\\(currentSpeedKmh ?? -1)kmh")
         updateCurrentSpeed(from: location)
 
         let lat = location.coordinate.latitude

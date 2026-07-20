@@ -57,6 +57,7 @@ const reportMenu = document.getElementById("report-menu");
 const reportCancel = document.getElementById("report-cancel");
 
 let currentSpeedKmh = null;
+let currentHeading = null;
 let lastSpeedCheckPos = null;     // laatste positie waarvoor we /api/speed-check hebben aangeroepen
 let speedCheckTimer = null;
 const SPEED_CHECK_MIN_DISTANCE_M = 30;  // alleen opnieuw checken na zoveel meter verplaatsing
@@ -65,6 +66,7 @@ let lastSpeedCheckTime = 0;
 
 function initMap(lat, lng) {
   map = L.map("map", { zoomControl: true }).setView([lat, lng], 15);
+  window.flitsmaatjeMap = map;
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap contributors",
     maxZoom: 19,
@@ -77,6 +79,13 @@ function initMap(lat, lng) {
     iconAnchor: [11, 11],
   });
   userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+}
+
+function bearingDegrees(lat1, lng1, lat2, lng2) {
+  const p1 = lat1 * Math.PI / 180;
+  const p2 = lat2 * Math.PI / 180;
+  const dl = (lng2 - lng1) * Math.PI / 180;
+  return (Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) * 180 / Math.PI + 360) % 360;
 }
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
@@ -113,6 +122,8 @@ function onPosition(position) {
   const lat = position.coords.latitude;
   const lng = position.coords.longitude;
   userPos = { lat, lng };
+  if (position.coords.heading !== null && Number.isFinite(position.coords.heading)) currentHeading = position.coords.heading;
+  window.dispatchEvent(new CustomEvent("flitsmaatje:position", { detail: { lat, lng } }));
 
   if (!map) {
     initMap(lat, lng);
@@ -180,6 +191,7 @@ function renderReports(reports) {
       iconAnchor: [14, 14],
     });
     const marker = L.marker([r.lat, r.lng], { icon }).addTo(map);
+    marker.report = r;
     marker.bindPopup(buildPopupHtml(r));
     marker.on("popupopen", (e) => attachVoteHandlers(e.popup, r.id));
     markers[r.id] = marker;
@@ -232,6 +244,11 @@ function checkProximityWarnings() {
 
   Object.entries(markers).forEach(([id, marker]) => {
     const pos = marker.getLatLng();
+    if (currentHeading !== null && marker.report) {
+      const bearing = bearingDegrees(userPos.lat, userPos.lng, pos.lat, pos.lng);
+      const delta = Math.abs(((bearing - currentHeading + 540) % 360) - 180);
+      if (delta > 105) return;
+    }
     const dist = haversineMeters(userPos.lat, userPos.lng, pos.lat, pos.lng);
     if (dist < closestDist) {
       closestDist = dist;
@@ -423,7 +440,7 @@ document.querySelectorAll(".report-btn").forEach((btn) => {
       await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, lat: userPos.lat, lng: userPos.lng }),
+        body: JSON.stringify({ type, lat: userPos.lat, lng: userPos.lng, heading: currentHeading }),
       });
       fetchReports();
     } catch (e) {
@@ -471,3 +488,18 @@ installHintClose.addEventListener("click", () => {
 ["click", "touchstart"].forEach((ev) => {
   document.addEventListener(ev, unlockAudio, { once: true, passive: true });
 });
+
+
+// --- Diagnostics: captureer onverwachte frontend-fouten voor bugonderzoek ---
+(() => {
+  const diagnostic = (reason, detail) => {
+    const payload = String(detail || "").slice(0, 1000);
+    console.error("[FlitsMaatje]", reason, payload);
+    try {
+      navigator.sendBeacon("/api/diagnostic-log", new Blob([payload], {type: "text/plain"}));
+    } catch (_) {}
+  };
+  window.addEventListener("error", event => diagnostic("window-error", event.message));
+  window.addEventListener("unhandledrejection", event => diagnostic("unhandled-rejection", event.reason));
+  document.addEventListener("visibilitychange", () => console.info("[FlitsMaatje] visibility", document.visibilityState));
+})();
