@@ -488,3 +488,18 @@ installHintClose.addEventListener("click", () => {
 ["click", "touchstart"].forEach((ev) => {
   document.addEventListener(ev, unlockAudio, { once: true, passive: true });
 });
+
+
+// --- Diagnostics: captureer onverwachte frontend-fouten voor bugonderzoek ---
+(() => {
+  const diagnostic = (reason, detail) => {
+    const payload = String(detail || "").slice(0, 1000);
+    console.error("[FlitsMaatje]", reason, payload);
+    try {
+      navigator.sendBeacon("/api/diagnostic-log", new Blob([payload], {type: "text/plain"}));
+    } catch (_) {}
+  };
+  window.addEventListener("error", event => diagnostic("window-error", event.message));
+  window.addEventListener("unhandledrejection", event => diagnostic("unhandled-rejection", event.reason));
+  document.addEventListener("visibilitychange", () => console.info("[FlitsMaatje] visibility", document.visibilityState));
+})();
