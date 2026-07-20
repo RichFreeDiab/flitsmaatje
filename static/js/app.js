@@ -123,6 +123,7 @@ function onPosition(position) {
   const lng = position.coords.longitude;
   userPos = { lat, lng };
   if (position.coords.heading !== null && Number.isFinite(position.coords.heading)) currentHeading = position.coords.heading;
+  window.dispatchEvent(new CustomEvent("flitsmaatje:position", { detail: { lat, lng } }));
 
   if (!map) {
     initMap(lat, lng);
