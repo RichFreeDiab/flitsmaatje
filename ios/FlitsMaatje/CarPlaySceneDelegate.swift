@@ -148,26 +148,12 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 maneuver.maneuverType = .followRoad
                 maneuver.initialTravelEstimates = CPTravelEstimates(
                     distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
-                    timeRemaining: step.expectedTravelTime
+                    timeRemaining: TimeInterval(step.distance / 13.9)
                 )
                 return maneuver
             }
-            let tripEstimates = CPTravelEstimates(
-                distanceRemaining: Measurement(value: route.distance, unit: UnitLength.meters),
-                timeRemaining: route.expectedTravelTime
-            )
-            let current = maneuvers.first.map { [$0] } ?? []
-            let currentEstimate = maneuvers.first?.initialTravelEstimates ?? tripEstimates
-            let info = CPRouteInformation(
-                maneuvers: maneuvers,
-                laneGuidances: [],
-                currentManeuvers: current,
-                currentLaneGuidance: CPLaneGuidance(),
-                tripTravelEstimates: tripEstimates,
-                maneuverTravelEstimates: currentEstimate
-            )
-            navigationSession?.resumeTrip(updatedRouteInformation: info)
-            AppLogger.log("CarPlay navigation session started maneuvers=\\(maneuvers.count)")
+            navigationSession?.upcomingManeuvers = maneuvers
+            AppLogger.log("CarPlay navigation maneuvers published count=\\(maneuvers.count)")
             interfaceController?.popTemplate(animated: true)
         } catch {
             mapViewController?.showNavigationError("Route berekenen mislukt")
