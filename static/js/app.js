@@ -243,6 +243,11 @@ function checkProximityWarnings() {
 
   Object.entries(markers).forEach(([id, marker]) => {
     const pos = marker.getLatLng();
+    if (currentHeading !== null && marker.report) {
+      const bearing = bearingDegrees(userPos.lat, userPos.lng, pos.lat, pos.lng);
+      const delta = Math.abs(((bearing - currentHeading + 540) % 360) - 180);
+      if (delta > 105) return;
+    }
     const dist = haversineMeters(userPos.lat, userPos.lng, pos.lat, pos.lng);
     if (dist < closestDist) {
       closestDist = dist;
