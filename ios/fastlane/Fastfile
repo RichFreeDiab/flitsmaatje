@@ -127,6 +127,21 @@ end
 
 def prepare_carplay_signing!
   ensure_bundle_id!(identifier: WIDGET_BUNDLE_ID, name: "FlitsMaatje Widget")
+
+  with_asc_api_token do
+    bundle = Spaceship::ConnectAPI::BundleId.find(APP_BUNDLE_ID)
+    UI.user_error!("Hoofd-App ID niet gevonden: #{APP_BUNDLE_ID}") unless bundle
+    capabilities = bundle.get_capabilities
+    carplay = capabilities.find { |cap| cap.capability_type.to_s.upcase.include?("CARPLAY_MAPS") }
+    unless carplay
+      UI.important("CarPlay Maps ontbreekt op App ID; probeer capability te activeren")
+      bundle.create_capability("CARPLAY_MAPS")
+      UI.success("CarPlay Maps geactiveerd op App ID")
+    else
+      UI.success("CarPlay Maps staat actief op App ID")
+    end
+  end
+
   UI.important(
     "App Group #{APP_GROUP_ID} moet in Developer Portal aan beide App IDs gekoppeld zijn " \
     "(Configure → groep → Continue → Save)"
