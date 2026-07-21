@@ -6,5 +6,7 @@
 	<array>
 		<string>group.nl.readvanes.flitsmaatje</string>
 	</array>
+	<key>com.apple.developer.carplay-maps</key>
+	<true/>
 </dict>
 </plist>
