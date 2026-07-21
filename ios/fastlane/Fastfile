@@ -1,4 +1,6 @@
-default_platform(:ios)\n\n# CI trigger: verify CarPlay Maps entitlement and regenerate profiles
+default_platform(:ios)
+
+# CI trigger: verify CarPlay Maps entitlement and regenerate profiles
 
 APP_BUNDLE_ID = "nl.readvanes.flitsmaatje".freeze
 WIDGET_BUNDLE_ID = "nl.readvanes.flitsmaatje.widget".freeze
