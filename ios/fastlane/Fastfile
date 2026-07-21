@@ -42,13 +42,19 @@ def log_profile_entitlements!(path, label)
   return UI.important("#{label}: geen profile path") unless path && File.exist?(path)
 
   xml = `security cms -D -i '#{path}' 2>/dev/null`
-  if xml.include?(APP_GROUP_ID)
-    UI.success("#{label}: profile bevat #{APP_GROUP_ID}")
+  has_app_group = xml.include?(APP_GROUP_ID)
+  has_carplay_maps = xml.include?("com.apple.developer.carplay-maps")
+  UI.success("#{label}: profile bevat #{APP_GROUP_ID}") if has_app_group
+  UI.success("#{label}: profile bevat CarPlay Maps") if has_carplay_maps
+  missing = []
+  missing << APP_GROUP_ID unless has_app_group
+  missing << "com.apple.developer.carplay-maps" if label == "Hoofdapp" && !has_carplay_maps
+  if missing.empty?
     true
   else
     groups = xml[/com\.apple\.security\.application-groups.*?<\/array>/m]
     UI.important("#{label}: application-groups sectie: #{groups || 'afwezig'}")
-    UI.user_error!("#{label}: profile mist #{APP_GROUP_ID}")
+    UI.user_error!("#{label}: profile mist #{missing.join(', ')}")
   end
 end
 
