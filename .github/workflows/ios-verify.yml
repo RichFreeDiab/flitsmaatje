@@ -1,4 +1,5 @@
 # Verificatie + automatische TestFlight alleen als alles groen is.
+# Trigger CI after Fastfile repair.
 name: iOS Verify
 
 on:
