@@ -2,9 +2,9 @@ import CarPlay
 import Foundation
 import UIKit
 
-/// CarPlay "Driving Task" UI: een glanceable lijst + een enkel-tap alert.
-///
-/// Belangrijk: géén kaart, géén zoek, géén routeplanning; alleen meldingen die direct relevant zijn voor de rijtaak.
+/// CarPlay-status voor flits- en snelheidsmeldingen.
+/// Meldingen blijven bewust niet-modale informatie: ze mogen nooit de actieve
+/// navigatie van Apple Kaarten of een andere navigatie-app bedekken.
 @MainActor
 final class CarPlayDrivingTaskCoordinator: NSObject {
     static let shared = CarPlayDrivingTaskCoordinator()
@@ -13,102 +13,60 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
 
     private(set) weak var interfaceController: CPInterfaceController?
     private var listTemplate: CPListTemplate?
-    private var lastPresentedAlertId: String?
-    private var lastPresentedFineText: String?
+    private var lastLoggedAlertId: String?
+    private var lastLoggedFineText: String?
 
     func attach(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
-
-        self.listTemplate = makeListTemplate()
+        listTemplate = makeListTemplate()
     }
 
     func detach() {
         interfaceController = nil
         listTemplate = nil
-        lastPresentedAlertId = nil
+        lastLoggedAlertId = nil
+        lastLoggedFineText = nil
     }
 
     func update(alert: NearbyAlert?) {
         guard interfaceController != nil else { return }
         refreshList()
-        presentAlertIfNeeded(alert)
+        guard let alert else {
+            lastLoggedAlertId = nil
+            return
+        }
+        guard lastLoggedAlertId != alert.id else { return }
+        lastLoggedAlertId = alert.id
+        AppLogger.log("CarPlay melding zonder pop-up: \\(alert.label) op \\(alert.distance_m)m")
     }
 
     func updateSpeeding(speedKmh: Int?, limit: Int?, fine: FineEstimate?) {
         guard interfaceController != nil else { return }
         refreshList()
-        guard let fine, let body = fine.displayText(speedKmh: speedKmh, limit: limit) else {
-            lastPresentedFineText = nil
+        guard let fine, let text = fine.displayText(speedKmh: speedKmh, limit: limit) else {
+            lastLoggedFineText = nil
             return
         }
-        guard lastPresentedFineText != body else { return }
-        lastPresentedFineText = body
-        presentSpeedingAlert(speedKmh: speedKmh, limit: limit, fine: fine)
+        guard lastLoggedFineText != text else { return }
+        lastLoggedFineText = text
+        AppLogger.log("CarPlay snelheidsstatus zonder pop-up: \\(text)")
     }
 
     func clearSpeeding() {
-        lastPresentedFineText = nil
+        lastLoggedFineText = nil
         refreshList()
     }
 
     private func refreshList() {
-        guard let interfaceController else { return }
-
         if let template = listTemplate {
             template.updateSections(makeSections())
         } else {
-            let template = makeListTemplate()
-            listTemplate = template
-            interfaceController.setRootTemplate(template, animated: false)
-        }
-    }
-
-    private func presentAlertIfNeeded(_ alert: NearbyAlert?) {
-        guard let alert else {
-            lastPresentedAlertId = nil
-            return
-        }
-        guard lastPresentedAlertId != alert.id else { return }
-        lastPresentedAlertId = alert.id
-
-        let alertTemplate = CPAlertTemplate(
-            titleVariants: ["\(alert.icon) \(alert.label) — over \(alert.distance_m) m"],
-            actions: [
-                CPAlertAction(title: "OK", style: .default) { _ in }
-            ]
-        )
-
-        interfaceController?.presentTemplate(alertTemplate, animated: true)
-
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 7_000_000_000)
-            try? await interfaceController?.dismissTemplate(animated: true)
-        }
-    }
-
-    private func presentSpeedingAlert(speedKmh: Int?, limit: Int?, fine: FineEstimate) {
-        guard let body = fine.displayText(speedKmh: speedKmh, limit: limit) else { return }
-
-        let alertTemplate = CPAlertTemplate(
-            titleVariants: ["🚨 \(body)"],
-            actions: [
-                CPAlertAction(title: "OK", style: .default) { _ in }
-            ]
-        )
-
-        interfaceController?.presentTemplate(alertTemplate, animated: true)
-
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 7_000_000_000)
-            try? await interfaceController?.dismissTemplate(animated: true)
+            listTemplate = makeListTemplate()
         }
     }
 
     private func makeListTemplate() -> CPListTemplate {
-        let template = CPListTemplate(
-            title: "FlitsMaatje",
-            sections: makeSections()
-        )
+        let template = CPListTemplate(title: "FlitsMaatje", sections: makeSections())
         template.tabTitle = "Flitsers"
         template.tabImage = UIImage(systemName: "exclamationmark.triangle.fill")
         return template
@@ -117,34 +75,18 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
     private func makeSections() -> [CPListSection] {
         var sections: [CPListSection] = []
 
-        if let speedKmh = locationService?.currentSpeedKmh,
+        if let speed = locationService?.currentSpeedKmh,
            let limit = locationService?.speedLimit,
            let fine = locationService?.fineEstimate,
-           let detail = fine.displayText(speedKmh: speedKmh, limit: limit) {
-            let item = CPListItem(
-                text: "🚨 Te hard rijden",
-                detailText: detail
-            )
-            item.handler = { [weak self] _, completion in
-                Task { @MainActor in
-                    self?.presentSpeedingAlert(speedKmh: speedKmh, limit: limit, fine: fine)
-                    completion()
-                }
-            }
+           let detail = fine.displayText(speedKmh: speed, limit: limit) {
+            let item = CPListItem(text: "Snelheidswaarschuwing", detailText: detail)
+            item.isEnabled = false
             sections.append(CPListSection(items: [item], header: "Snelheid", sectionIndexTitle: nil))
         }
 
         if let alert = locationService?.currentAlert {
-            let item = CPListItem(
-                text: "\(alert.icon) \(alert.label)",
-                detailText: "Over \(alert.distance_m) m"
-            )
-            item.handler = { [weak self] _, completion in
-                Task { @MainActor in
-                    self?.presentAlertIfNeeded(alert)
-                    completion()
-                }
-            }
+            let item = CPListItem(text: "\\(alert.icon) \\(alert.label)", detailText: "Over \\(alert.distance_m) m")
+            item.isEnabled = false
             sections.append(CPListSection(items: [item], header: "Dichtstbijzijnde melding", sectionIndexTitle: nil))
         }
 
@@ -153,7 +95,6 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
             item.isEnabled = false
             sections.append(CPListSection(items: [item], header: nil, sectionIndexTitle: nil))
         }
-
         return sections
     }
 }
