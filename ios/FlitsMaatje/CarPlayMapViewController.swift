@@ -46,7 +46,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
 
     private func refreshOverlay() {
         let snapshot = SharedStore.load()
-        let alertText = snapshot.alert.map { "\\($0.icon) \\($0.label) • \\($0.distance_m) m" }
+        let alertText = snapshot.alert.map { "\($0.icon) \($0.label) • \($0.distance_m) m" }
         update(speedKmh: snapshot.speedKmh, limit: snapshot.speedLimitKmh, alert: alertText ?? snapshot.fineText)
     }
 
@@ -88,8 +88,8 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     }
 
     func update(speedKmh: Int?, limit: Int?, alert: String?) {
-        speedLabel.text = speedKmh.map { "\\($0) km/u" } ?? "-- km/u"
-        limitLabel.text = limit.map { "limiet \\($0)" } ?? "limiet onbekend"
+        speedLabel.text = speedKmh.map { "\($0) km/u" } ?? "-- km/u"
+        limitLabel.text = limit.map { "limiet \($0)" } ?? "limiet onbekend"
         alertLabel.text = alert ?? "Geen flitsmeldingen"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
     }
