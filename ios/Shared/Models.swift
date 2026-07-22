@@ -36,28 +36,28 @@ struct FineEstimate: Codable, Equatable {
     func displayText(speedKmh: Int?, limit: Int?) -> String? {
         guard excess_kmh >= 4 else { return nil }
         if om_zaak {
-            return "\\(excess_kmh) km/u te hard na meetcorrectie — controleer OM Boetebase"
+            return "\(excess_kmh) km/u te hard na meetcorrectie — controleer OM Boetebase"
         }
         if let bedrag {
-            return "\\(excess_kmh) km/u te hard na meetcorrectie — indicatief €\\(bedrag) incl. kosten"
+            return "\(excess_kmh) km/u te hard na meetcorrectie — indicatief €\(bedrag) incl. kosten"
         }
-        return "\\(excess_kmh) km/u te hard na meetcorrectie"
+        return "\(excess_kmh) km/u te hard na meetcorrectie"
     }
 
     func carPlaySubtitle(speedKmh: Int?, limit: Int?) -> String {
-        let speed = speedKmh.map { "\\($0) km/u" } ?? "— km/u"
-        let limitText = limit.map { "limiet \\($0)" } ?? "limiet onbekend"
-        return "\\(speed) · \\(limitText)"
+        let speed = speedKmh.map { "\($0) km/u" } ?? "— km/u"
+        let limitText = limit.map { "limiet \($0)" } ?? "limiet onbekend"
+        return "\(speed) · \(limitText)"
     }
 
     func carPlayNotificationTitle(speedKmh: Int?, limit: Int?) -> String? {
         guard displayText(speedKmh: speedKmh, limit: limit) != nil else { return nil }
-        return om_zaak ? "Te hard — controleer boete" : "Te hard — indicatief €\\(bedrag ?? 0)"
+        return om_zaak ? "Te hard — controleer boete" : "Te hard — indicatief €\(bedrag ?? 0)"
     }
 
     func carPlayNotificationSubtitle(speedKmh: Int?, limit: Int?) -> String? {
         guard carPlayNotificationTitle(speedKmh: speedKmh, limit: limit) != nil else { return nil }
-        return "\\(carPlaySubtitle(speedKmh: speedKmh, limit: limit)) · \\(excess_kmh) km/u na correctie"
+        return "\(carPlaySubtitle(speedKmh: speedKmh, limit: limit)) · \(excess_kmh) km/u na correctie"
     }
 }
 
