@@ -60,7 +60,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         }
         guard lastFlitserAlertId != alert.id else { return }
         lastFlitserAlertId = alert.id
-        AppLogger.log("CarPlay flitserstatus: \\(alert.label) op \\(alert.distance_m)m")
+        AppLogger.log("CarPlay flitserstatus: \(alert.label) op \(alert.distance_m)m")
     }
 
     func updateNavigationProgress() {
