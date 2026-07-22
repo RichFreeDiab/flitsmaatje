@@ -43,7 +43,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var lastCarPlayRefreshAt: Date = .distantPast
     private var isAppActive = false
 
-    /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update\n    /// direct als routevoortgang te verwerken.\n    var onLocationUpdate: ((CLLocation) -> Void)?\n
+    /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update
+    /// direct als routevoortgang te verwerken.
+    var onLocationUpdate: ((CLLocation) -> Void)?
+
     private let distanceAlarmThresholds = [600, 400, 200, 100]
     private let alarmRepeatInterval: TimeInterval = 25
     private let carPlayRefreshInterval: TimeInterval = 2
@@ -219,8 +222,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         if Task.isCancelled { return }
 
         lastLocation = location
-        AppLogger.log("GPS update accuracy=\\(Int(location.horizontalAccuracy))m speed=\\(currentSpeedKmh ?? -1)kmh")
+        AppLogger.log("GPS update accuracy=\(Int(location.horizontalAccuracy))m speed=\(currentSpeedKmh ?? -1)kmh")
         updateCurrentSpeed(from: location)
+        onLocationUpdate?(location)
 
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude
