@@ -43,6 +43,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var lastCarPlayRefreshAt: Date = .distantPast
     private var isAppActive = false
 
+    /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update\n    /// direct als routevoortgang te verwerken.\n    var onLocationUpdate: ((CLLocation) -> Void)?\n
     private let distanceAlarmThresholds = [600, 400, 200, 100]
     private let alarmRepeatInterval: TimeInterval = 25
     private let carPlayRefreshInterval: TimeInterval = 2
@@ -247,11 +248,13 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 statusText = "\(alert.label) over \(alert.distance_m) m"
                 persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)
                 handleFlitserAlarm(alert: alert)
+                CarPlayNavigationCoordinator.shared.handleFlitserAlert(alert)
                 refreshCarPlay(alert: alert)
             } else {
                 statusText = fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
                 persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
                 resetAlarmState()
+                CarPlayNavigationCoordinator.shared.handleFlitserAlert(nil)
                 refreshCarPlay(alert: nil)
             }
         } catch {
