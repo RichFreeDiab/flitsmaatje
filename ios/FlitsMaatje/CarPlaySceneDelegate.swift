@@ -16,7 +16,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             guard let self else { return }
 
             AppLogger.log("CarPlay connect")
-            CarPlaySessionTracker.isForegroundOnCarPlay = true
+            CarPlaySessionTracker.setForegroundOnCarPlay(true)
 
             let locationService = LocationBackgroundService()
             let navigationService = NavigationService()
@@ -60,7 +60,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         Task { @MainActor [weak self] in
             guard let self else { return }
 
-            CarPlaySessionTracker.isForegroundOnCarPlay = false
+            CarPlaySessionTracker.setForegroundOnCarPlay(false)
             self.locationService?.onLocationUpdate = nil
             self.navigationService?.stopNavigation()
             CarPlayNavigationCoordinator.shared.detach()
