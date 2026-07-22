@@ -124,15 +124,23 @@ def haversine_km(lat1, lng1, lat2, lng2):
 # ---------------------------------------------------------------------------
 # Overpass / OpenStreetMap snelheidslimiet-lookup
 # ---------------------------------------------------------------------------
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-OVERPASS_TIMEOUT = 8  # seconden
-OVERPASS_HEADERS = {"User-Agent": "FlitsMaatje/1.0 (https://flitsmaatje.readvanes.nl)", "Accept": "application/json"}
+OVERPASS_URLS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+)
+OVERPASS_TIMEOUT = 7  # seconden
+OVERPASS_HEADERS = {
+    "User-Agent": "FlitsMaatje/1.0 (https://flitsmaatje.readvanes.nl)",
+    "Accept": "application/json",
+}
 
 # Cache: key = (lat afgerond op 4 decimalen, lng afgerond op 4 decimalen) -> (resultaat, timestamp)
 # 4 decimalen lat/lng is ~11 meter precisie, ruim genoeg voor wegsegmenten en scheelt
 # enorm veel calls naar de (gratis, rate-limited) Overpass API.
 _speed_limit_cache = {}
 SPEED_LIMIT_CACHE_TTL = 120  # seconden
+_camera_cache = {}
+CAMERA_CACHE_TTL = 300  # seconden
 
 # Als een weg geen expliciete maxspeed-tag heeft, vallen we terug op een
 # vuistregel per wegtype (Nederlandse standaardlimieten). Dit is een
@@ -154,6 +162,24 @@ DEFAULT_LIMIT_BY_HIGHWAY = {
     "service": 30,
     "unclassified": 60,
 }
+
+
+def run_overpass_query(query):
+    """Gebruik een tweede Overpass-server als de eerste traag of onbereikbaar is."""
+    last_error = None
+    for endpoint in OVERPASS_URLS:
+        try:
+            response = requests.post(
+                endpoint,
+                data={"data": query},
+                headers=OVERPASS_HEADERS,
+                timeout=OVERPASS_TIMEOUT,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as error:
+            last_error = error
+    raise last_error or RuntimeError("Overpass niet bereikbaar")
 
 
 def classify_zone(highway_type, maxspeed):
@@ -185,12 +211,16 @@ def fetch_speed_limit(lat, lng):
     """
 
     try:
-        resp = requests.post(OVERPASS_URL, data={"data": query}, headers=OVERPASS_HEADERS, timeout=OVERPASS_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        # Overpass niet bereikbaar of timeout: geen limiet teruggeven i.p.v. de app te laten crashen
-        return {"maxspeed": None, "zone": None, "road_name": None, "source": "unavailable", "error": str(e)}
+        data = run_overpass_query(query)
+    except Exception as error:
+        # Nooit een exception naar de rijdende app laten ontsnappen.
+        return {
+            "maxspeed": None,
+            "zone": None,
+            "road_name": None,
+            "source": "unavailable",
+            "error": str(error),
+        }
 
     elements = data.get("elements", [])
     if not elements:
@@ -198,16 +228,8 @@ def fetch_speed_limit(lat, lng):
         _speed_limit_cache[cache_key] = (result, time.time())
         return result
 
-    # Kies de eerste weg met een expliciete maxspeed-tag; anders de eerste weg met een highway-type
-    chosen = None
-    for el in elements:
-        tags = el.get("tags", {})
-        if "maxspeed" in tags:
-            chosen = el
-            break
-    if chosen is None:
-        chosen = elements[0]
-
+    # Kies de eerste weg met een expliciete maxspeed-tag; anders de eerste weg met een highway-type.
+    chosen = next((el for el in elements if "maxspeed" in el.get("tags", {})), elements[0])
     tags = chosen.get("tags", {})
     highway_type = tags.get("highway")
     road_name = tags.get("name")
@@ -224,17 +246,57 @@ def fetch_speed_limit(lat, lng):
         maxspeed = DEFAULT_LIMIT_BY_HIGHWAY.get(highway_type)
         source = "default_estimate"
 
-    zone = classify_zone(highway_type, maxspeed)
-
     result = {
         "maxspeed": maxspeed,
-        "zone": zone,
+        "zone": classify_zone(highway_type, maxspeed),
         "road_name": road_name,
         "highway_type": highway_type,
         "source": source,
     }
     _speed_limit_cache[cache_key] = (result, time.time())
     return result
+
+
+def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
+    """Laad vaste flitsers uit OpenStreetMap met cache; tijdelijke meldingen blijven uit SQLite komen."""
+    cache_key = (round(lat, 2), round(lng, 2))
+    cached = _camera_cache.get(cache_key)
+    if cached and (time.time() - cached[1]) < CAMERA_CACHE_TTL:
+        return cached[0]
+
+    query = f"""
+        [out:json][timeout:{OVERPASS_TIMEOUT}];
+        (
+          node(around:{radius_m},{lat},{lng})[highway=speed_camera];
+          node(around:{radius_m},{lat},{lng})[man_made=surveillance][surveillance:type=speed_camera];
+          way(around:{radius_m},{lat},{lng})[highway=speed_camera];
+        );
+        out center tags;
+    """
+
+    try:
+        elements = run_overpass_query(query).get("elements", [])
+    except Exception:
+        # Een externe kaartbron mag de waarschuwingen uit de eigen database nooit blokkeren.
+        return []
+
+    cameras = []
+    for element in elements:
+        center = element.get("center") or {}
+        camera_lat = element.get("lat", center.get("lat"))
+        camera_lng = element.get("lon", center.get("lon"))
+        if camera_lat is None or camera_lng is None:
+            continue
+        cameras.append({
+            "id": f"osm-speed-camera-{element.get('type', 'node')}-{element.get('id')}",
+            "type": "flitser_vast",
+            "lat": camera_lat,
+            "lng": camera_lng,
+            "confirms": 0,
+        })
+
+    _camera_cache[cache_key] = (cameras, time.time())
+    return cameras
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +513,12 @@ def get_reports():
 
 @app.route("/api/nearby-alert", methods=["GET"])
 def nearby_alert():
-    """Lichtgewicht endpoint voor iOS-widget/app: dichtstbijzijnde actieve waarschuwing."""
+    """Dichtstbijzijnde actieve melding voor iOS/CarPlay.
+
+    Combineert tijdelijke, door gebruikers gemelde incidenten met vaste
+    flitsers uit OpenStreetMap. Een externe kaartbron is aanvullend: een
+    timeout mag de eigen meldingen nooit blokkeren.
+    """
     try:
         lat = float(request.args.get("lat"))
         lng = float(request.args.get("lng"))
@@ -469,19 +536,26 @@ def nearby_alert():
         (lat - deg_margin, lat + deg_margin, lng - deg_margin, lng + deg_margin),
     ).fetchall()
 
+    candidates = [
+        {
+            "id": row["id"],
+            "type": row["type"],
+            "lat": row["lat"],
+            "lng": row["lng"],
+            "confirms": row["confirms"],
+        }
+        for row in rows
+    ]
+    candidates.extend(fetch_osm_speed_cameras(lat, lng))
+
     closest = None
     closest_dist_m = None
-
-    for row in rows:
-        dist_km = haversine_km(lat, lng, row["lat"], row["lng"])
-        if dist_km > radius_km:
-            continue
-        dist_m = dist_km * 1000
-        threshold = WARN_DISTANCE_M.get(row["type"], 800)
-        if dist_m <= threshold:
-            if closest is None or dist_m < closest_dist_m:
-                closest = row
-                closest_dist_m = dist_m
+    for candidate in candidates:
+        dist_m = haversine_km(lat, lng, candidate["lat"], candidate["lng"]) * 1000
+        threshold = WARN_DISTANCE_M.get(candidate["type"], 800)
+        if dist_m <= threshold and (closest is None or dist_m < closest_dist_m):
+            closest = candidate
+            closest_dist_m = dist_m
 
     if closest is None:
         return jsonify({"alert": None})
@@ -496,7 +570,7 @@ def nearby_alert():
             "distance_m": round(closest_dist_m),
             "lat": closest["lat"],
             "lng": closest["lng"],
-            "confirms": closest["confirms"],
+            "confirms": closest.get("confirms", 0),
         }
     })
 
