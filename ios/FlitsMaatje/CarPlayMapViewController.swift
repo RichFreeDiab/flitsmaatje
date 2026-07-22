@@ -7,6 +7,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private let speedLabel = UILabel()
     private let limitLabel = UILabel()
     private let alertLabel = UILabel()
+    private let fineLabel = UILabel()
     private var refreshTimer: Timer?
 
     override func viewDidLoad() {
@@ -47,7 +48,12 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private func refreshOverlay() {
         let snapshot = SharedStore.load()
         let alertText = snapshot.alert.map { "\($0.icon) \($0.label) • \($0.distance_m) m" }
-        update(speedKmh: snapshot.speedKmh, limit: snapshot.speedLimitKmh, alert: alertText ?? snapshot.fineText)
+        update(
+            speedKmh: snapshot.speedKmh,
+            limit: snapshot.speedLimitKmh,
+            alert: alertText,
+            fineText: snapshot.fineText
+        )
     }
 
     private func configureOverlay() {
@@ -65,6 +71,10 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.textColor = .systemGreen
         alertLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         alertLabel.numberOfLines = 2
+        fineLabel.textColor = .white
+        fineLabel.font = .systemFont(ofSize: 14, weight: .bold)
+        fineLabel.numberOfLines = 2
+        fineLabel.textAlignment = .center
 
         let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel])
         speedStack.axis = .horizontal
@@ -75,6 +85,14 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         stack.spacing = 2
         stack.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView.addSubview(stack)
+        let finePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+        finePanel.translatesAutoresizingMaskIntoConstraints = false
+        finePanel.layer.cornerRadius = 12
+        finePanel.clipsToBounds = true
+        finePanel.contentView.addSubview(fineLabel)
+        fineLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(finePanel)
+
         NSLayoutConstraint.activate([
             panel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
             panel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
@@ -83,15 +101,24 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             stack.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 9),
             stack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -9),
             stack.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 11),
-            stack.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -11)
+            stack.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -11),
+            finePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18),
+            finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18),
+            finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -14),
+            fineLabel.topAnchor.constraint(equalTo: finePanel.contentView.topAnchor, constant: 8),
+            fineLabel.bottomAnchor.constraint(equalTo: finePanel.contentView.bottomAnchor, constant: -8),
+            fineLabel.leadingAnchor.constraint(equalTo: finePanel.contentView.leadingAnchor, constant: 12),
+            fineLabel.trailingAnchor.constraint(equalTo: finePanel.contentView.trailingAnchor, constant: -12)
         ])
     }
 
-    func update(speedKmh: Int?, limit: Int?, alert: String?) {
+    func update(speedKmh: Int?, limit: Int?, alert: String?, fineText: String?) {
         speedLabel.text = speedKmh.map { "\($0) km/u" } ?? "-- km/u"
         limitLabel.text = limit.map { "limiet \($0)" } ?? "limiet onbekend"
         alertLabel.text = alert ?? "Geen flitsmeldingen"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
+        fineLabel.text = fineText.map { "🚨 \($0)" } ?? "Boete-indicatie actief bij overschrijding"
+        fineLabel.textColor = fineText == nil ? .secondaryLabel : .systemRed
     }
 
     func showRoute(_ route: MKRoute) {
