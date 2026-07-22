@@ -30,32 +30,18 @@ struct FineEstimate: Codable, Equatable {
     let indicatief: Bool?
 
     var displayText: String? {
-        guard excess_kmh >= 4 else { return nil }
-        if om_zaak {
-            return "\(excess_kmh) km/u te hard — geen vaste boete, mogelijk OM-zaak (dagvaarding)"
-        }
-        if let bedrag {
-            return "\(excess_kmh) km/u te hard — indicatief €\(bedrag) (incl. adm.kosten)"
-        }
-        return "\(excess_kmh) km/u te hard"
+        displayText(speedKmh: nil, limit: nil)
     }
 
     func displayText(speedKmh: Int?, limit: Int?) -> String? {
-        let liveExcess: Int
-        if let speedKmh, let limit {
-            liveExcess = speedKmh - limit
-        } else {
-            liveExcess = excess_kmh
-        }
-        guard liveExcess >= 4 else { return nil }
-
+        guard excess_kmh >= 4 else { return nil }
         if om_zaak {
-            return "\(liveExcess) km/u te hard — geen vaste boete, mogelijk OM-zaak (dagvaarding)"
+            return "\(excess_kmh) km/u te hard na meetcorrectie — controleer OM Boetebase"
         }
         if let bedrag {
-            return "\(liveExcess) km/u te hard — indicatief €\(bedrag) (incl. adm.kosten)"
+            return "\(excess_kmh) km/u te hard na meetcorrectie — indicatief €\(bedrag) incl. kosten"
         }
-        return "\(liveExcess) km/u te hard"
+        return "\(excess_kmh) km/u te hard na meetcorrectie"
     }
 
     func carPlaySubtitle(speedKmh: Int?, limit: Int?) -> String {
@@ -64,35 +50,14 @@ struct FineEstimate: Codable, Equatable {
         return "\(speed) · \(limitText)"
     }
 
-    /// Korte, leesbare regels voor CarPlay-notificaties (titel + ondertitel).
     func carPlayNotificationTitle(speedKmh: Int?, limit: Int?) -> String? {
-        let liveExcess: Int
-        if let speedKmh, let limit {
-            liveExcess = speedKmh - limit
-        } else {
-            liveExcess = excess_kmh
-        }
-        guard liveExcess >= 4 else { return nil }
-
-        if om_zaak {
-            return "Te hard — mogelijk OM-zaak"
-        }
-        if let bedrag {
-            return "Te hard — indicatief €\(bedrag)"
-        }
-        return "Te hard — \(liveExcess) km/u"
+        guard displayText(speedKmh: speedKmh, limit: limit) != nil else { return nil }
+        return om_zaak ? "Te hard — controleer boete" : "Te hard — indicatief €\(bedrag ?? 0)"
     }
 
     func carPlayNotificationSubtitle(speedKmh: Int?, limit: Int?) -> String? {
         guard carPlayNotificationTitle(speedKmh: speedKmh, limit: limit) != nil else { return nil }
-        let liveExcess: Int
-        if let speedKmh, let limit {
-            liveExcess = speedKmh - limit
-        } else {
-            liveExcess = excess_kmh
-        }
-        let speedLine = carPlaySubtitle(speedKmh: speedKmh, limit: limit)
-        return "\(speedLine) · \(liveExcess) km/u te hard"
+        return "\(carPlaySubtitle(speedKmh: speedKmh, limit: limit)) · \(excess_kmh) km/u na correctie"
     }
 }
 
@@ -101,7 +66,6 @@ struct SpeedCheckResponse: Codable {
     let fine: FineEstimate?
 }
 
-/// Snapshot gedeeld tussen app, widget en Live Activity via App Group.
 struct WidgetSnapshot: Codable, Equatable {
     var updatedAt: Date
     var latitude: Double?

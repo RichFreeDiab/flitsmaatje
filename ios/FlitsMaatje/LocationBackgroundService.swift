@@ -42,6 +42,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var lastSpeedingSignature: String?
     private var lastCarPlayRefreshAt: Date = .distantPast
     private var isAppActive = false
+    private var recentSpeedSamples: [Int] = []
+    private var lastAcceptedSpeedAt: Date = .distantPast
 
     /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update
     /// direct als routevoortgang te verwerken.
@@ -110,6 +112,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         statusText = "Tracking gestopt"
         currentAlert = nil
         currentSpeedKmh = nil
+        recentSpeedSamples.removeAll()
+        lastAcceptedSpeedAt = .distantPast
         speedLimit = nil
         fineEstimate = nil
         roadName = nil
@@ -294,8 +298,31 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func updateCurrentSpeed(from location: CLLocation) {
-        guard location.speed >= 0 else { return }
-        currentSpeedKmh = Int((location.speed * 3.6).rounded())
+        guard location.speed >= 0,
+              location.horizontalAccuracy >= 0,
+              location.horizontalAccuracy <= 60 else {
+            return
+        }
+
+        let candidate = Int((location.speed * 3.6).rounded())
+        guard candidate <= 220 else {
+            AppLogger.error("GPS snelheid genegeerd: \(candidate) km/u")
+            return
+        }
+
+        let now = Date()
+        if let current = currentSpeedKmh,
+           abs(candidate - current) > 35,
+           now.timeIntervalSince(lastAcceptedSpeedAt) < 4 {
+            AppLogger.error("GPS snelheidssprong genegeerd: \(current)→\(candidate) km/u")
+            return
+        }
+
+        recentSpeedSamples.append(candidate)
+        recentSpeedSamples = Array(recentSpeedSamples.suffix(5))
+        let sorted = recentSpeedSamples.sorted()
+        currentSpeedKmh = sorted[sorted.count / 2]
+        lastAcceptedSpeedAt = now
         handleSpeedingFine()
     }
 
