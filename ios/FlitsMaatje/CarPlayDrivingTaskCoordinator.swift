@@ -37,7 +37,7 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
         }
         guard lastLoggedAlertId != alert.id else { return }
         lastLoggedAlertId = alert.id
-        AppLogger.log("CarPlay melding zonder pop-up: \\(alert.label) op \\(alert.distance_m)m")
+        AppLogger.log("CarPlay melding zonder pop-up: \(alert.label) op \(alert.distance_m)m")
     }
 
     func updateSpeeding(speedKmh: Int?, limit: Int?, fine: FineEstimate?) {
@@ -49,7 +49,7 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
         }
         guard lastLoggedFineText != text else { return }
         lastLoggedFineText = text
-        AppLogger.log("CarPlay snelheidsstatus zonder pop-up: \\(text)")
+        AppLogger.log("CarPlay snelheidsstatus zonder pop-up: \(text)")
     }
 
     func clearSpeeding() {
@@ -85,7 +85,7 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
         }
 
         if let alert = locationService?.currentAlert {
-            let item = CPListItem(text: "\\(alert.icon) \\(alert.label)", detailText: "Over \\(alert.distance_m) m")
+            let item = CPListItem(text: "\(alert.icon) \(alert.label)", detailText: "Over \(alert.distance_m) m")
             item.isEnabled = false
             sections.append(CPListSection(items: [item], header: "Dichtstbijzijnde melding", sectionIndexTitle: nil))
         }
