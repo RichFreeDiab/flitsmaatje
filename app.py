@@ -308,58 +308,41 @@ def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
 # en geen vervanging voor de officiële OM Boetebase (www2.om.nl/boetebase).
 # ---------------------------------------------------------------------------
 FINE_TABLE = {
-    "bebouwde_kom": {4: 37, 5: 44, 6: 52, 7: 61, 8: 70, 9: 81, 10: 95, 15: 175, 20: 255, 25: 345, 30: 455},
-    "buiten_bebouwde_kom": {4: 33, 5: 40, 6: 47, 7: 55, 8: 64, 9: 73, 10: 81, 15: 165, 20: 235, 25: 325, 30: 430},
-    "snelweg": {4: 28, 5: 34, 6: 40, 7: 47, 8: 55, 9: 63, 10: 77, 15: 140, 20: 210, 25: 295, 30: 395, 35: 520},
+    # OM Tekstenbundel 2026, auto categorie 1; bedragen exclusief €9 administratiekosten.
+    "bebouwde_kom": {4: 37, 5: 46, 6: 56, 7: 65, 8: 73, 9: 84, 10: 95, 11: 129, 12: 140, 13: 155, 14: 166, 15: 179, 16: 192, 17: 207, 18: 223, 19: 237, 20: 255, 21: 272, 22: 289, 23: 308, 24: 324, 25: 345, 26: 363, 27: 387, 28: 405, 29: 426, 30: 446},
+    "buiten_bebouwde_kom": {4: 33, 5: 42, 6: 50, 7: 59, 8: 68, 9: 79, 10: 89, 11: 121, 12: 134, 13: 147, 14: 159, 15: 172, 16: 184, 17: 197, 18: 210, 19: 227, 20: 243, 21: 258, 22: 273, 23: 289, 24: 308, 25: 326, 26: 345, 27: 362, 28: 381, 29: 404, 30: 424},
+    "snelweg": {4: 28, 5: 34, 6: 41, 7: 49, 8: 56, 9: 64, 10: 84, 11: 115, 12: 126, 13: 136, 14: 147, 15: 159, 16: 171, 17: 185, 18: 200, 19: 213, 20: 229, 21: 244, 22: 258, 23: 273, 24: 289, 25: 304, 26: 321, 27: 337, 28: 350, 29: 369, 30: 389, 31: 408, 32: 427, 33: 446, 34: 468, 35: 488, 36: 508, 37: 524, 38: 524, 39: 524, 40: 541},
 }
 ADMIN_COST = 9
-OM_THRESHOLD = {"bebouwde_kom": 35, "buiten_bebouwde_kom": 35, "snelweg": 36}
 
 
 def estimate_fine(zone, measured_kmh, limit_kmh):
-    """Schat de boete op basis van gemeten snelheid en geldende limiet.
+    """Indicatie met OM-tarieven; alleen voor een expliciet vastgestelde limiet.
 
-    Past de gangbare meetcorrectie toe (3 km/u tot 100 km/u, daarboven 3%),
-    zoals de politie die ook hanteert, voordat de overschrijding wordt bepaald.
+    De correctie is 3 km/u tot en met 100 km/u en 3% daarboven. Voor een
+    overschrijding buiten de officiële staffel tonen we bewust geen verzonnen
+    bedrag: de OM Boetebase en de feitelijke situatie zijn dan bepalend.
     """
-    if zone not in FINE_TABLE or limit_kmh is None:
+    table = FINE_TABLE.get(zone)
+    if table is None or limit_kmh is None:
         return None
 
-    if measured_kmh <= 100:
-        corrected = measured_kmh - 3
-    else:
-        corrected = measured_kmh * 0.97
-
+    corrected = measured_kmh - 3 if measured_kmh <= 100 else measured_kmh * 0.97
     excess = math.floor(corrected - limit_kmh)
     if excess < 4:
         return {"excess_kmh": max(excess, 0), "bedrag": 0, "om_zaak": False, "indicatief": True}
 
-    if excess >= OM_THRESHOLD.get(zone, 35):
+    amount = table.get(excess)
+    if amount is None:
         return {"excess_kmh": excess, "bedrag": None, "om_zaak": True, "indicatief": True}
-
-    table = FINE_TABLE[zone]
-    keys = sorted(table.keys())
-
-    if excess in table:
-        bedrag = table[excess]
-    else:
-        # Lineair interpoleren tussen de twee dichtstbijzijnde bekende staffelpunten
-        lower = max([k for k in keys if k < excess], default=keys[0])
-        upper = min([k for k in keys if k > excess], default=keys[-1])
-        if lower == upper:
-            bedrag = table[lower]
-        else:
-            frac = (excess - lower) / (upper - lower)
-            bedrag = round(table[lower] + frac * (table[upper] - table[lower]))
 
     return {
         "excess_kmh": excess,
-        "bedrag": bedrag + ADMIN_COST,
-        "bedrag_excl_administratiekosten": bedrag,
+        "bedrag": amount + ADMIN_COST,
+        "bedrag_excl_administratiekosten": amount,
         "om_zaak": False,
         "indicatief": True,
     }
-
 
 def cleanup_expired(db):
     db.execute("DELETE FROM reports WHERE expires_at < ?", (time.time(),))
@@ -460,7 +443,10 @@ def speed_check():
 
     speed_param = request.args.get("speed_kmh")
     fine = None
-    if speed_param is not None and limit_info.get("maxspeed") is not None and limit_info.get("zone") is not None:
+    # Zonder expliciete maxspeed-tag is de weg/limiet niet betrouwbaar genoeg
+    # voor een eurobedrag. Dan tonen we wel de limietstatus, maar geen boete.
+    if (speed_param is not None and limit_info.get("source") == "osm_tag"
+            and limit_info.get("maxspeed") is not None and limit_info.get("zone") is not None):
         try:
             speed_kmh = float(speed_param)
             fine = estimate_fine(limit_info["zone"], speed_kmh, limit_info["maxspeed"])
