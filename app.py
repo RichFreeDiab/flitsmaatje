@@ -128,7 +128,7 @@ OVERPASS_URLS = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 )
-OVERPASS_TIMEOUT = 7  # seconden
+OVERPASS_TIMEOUT = 2  # seconden — waarschuwingen mogen de rijdende app nooit blokkeren
 OVERPASS_HEADERS = {
     "User-Agent": "FlitsMaatje/1.0 (https://flitsmaatje.readvanes.nl)",
     "Accept": "application/json",
@@ -277,7 +277,9 @@ def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
     try:
         elements = run_overpass_query(query).get("elements", [])
     except Exception:
-        # Een externe kaartbron mag de waarschuwingen uit de eigen database nooit blokkeren.
+        # Cache ook een tijdelijke storing. Zonder dit zou elke GPS-poll opnieuw
+        # op twee externe servers wachten en de waarschuwingen vertragen.
+        _camera_cache[cache_key] = ([], time.time())
         return []
 
     cameras = []
