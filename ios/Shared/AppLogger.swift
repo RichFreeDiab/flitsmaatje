@@ -135,8 +135,9 @@ enum AppLogger {
 
     static func uploadLogFile(reason: String) {
         guard isMainApp else { return }
+        // We are already on the serial log queue. Calling flush() here would
+        // synchronously wait for this same queue and can freeze the app.
         queue.async {
-            flush()
             guard let data = try? Data(contentsOf: logFileURL()),
                   !data.isEmpty else { return }
             uploadData(data, reason: reason)
