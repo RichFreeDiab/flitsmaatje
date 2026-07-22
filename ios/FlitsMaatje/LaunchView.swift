@@ -116,7 +116,7 @@ struct LaunchView: View {
                 Text(statusMessage)
                     .foregroundStyle(.secondary)
                 Button(action: armApp) {
-                    Text("Start")
+                    Text("Start navigatie + meldingen")
                         .font(.title3.bold())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -156,12 +156,12 @@ struct LaunchView: View {
                 .foregroundStyle(.green)
             Text("App is gestart")
                 .font(.title2.bold())
-            Text("Tik hieronder om GPS te activeren.")
+            Text("Tik hieronder om navigatie en meldingen te activeren.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             Button(action: startGPS) {
-                Text("GPS inschakelen")
+                Text("Navigatie + meldingen starten")
                     .font(.title3.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -179,13 +179,13 @@ struct LaunchView: View {
               !carPlayAutostartRequested,
               location == nil else { return }
         carPlayAutostartRequested = true
-        openNavigationAfterGPS = false
+        openNavigationAfterGPS = true
         startGPS()
     }
 
     /// Stap 1: alleen UI — geen logger, geen GPS, geen zware objecten.
     private func armApp() {
-        openNavigationAfterGPS = false
+        openNavigationAfterGPS = true
         BootLogger.mark("start-tap")
         BootLogger.uploadAsync()
         phase = .armed
