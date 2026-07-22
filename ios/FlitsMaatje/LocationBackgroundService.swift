@@ -306,7 +306,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
         let candidate = Int((location.speed * 3.6).rounded())
         guard candidate <= 220 else {
-            AppLogger.error("GPS snelheid genegeerd: \\(candidate) km/u")
+            AppLogger.error("GPS snelheid genegeerd: \(candidate) km/u")
             return
         }
 
@@ -314,7 +314,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         if let current = currentSpeedKmh,
            abs(candidate - current) > 35,
            now.timeIntervalSince(lastAcceptedSpeedAt) < 4 {
-            AppLogger.error("GPS snelheidssprong genegeerd: \\(current)→\\(candidate) km/u")
+            AppLogger.error("GPS snelheidssprong genegeerd: \(current)→\(candidate) km/u")
             return
         }
 
