@@ -231,7 +231,7 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     private func calculateAndPreview(to mapItem: MKMapItem) async {
-        guard let user = locationService?.lastLocation, let mapTemplate else {
+        guard let user = locationService?.lastLocation else {
             AppLogger.error("CarPlay route: geen GPS-positie")
             return
         }
@@ -264,7 +264,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                 titleVariants: ["Route berekenen mislukt"],
                 actions: [CPAlertAction(title: "OK", style: .default) { _ in }]
             )
-            interfaceController?.presentTemplate(template, animated: true)
+            try? await interfaceController?.presentTemplate(template, animated: true)
         }
     }
 }
