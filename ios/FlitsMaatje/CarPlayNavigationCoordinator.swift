@@ -5,7 +5,7 @@ import UIKit
 
 @MainActor
 final class CarPlayNavigationCoordinator: NSObject {
-    static var shared = CarPlayNavigationCoordinator()
+    static let shared = CarPlayNavigationCoordinator()
 
     weak var locationService: LocationBackgroundService?
     weak var navigationService: NavigationService?
@@ -40,6 +40,8 @@ final class CarPlayNavigationCoordinator: NSObject {
         mapTemplate = nil
         mapViewController = nil
         interfaceController = nil
+        searchTemplate = nil
+        lastFlitserAlertId = nil
     }
 
     func syncFromPhoneNavigation() {
@@ -50,7 +52,10 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     func handleFlitserAlert(_ alert: NearbyAlert?) {
-        guard let alert, let mapTemplate else { return }
+        guard let alert, let mapTemplate else {
+            lastFlitserAlertId = nil
+            return
+        }
         guard lastFlitserAlertId != alert.id else { return }
         lastFlitserAlertId = alert.id
 
@@ -65,8 +70,27 @@ final class CarPlayNavigationCoordinator: NSObject {
         mapTemplate.present(navigationAlert: navAlert, animated: true)
     }
 
-    func clearFlitserAlertState() {
-        lastFlitserAlertId = nil
+    func updateNavigationProgress() {
+        guard let navigationService, let route = navigationService.route, navigationSession != nil else {
+            return
+        }
+
+        if navigationService.currentStepIndex >= route.steps.count {
+            endGuidance()
+            return
+        }
+
+        updateManeuvers(for: route)
+        if let trip = activeTrip {
+            let estimates = CPTravelEstimates(
+                distanceRemaining: Measurement(
+                    value: Double(navigationService.distanceRemainingM),
+                    unit: UnitLength.meters
+                ),
+                timeRemaining: navigationService.eta?.timeIntervalSinceNow ?? route.expectedTravelTime
+            )
+            mapTemplate?.updateEstimates(estimates, for: trip)
+        }
     }
 
     private func configureDefaultButtons(on template: CPMapTemplate) {
@@ -79,12 +103,21 @@ final class CarPlayNavigationCoordinator: NSObject {
         template.leadingNavigationBarButtons = [search]
         template.trailingNavigationBarButtons = [recenter]
 
+        let home = CPMapButton { [weak self] _ in
+            self?.startFavorite(.home)
+        }
+        home.image = UIImage(systemName: FavoriteDestinationKind.home.systemImage)
+
+        let work = CPMapButton { [weak self] _ in
+            self?.startFavorite(.work)
+        }
+        work.image = UIImage(systemName: FavoriteDestinationKind.work.systemImage)
+
         let pan = CPMapButton { [weak self] _ in
-            guard let template = self?.mapTemplate else { return }
-            template.showPanningInterface(animated: true)
+            self?.mapTemplate?.showPanningInterface(animated: true)
         }
         pan.image = UIImage(systemName: "hand.draw")
-        template.mapButtons = [pan]
+        template.mapButtons = [home, work, pan]
     }
 
     private func showSearch() {
@@ -93,6 +126,24 @@ final class CarPlayNavigationCoordinator: NSObject {
         template.delegate = self
         searchTemplate = template
         interfaceController.pushTemplate(template, animated: true)
+    }
+
+    private func startFavorite(_ kind: FavoriteDestinationKind) {
+        guard let favorite = FavoriteDestinationStore.destination(for: kind) else {
+            presentFavoriteSetupMessage(for: kind)
+            return
+        }
+        Task { [weak self] in
+            await self?.calculateAndPreview(to: favorite.mapItem)
+        }
+    }
+
+    private func presentFavoriteSetupMessage(for kind: FavoriteDestinationKind) {
+        let template = CPAlertTemplate(
+            titleVariants: ["\(kind.title) is nog niet ingesteld"],
+            actions: [CPAlertAction(title: "OK", style: .default) { _ in }]
+        )
+        interfaceController?.presentTemplate(template, animated: true)
     }
 
     private func presentTripPreview(route: MKRoute, destinationName: String, from location: CLLocation) {
@@ -131,9 +182,8 @@ final class CarPlayNavigationCoordinator: NSObject {
         mapTemplate.hideTripPreviews()
         navigationSession = mapTemplate.startNavigationSession(for: trip)
         mapViewController?.showRoute(route)
-        updateManeuvers(for: route)
-
         navigationService?.isNavigating = true
+        updateManeuvers(for: route)
 
         let estimates = CPTravelEstimates(
             distanceRemaining: Measurement(value: Double(route.distance), unit: UnitLength.meters),
@@ -148,11 +198,6 @@ final class CarPlayNavigationCoordinator: NSObject {
         mapTemplate.trailingNavigationBarButtons = []
     }
 
-    func updateNavigationProgress() {
-        guard let route = navigationService?.route, navigationSession != nil else { return }
-        updateManeuvers(for: route)
-    }
-
     private func updateManeuvers(for route: MKRoute) {
         guard let session = navigationSession else { return }
         let startIndex = navigationService?.currentStepIndex ?? 0
@@ -161,16 +206,15 @@ final class CarPlayNavigationCoordinator: NSObject {
             guard !text.isEmpty else { return nil }
             let maneuver = CPManeuver()
             maneuver.instructionVariants = [text]
-            let estimates = CPTravelEstimates(
+            maneuver.dashboardInstructionVariants = [text]
+            maneuver.notificationInstructionVariants = [text]
+            maneuver.initialTravelEstimates = CPTravelEstimates(
                 distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
-                timeRemaining: 0
+                timeRemaining: max(1, step.distance / 13.9)
             )
-            maneuver.initialTravelEstimates = estimates
             return maneuver
         }
-        if !maneuvers.isEmpty {
-            session.upcomingManeuvers = maneuvers
-        }
+        session.upcomingManeuvers = maneuvers
     }
 
     private func endGuidance() {
@@ -187,7 +231,10 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     private func calculateAndPreview(to mapItem: MKMapItem) async {
-        guard let user = locationService?.lastLocation, let mapTemplate else { return }
+        guard let user = locationService?.lastLocation, let mapTemplate else {
+            AppLogger.error("CarPlay route: geen GPS-positie")
+            return
+        }
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: user.coordinate))
         request.destination = mapItem
@@ -195,10 +242,16 @@ final class CarPlayNavigationCoordinator: NSObject {
 
         do {
             let response = try await MKDirections(request: request).calculate()
-            guard let route = response.routes.first else { return }
+            guard let route = response.routes.first else {
+                AppLogger.error("CarPlay route: geen route")
+                return
+            }
             navigationService?.route = route
+            navigationService?.currentStepIndex = 0
             navigationService?.isNavigating = false
             navigationService?.destinationName = mapItem.name ?? "Bestemming"
+            navigationService?.distanceRemainingM = Int(route.distance)
+            navigationService?.eta = Date().addingTimeInterval(route.expectedTravelTime)
             presentTripPreview(
                 route: route,
                 destinationName: mapItem.name ?? "Bestemming",
@@ -206,7 +259,12 @@ final class CarPlayNavigationCoordinator: NSObject {
             )
             try? await interfaceController?.popTemplate(animated: true)
         } catch {
-            // negeer — zoek blijft open
+            AppLogger.error("CarPlay route mislukt: \(error.localizedDescription)")
+            let template = CPAlertTemplate(
+                titleVariants: ["Route berekenen mislukt"],
+                actions: [CPAlertAction(title: "OK", style: .default) { _ in }]
+            )
+            interfaceController?.presentTemplate(template, animated: true)
         }
     }
 }
@@ -258,6 +316,7 @@ extension CarPlayNavigationCoordinator: CPSearchTemplateDelegate {
                 }
                 completionHandler(items)
             } catch {
+                AppLogger.error("CarPlay zoeken mislukt: \(error.localizedDescription)")
                 completionHandler([])
             }
         }
