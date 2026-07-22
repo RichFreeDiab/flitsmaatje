@@ -29,6 +29,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         UIApplication.shared.isIdleTimerDisabled = true
+        refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.refreshOverlay()
         }
