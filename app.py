@@ -443,10 +443,10 @@ def speed_check():
 
     speed_param = request.args.get("speed_kmh")
     fine = None
-    # Zonder expliciete maxspeed-tag is de weg/limiet niet betrouwbaar genoeg
-    # voor een eurobedrag. Dan tonen we wel de limietstatus, maar geen boete.
-    if (speed_param is not None and limit_info.get("source") == "osm_tag"
-            and limit_info.get("maxspeed") is not None and limit_info.get("zone") is not None):
+    # Ook bij een afgeleide limiet geven we een bedrag, maar de iOS-app
+    # markeert dit nadrukkelijk als indicatief. De bebording blijft leidend.
+    if (speed_param is not None and limit_info.get("maxspeed") is not None
+            and limit_info.get("zone") is not None):
         try:
             speed_kmh = float(speed_param)
             fine = estimate_fine(limit_info["zone"], speed_kmh, limit_info["maxspeed"])
