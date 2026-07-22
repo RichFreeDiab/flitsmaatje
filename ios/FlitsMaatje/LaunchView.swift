@@ -9,6 +9,7 @@ struct LaunchView: View {
     @State private var openNavigationAfterGPS = false
     @State private var showLocationHelp = false
     @State private var showAbout = false
+    @State private var carPlayAutostartRequested = false
 
     private enum Phase {
         case idle
@@ -20,7 +21,8 @@ struct LaunchView: View {
     }
 
     var body: some View {
-        switch phase {
+        Group {
+            switch phase {
         case .idle:
             idleView
         case .armed:
@@ -58,6 +60,15 @@ struct LaunchView: View {
                 NavigationMapView()
                     .environmentObject(location)
                     .environmentObject(navigationService)
+            }
+            }
+        }
+        .onAppear {
+            startForCarPlayIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .flitsMaatjeCarPlayConnectionChanged)) { notification in
+            if (notification.object as? Bool) == true {
+                startForCarPlayIfNeeded()
             }
         }
     }
@@ -159,6 +170,17 @@ struct LaunchView: View {
             .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// CarPlay mag de rijmodus meteen starten zodra de CarPlay-scène
+    /// door iOS is verbonden. De gebruiker hoeft dan niet eerst op Start te tikken.
+    private func startForCarPlayIfNeeded() {
+        guard CarPlaySessionTracker.isForegroundOnCarPlay,
+              !carPlayAutostartRequested,
+              location == nil else { return }
+        carPlayAutostartRequested = true
+        openNavigationAfterGPS = false
+        startGPS()
     }
 
     /// Stap 1: alleen UI — geen logger, geen GPS, geen zware objecten.
