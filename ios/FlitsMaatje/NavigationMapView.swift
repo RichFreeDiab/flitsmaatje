@@ -8,12 +8,16 @@ struct NavigationMapView: View {
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var didCenterOnUser = false
     @FocusState private var searchFocused: Bool
+    @State private var favoriteToEdit: FavoriteDestinationKind?
+    @State private var favoriteAddress = ""
+    @State private var favoriteError: String?
 
     var body: some View {
         ZStack(alignment: .top) {
             mapLayer
             VStack(spacing: 10) {
                 searchBar
+                favoriteButtons
                 if navigation.isNavigating {
                     turnBanner
                 }
@@ -29,8 +33,32 @@ struct NavigationMapView: View {
             AppLogger.log("NavigationMapView geladen")
             centerOnUserIfPossible()
         }
-        .onChange(of: location.lastLocation) { _, _ in
+        .onChange(of: location.lastLocation) { _, newLocation in
             centerOnUserIfPossible()
+            if let newLocation {
+                navigation.updateProgress(location: newLocation)
+            }
+        }
+        .alert(
+            favoriteToEdit.map { "\($0.title) instellen" } ?? "Favoriet instellen",
+            isPresented: Binding(
+                get: { favoriteToEdit != nil },
+                set: { if !$0 { favoriteToEdit = nil } }
+            )
+        ) {
+            TextField("Adres", text: $favoriteAddress)
+            Button("Opslaan") { saveFavorite() }
+            Button("Annuleren", role: .cancel) { favoriteToEdit = nil }
+        } message: {
+            Text("Dit adres komt als snelle knop op je telefoon en in CarPlay.")
+        }
+        .alert("Favoriet niet opgeslagen", isPresented: Binding(
+            get: { favoriteError != nil },
+            set: { if !$0 { favoriteError = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(favoriteError ?? "")
         }
     }
 
@@ -136,6 +164,62 @@ struct NavigationMapView: View {
                 }
                 .frame(maxHeight: 180)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    private var favoriteButtons: some View {
+        HStack(spacing: 8) {
+            favoriteButton(for: .home)
+            favoriteButton(for: .work)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func favoriteButton(for kind: FavoriteDestinationKind) -> some View {
+        let isConfigured = FavoriteDestinationStore.destination(for: kind) != nil
+        return Button {
+            startFavorite(kind)
+        } label: {
+            Label(
+                isConfigured ? kind.title : "\(kind.title) instellen",
+                systemImage: kind.systemImage
+            )
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isConfigured ? "Navigeer naar \(kind.title)" : "Stel \(kind.title) in")
+    }
+
+    private func startFavorite(_ kind: FavoriteDestinationKind) {
+        guard let favorite = FavoriteDestinationStore.destination(for: kind) else {
+            favoriteAddress = ""
+            favoriteToEdit = kind
+            return
+        }
+        guard let user = location.lastLocation else {
+            favoriteError = "Wacht tot GPS je locatie heeft gevonden."
+            return
+        }
+        Task {
+            await navigation.startNavigation(to: favorite.mapItem, from: user)
+            followUser(heading: true)
+        }
+    }
+
+    private func saveFavorite() {
+        guard let kind = favoriteToEdit else { return }
+        let address = favoriteAddress
+        Task {
+            do {
+                try await FavoriteDestinationStore.save(address: address, for: kind)
+                favoriteToEdit = nil
+            } catch {
+                favoriteError = "Controleer het adres en probeer opnieuw."
             }
         }
     }
