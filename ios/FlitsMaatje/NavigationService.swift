@@ -16,9 +16,15 @@ final class NavigationService: ObservableObject {
     @Published var eta: Date?
     @Published var destinationName: String?
     @Published var voiceEnabled = true
+    @Published var reroutingEnabled = true
+    @Published var finesEnabled = true
+    @Published var alertsEnabled = true
 
     private let synthesizer = AVSpeechSynthesizer()
     private var lastSpokenStep = -1
+    private var destinationCoordinate: CLLocationCoordinate2D?
+    private var lastRerouteAt = Date.distantPast
+    private var isRerouting = false
 
     var currentInstruction: String {
         guard let route, !route.steps.isEmpty else { return "Kies een bestemming" }
@@ -56,6 +62,7 @@ final class NavigationService: ObservableObject {
     }
 
     func startNavigation(to destination: MKMapItem, from location: CLLocation) async {
+        destinationCoordinate = destination.placemark.coordinate
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: location.coordinate))
         request.destination = destination
@@ -98,12 +105,26 @@ final class NavigationService: ObservableObject {
         distanceRemainingM = 0
         eta = nil
         destinationName = nil
+        destinationCoordinate = nil
         statusMessage = "Navigatie gestopt"
         synthesizer.stopSpeaking(at: .immediate)
     }
 
     func updateProgress(location: CLLocation) {
         guard isNavigating, let route else { return }
+
+        if reroutingEnabled,
+           let destinationCoordinate,
+           distanceFromRoute(location, route: route) > 80,
+           Date().timeIntervalSince(lastRerouteAt) > 10,
+           !isRerouting {
+            isRerouting = true
+            lastRerouteAt = Date()
+            Task { @MainActor in
+                await self.reroute(from: location, to: destinationCoordinate)
+                self.isRerouting = false
+            }
+        }
 
         advanceStepsIfNeeded(location: location, route: route)
 
@@ -122,6 +143,21 @@ final class NavigationService: ObservableObject {
             statusMessage = "Bestemming bereikt"
             isNavigating = false
         }
+    }
+
+    private func distanceFromRoute(_ location: CLLocation, route: MKRoute) -> CLLocationDistance {
+        let points = route.polyline.coordinates
+        guard !points.isEmpty else { return .greatestFiniteMagnitude }
+        return points.map {
+            location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
+        }.min() ?? .greatestFiniteMagnitude
+    }
+
+    private func reroute(from location: CLLocation, to destination: CLLocationCoordinate2D) async {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: destination))
+        item.name = destinationName ?? "Bestemming"
+        await startNavigation(to: item, from: location)
+        statusMessage = "Route automatisch herberekend"
     }
 
     private func advanceStepsIfNeeded(location: CLLocation, route: MKRoute) {
