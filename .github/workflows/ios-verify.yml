@@ -130,5 +130,5 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLITSMAATJE_CHANGELOG: "Build 94: licht dashboard zonder NavigationStack"
+          FLITSMAATJE_CHANGELOG: "Build 95: 3D-kaart, leesbare boetemelding en flitserwaarschuwingen"
         run: bundle exec fastlane beta
