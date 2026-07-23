@@ -11,6 +11,7 @@ struct NavigationMapView: View {
     @State private var favoriteToEdit: FavoriteDestinationKind?
     @State private var favoriteAddress = ""
     @State private var favoriteError: String?
+    @State private var showingSettings = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -48,6 +49,7 @@ struct NavigationMapView: View {
         .alert("Favoriet niet opgeslagen", isPresented: Binding(
             get: { favoriteError != nil }, set: { if !$0 { favoriteError = nil } }
         )) { Button("OK", role: .cancel) { } } message: { Text(favoriteError ?? "") }
+        .sheet(isPresented: $showingSettings) { settingsView }
     }
 
     private func centerOnUserIfPossible() {
@@ -111,6 +113,9 @@ struct NavigationMapView: View {
                     .onSubmit { Task { await runSearch() } }
                 if navigation.isNavigating {
                     Button("Stop") { navigation.stopNavigation() }.font(.subheadline.bold()).foregroundStyle(.red)
+                }
+                Button { showingSettings = true } label: {
+                    Image(systemName: "gearshape.fill")
                 }
             }
             .padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
@@ -182,7 +187,7 @@ struct NavigationMapView: View {
 
     private var bottomHUD: some View {
         VStack(spacing: 8) {
-            if let alert = location.currentAlert {
+            if navigation.alertsEnabled, let alert = location.currentAlert {
                 HStack(spacing: 12) {
                     Text(alert.icon).font(.title)
                     VStack(alignment: .leading, spacing: 2) {
@@ -192,14 +197,19 @@ struct NavigationMapView: View {
                     Spacer()
                 }.padding(12).background(Color.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
             }
-            if let fineText = location.fineEstimate?.displayText {
+            if navigation.finesEnabled,
+               let fineText = location.fineEstimate?.displayText(
+                speedKmh: location.currentSpeedKmh,
+                limit: location.speedLimit
+               ) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "eurosign.circle.fill").font(.title2)
                     Text(fineText).font(.subheadline.bold()).lineLimit(3).minimumScaleFactor(0.82)
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(.white).padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.red.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+                .foregroundStyle(.primary).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
             }
             HStack {
                 VStack(alignment: .leading, spacing: 0) {
@@ -223,6 +233,28 @@ struct NavigationMapView: View {
 
     private func runSearch() async { guard let user = location.lastLocation else { return }; await navigation.search(near: user.coordinate) }
     private func formatDistance(_ meters: Int) -> String { meters >= 1000 ? String(format: "%.1f km", Double(meters) / 1000) : "\(meters) m" }
+
+    private var settingsView: some View {
+        NavigationStack {
+            Form {
+                Section("Navigatie") {
+                    Toggle("Automatisch herrouteren", isOn: $navigation.reroutingEnabled)
+                    Toggle("Gesproken aanwijzingen", isOn: $navigation.voiceEnabled)
+                }
+                Section("Meldingen") {
+                    Toggle("Boete-indicatie tonen", isOn: $navigation.finesEnabled)
+                    Toggle("Verkeersmeldingen tonen", isOn: $navigation.alertsEnabled)
+                }
+            }
+            .navigationTitle("Instellingen")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Gereed") { showingSettings = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
 }
 
 private extension MKPolyline {
