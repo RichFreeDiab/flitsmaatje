@@ -8,6 +8,8 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private let limitLabel = UILabel()
     private let alertLabel = UILabel()
     private let fineLabel = UILabel()
+    private let alertPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let finePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private var refreshTimer: Timer?
 
     override func viewDidLoad() {
@@ -16,14 +18,14 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         mapView.translatesAutoresizingMaskIntoConstraints = false
         mapView.delegate = self
         mapView.showsUserLocation = true
-        mapView.userTrackingMode = .followWithHeading
+        mapView.userTrackingMode = .none
         mapView.pointOfInterestFilter = .excludingAll
+        mapView.showsTraffic = true
+        mapView.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .realistic, emphasisStyle: .muted)
         view.addSubview(mapView)
         NSLayoutConstraint.activate([
-            mapView.topAnchor.constraint(equalTo: view.topAnchor),
-            mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            mapView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mapView.topAnchor.constraint(equalTo: view.topAnchor), mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            mapView.leadingAnchor.constraint(equalTo: view.leadingAnchor), mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
         configureOverlay()
         refreshOverlay()
@@ -33,131 +35,73 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         super.viewDidAppear(animated)
         UIApplication.shared.isIdleTimerDisabled = true
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.refreshOverlay()
-        }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.refreshOverlay() }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         UIApplication.shared.isIdleTimerDisabled = false
-        refreshTimer?.invalidate()
-        refreshTimer = nil
+        refreshTimer?.invalidate(); refreshTimer = nil
     }
 
     private func refreshOverlay() {
         let snapshot = SharedStore.load()
-        let alertText = snapshot.alert.map { "\($0.icon) \($0.label) • \($0.distance_m) m" }
-        update(
-            speedKmh: snapshot.speedKmh,
-            limit: snapshot.speedLimitKmh,
-            alert: alertText,
-            fineText: snapshot.fineText
-        )
+        let alertText = snapshot.alert.map { "\($0.icon) \($0.label)  •  over \($0.distance_m) m" }
+        update(speedKmh: snapshot.speedKmh, limit: snapshot.speedLimitKmh, alert: alertText, fineText: snapshot.fineText)
     }
 
     private func configureOverlay() {
-        let panel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        panel.layer.cornerRadius = 12
-        panel.clipsToBounds = true
-        view.addSubview(panel)
+        let statusPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+        statusPanel.translatesAutoresizingMaskIntoConstraints = false; statusPanel.layer.cornerRadius = 12; statusPanel.clipsToBounds = true
+        view.addSubview(statusPanel)
+        speedLabel.textColor = .white; speedLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .bold); speedLabel.text = "--"
+        limitLabel.textColor = .white; limitLabel.font = .systemFont(ofSize: 15, weight: .bold)
+        alertLabel.font = .systemFont(ofSize: 17, weight: .bold); alertLabel.numberOfLines = 2; alertLabel.textAlignment = .center
+        fineLabel.font = .systemFont(ofSize: 16, weight: .bold); fineLabel.numberOfLines = 3; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.82
 
-        speedLabel.textColor = .white
-        speedLabel.font = .monospacedDigitSystemFont(ofSize: 26, weight: .bold)
-        speedLabel.text = "--"
-        limitLabel.textColor = .systemYellow
-        limitLabel.font = .systemFont(ofSize: 14, weight: .bold)
-        alertLabel.textColor = .systemGreen
-        alertLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        alertLabel.numberOfLines = 2
-        fineLabel.textColor = .white
-        fineLabel.font = .systemFont(ofSize: 14, weight: .bold)
-        fineLabel.numberOfLines = 2
-        fineLabel.textAlignment = .center
+        let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
+        speedStack.translatesAutoresizingMaskIntoConstraints = false; statusPanel.contentView.addSubview(speedStack)
 
-        let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel])
-        speedStack.axis = .horizontal
-        speedStack.spacing = 8
-        speedStack.alignment = .firstBaseline
-        let stack = UIStackView(arrangedSubviews: [speedStack, alertLabel])
-        stack.axis = .vertical
-        stack.spacing = 2
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        panel.contentView.addSubview(stack)
-        let finePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
-        finePanel.translatesAutoresizingMaskIntoConstraints = false
-        finePanel.layer.cornerRadius = 12
-        finePanel.clipsToBounds = true
-        finePanel.contentView.addSubview(fineLabel)
-        fineLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(finePanel)
+        [alertPanel, finePanel].forEach { panel in panel.translatesAutoresizingMaskIntoConstraints = false; panel.layer.cornerRadius = 12; panel.clipsToBounds = true; view.addSubview(panel) }
+        alertLabel.translatesAutoresizingMaskIntoConstraints = false; fineLabel.translatesAutoresizingMaskIntoConstraints = false
+        alertPanel.contentView.addSubview(alertLabel); finePanel.contentView.addSubview(fineLabel)
 
         NSLayoutConstraint.activate([
-            panel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            panel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
-            panel.widthAnchor.constraint(lessThanOrEqualToConstant: 190),
-            panel.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
-            stack.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 9),
-            stack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -9),
-            stack.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 11),
-            stack.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -11),
-            finePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18),
-            finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18),
-            finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -14),
-            fineLabel.topAnchor.constraint(equalTo: finePanel.contentView.topAnchor, constant: 8),
-            fineLabel.bottomAnchor.constraint(equalTo: finePanel.contentView.bottomAnchor, constant: -8),
-            fineLabel.leadingAnchor.constraint(equalTo: finePanel.contentView.leadingAnchor, constant: 12),
-            fineLabel.trailingAnchor.constraint(equalTo: finePanel.contentView.trailingAnchor, constant: -12)
+            statusPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), statusPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
+            speedStack.topAnchor.constraint(equalTo: statusPanel.contentView.topAnchor, constant: 9), speedStack.bottomAnchor.constraint(equalTo: statusPanel.contentView.bottomAnchor, constant: -9), speedStack.leadingAnchor.constraint(equalTo: statusPanel.contentView.leadingAnchor, constant: 11), speedStack.trailingAnchor.constraint(equalTo: statusPanel.contentView.trailingAnchor, constant: -11),
+            alertPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), alertPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), alertPanel.bottomAnchor.constraint(equalTo: finePanel.topAnchor, constant: -8),
+            alertLabel.topAnchor.constraint(equalTo: alertPanel.contentView.topAnchor, constant: 10), alertLabel.bottomAnchor.constraint(equalTo: alertPanel.contentView.bottomAnchor, constant: -10), alertLabel.leadingAnchor.constraint(equalTo: alertPanel.contentView.leadingAnchor, constant: 12), alertLabel.trailingAnchor.constraint(equalTo: alertPanel.contentView.trailingAnchor, constant: -12),
+            finePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -14),
+            fineLabel.topAnchor.constraint(equalTo: finePanel.contentView.topAnchor, constant: 10), fineLabel.bottomAnchor.constraint(equalTo: finePanel.contentView.bottomAnchor, constant: -10), fineLabel.leadingAnchor.constraint(equalTo: finePanel.contentView.leadingAnchor, constant: 12), fineLabel.trailingAnchor.constraint(equalTo: finePanel.contentView.trailingAnchor, constant: -12)
         ])
     }
 
     func update(speedKmh: Int?, limit: Int?, alert: String?, fineText: String?) {
         speedLabel.text = speedKmh.map { "\($0) km/u" } ?? "-- km/u"
-        limitLabel.text = limit.map { "limiet \($0)" } ?? "limiet onbekend"
-        alertLabel.text = alert ?? "Geen flitsmeldingen"
+        limitLabel.text = limit.map { "limiet \($0)" } ?? "limiet --"
+        alertLabel.text = alert ?? "Geen flitser in de buurt"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
-        fineLabel.text = fineText.map { "🚨 \($0)" } ?? "Boete-indicatie actief bij overschrijding"
-        fineLabel.textColor = fineText == nil ? .secondaryLabel : .systemRed
+        alertPanel.isHidden = alert == nil
+        fineLabel.text = fineText.map { "🚨 BOETE-INDICATIE  •  \($0)" } ?? ""
+        fineLabel.textColor = .systemRed
+        finePanel.isHidden = fineText == nil
     }
 
-    func showRoute(_ route: MKRoute) {
-        mapView.removeOverlays(mapView.overlays)
-        mapView.addOverlay(route.polyline)
-        recenter()
-    }
+    func showRoute(_ route: MKRoute) { mapView.removeOverlays(mapView.overlays); mapView.addOverlay(route.polyline); recenter() }
 
     func follow(location: CLLocation) {
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 80 else { return }
-        let region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: 650,
-            longitudinalMeters: 650
-        )
-        mapView.setRegion(region, animated: true)
-        mapView.userTrackingMode = .followWithHeading
+        let heading = location.course >= 0 ? location.course : mapView.camera.heading
+        let camera = MKMapCamera(lookingAtCenter: location.coordinate, fromDistance: 650, pitch: 58, heading: heading)
+        mapView.setCamera(camera, animated: true)
     }
 
-    func clearRoute() {
-        mapView.removeOverlays(mapView.overlays)
-    }
-
-    func showNavigationError(_ message: String) {
-        alertLabel.text = "⚠️ " + message
-        alertLabel.textColor = .systemRed
-    }
-
-    func recenter() {
-        mapView.userTrackingMode = .followWithHeading
-    }
+    func clearRoute() { mapView.removeOverlays(mapView.overlays) }
+    func showNavigationError(_ message: String) { alertPanel.isHidden = false; alertLabel.text = "⚠️ " + message; alertLabel.textColor = .systemRed }
+    func recenter() { if let location = mapView.userLocation.location { follow(location: location) } }
 
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-        if let polyline = overlay as? MKPolyline {
-            let renderer = MKPolylineRenderer(polyline: polyline)
-            renderer.strokeColor = .systemBlue
-            renderer.lineWidth = 6
-            return renderer
-        }
+        if let polyline = overlay as? MKPolyline { let renderer = MKPolylineRenderer(polyline: polyline); renderer.strokeColor = .systemBlue; renderer.lineWidth = 7; return renderer }
         return MKOverlayRenderer(overlay: overlay)
     }
 }
