@@ -18,9 +18,7 @@ struct NavigationMapView: View {
             VStack(spacing: 10) {
                 searchBar
                 favoriteButtons
-                if navigation.isNavigating {
-                    turnBanner
-                }
+                if navigation.isNavigating { turnBanner }
                 Spacer()
                 bottomHUD
             }
@@ -37,77 +35,68 @@ struct NavigationMapView: View {
             centerOnUserIfPossible()
             if let newLocation {
                 navigation.updateProgress(location: newLocation)
+                if navigation.isNavigating { followDrivingCamera(location: newLocation) }
             }
         }
-        .alert(
-            favoriteToEdit.map { "\($0.title) instellen" } ?? "Favoriet instellen",
-            isPresented: Binding(
-                get: { favoriteToEdit != nil },
-                set: { if !$0 { favoriteToEdit = nil } }
-            )
-        ) {
+        .alert(favoriteToEdit.map { "\($0.title) instellen" } ?? "Favoriet instellen", isPresented: Binding(
+            get: { favoriteToEdit != nil }, set: { if !$0 { favoriteToEdit = nil } }
+        )) {
             TextField("Adres", text: $favoriteAddress)
             Button("Opslaan") { saveFavorite() }
             Button("Annuleren", role: .cancel) { favoriteToEdit = nil }
-        } message: {
-            Text("Dit adres komt als snelle knop op je telefoon en in CarPlay.")
-        }
+        } message: { Text("Dit adres komt als snelle knop op je telefoon en in CarPlay.") }
         .alert("Favoriet niet opgeslagen", isPresented: Binding(
-            get: { favoriteError != nil },
-            set: { if !$0 { favoriteError = nil } }
-        )) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(favoriteError ?? "")
-        }
+            get: { favoriteError != nil }, set: { if !$0 { favoriteError = nil } }
+        )) { Button("OK", role: .cancel) { } } message: { Text(favoriteError ?? "") }
     }
 
     private func centerOnUserIfPossible() {
-        guard !didCenterOnUser, location.lastLocation != nil else { return }
+        guard !didCenterOnUser, let user = location.lastLocation else { return }
         didCenterOnUser = true
-        cameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
+        followDrivingCamera(location: user)
+    }
+
+    private func followDrivingCamera(location: CLLocation) {
+        let heading = location.course >= 0 ? location.course : 0
+        cameraPosition = .camera(MapCamera(
+            centerCoordinate: location.coordinate,
+            distance: navigation.isNavigating ? 650 : 900,
+            heading: heading,
+            pitch: navigation.isNavigating ? 58 : 42
+        ))
     }
 
     private var mapLayer: some View {
         MapReader { proxy in
             Map(position: $cameraPosition, interactionModes: .all) {
                 UserAnnotation()
-
                 if let route = navigation.route {
-                    MapPolyline(route.polyline)
-                        .stroke(.blue, lineWidth: 6)
+                    MapPolyline(route.polyline).stroke(.blue, lineWidth: 7)
                 }
-
                 if let alert = location.currentAlert {
                     Annotation(alert.label, coordinate: CLLocationCoordinate2D(latitude: alert.lat, longitude: alert.lng)) {
-                        Text(alert.icon)
-                            .font(.title2)
-                            .padding(6)
-                            .background(.red.opacity(0.9), in: Circle())
+                        VStack(spacing: 2) {
+                            Text(alert.icon).font(.title2)
+                            Text("\(alert.distance_m) m").font(.caption2.bold()).foregroundStyle(.white)
+                        }
+                        .padding(7)
+                        .background(.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
-
                 if let dest = navigation.route?.polyline.coordinates.last {
                     Marker(navigation.destinationName ?? "Bestemming", coordinate: dest)
                 }
             }
-            .mapStyle(.standard(elevation: .realistic))
-            .mapControls {
-                MapCompass()
-                MapUserLocationButton()
-            }
+            .mapStyle(.standard(elevation: .realistic, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: true))
+            .mapControls { MapCompass(); MapUserLocationButton() }
             .onTapGesture { screenPoint in
                 guard !navigation.isNavigating,
                       let coordinate = proxy.convert(screenPoint, from: .local),
                       let user = location.lastLocation else { return }
                 searchFocused = false
                 Task {
-                    await navigation.startNavigation(
-                        to: coordinate,
-                        name: "Gekozen punt",
-                        from: user
-                    )
-                    followUser(heading: true)
+                    await navigation.startNavigation(to: coordinate, name: "Gekozen punt", from: user)
+                    followDrivingCamera(location: user)
                 }
             }
         }
@@ -116,22 +105,15 @@ struct NavigationMapView: View {
     private var searchBar: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Waar naartoe?", text: $navigation.searchQuery)
-                    .focused($searchFocused)
-                    .submitLabel(.search)
+                    .focused($searchFocused).submitLabel(.search)
                     .onSubmit { Task { await runSearch() } }
-
                 if navigation.isNavigating {
-                    Button("Stop") { navigation.stopNavigation() }
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.red)
+                    Button("Stop") { navigation.stopNavigation() }.font(.subheadline.bold()).foregroundStyle(.red)
                 }
             }
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-
+            .padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
             if searchFocused, !navigation.searchResults.isEmpty {
                 ScrollView {
                     VStack(spacing: 0) {
@@ -139,185 +121,108 @@ struct NavigationMapView: View {
                             Button {
                                 guard let user = location.lastLocation else { return }
                                 searchFocused = false
-                                Task {
-                                    await navigation.startNavigation(to: item, from: user)
-                                    followUser(heading: true)
-                                }
+                                Task { await navigation.startNavigation(to: item, from: user); followDrivingCamera(location: user) }
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.name ?? "Locatie")
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    if let subtitle = item.placemark.title {
-                                        Text(subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    Text(item.name ?? "Locatie").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                                    if let subtitle = item.placemark.title { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 10)
-                                .padding(.horizontal, 12)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10).padding(.horizontal, 12)
                             }
                             Divider()
                         }
                     }
                 }
-                .frame(maxHeight: 180)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .frame(maxHeight: 180).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
             }
         }
     }
 
     private var favoriteButtons: some View {
-        HStack(spacing: 8) {
-            favoriteButton(for: .home)
-            favoriteButton(for: .work)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: 8) { favoriteButton(for: .home); favoriteButton(for: .work) }
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func favoriteButton(for kind: FavoriteDestinationKind) -> some View {
-        let isConfigured = FavoriteDestinationStore.destination(for: kind) != nil
-        return Button {
-            startFavorite(kind)
-        } label: {
-            Label(
-                isConfigured ? kind.title : "\(kind.title) instellen",
-                systemImage: kind.systemImage
-            )
-            .font(.subheadline.weight(.semibold))
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(.ultraThinMaterial, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isConfigured ? "Navigeer naar \(kind.title)" : "Stel \(kind.title) in")
+        let configured = FavoriteDestinationStore.destination(for: kind) != nil
+        return Button { startFavorite(kind) } label: {
+            Label(configured ? kind.title : "\(kind.title) instellen", systemImage: kind.systemImage)
+                .font(.subheadline.weight(.semibold)).lineLimit(1).padding(.horizontal, 12).padding(.vertical, 9)
+                .background(.ultraThinMaterial, in: Capsule())
+        }.buttonStyle(.plain)
     }
 
     private func startFavorite(_ kind: FavoriteDestinationKind) {
-        guard let favorite = FavoriteDestinationStore.destination(for: kind) else {
-            favoriteAddress = ""
-            favoriteToEdit = kind
-            return
-        }
-        guard let user = location.lastLocation else {
-            favoriteError = "Wacht tot GPS je locatie heeft gevonden."
-            return
-        }
-        Task {
-            await navigation.startNavigation(to: favorite.mapItem, from: user)
-            followUser(heading: true)
-        }
+        guard let favorite = FavoriteDestinationStore.destination(for: kind) else { favoriteAddress = ""; favoriteToEdit = kind; return }
+        guard let user = location.lastLocation else { favoriteError = "Wacht tot GPS je locatie heeft gevonden."; return }
+        Task { await navigation.startNavigation(to: favorite.mapItem, from: user); followDrivingCamera(location: user) }
     }
 
     private func saveFavorite() {
         guard let kind = favoriteToEdit else { return }
-        let address = favoriteAddress
         Task {
-            do {
-                try await FavoriteDestinationStore.save(address: address, for: kind)
-                favoriteToEdit = nil
-            } catch {
-                favoriteError = "Controleer het adres en probeer opnieuw."
-            }
+            do { try await FavoriteDestinationStore.save(address: favoriteAddress, for: kind); favoriteToEdit = nil }
+            catch { favoriteError = "Controleer het adres en probeer opnieuw." }
         }
     }
 
     private var turnBanner: some View {
         HStack(spacing: 12) {
-            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                .font(.title2)
-                .foregroundStyle(.blue)
+            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill").font(.title2).foregroundStyle(.blue)
             VStack(alignment: .leading, spacing: 2) {
-                Text(navigation.currentInstruction)
-                    .font(.headline)
-                    .lineLimit(2)
+                Text(navigation.currentInstruction).font(.headline).lineLimit(2)
                 HStack(spacing: 12) {
-                    if navigation.distanceRemainingM > 0 {
-                        Text(formatDistance(navigation.distanceRemainingM))
-                            .font(.caption.monospacedDigit())
-                    }
-                    if let eta = navigation.eta {
-                        Text("ETA \(eta.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption)
-                    }
-                }
-                .foregroundStyle(.secondary)
+                    if navigation.distanceRemainingM > 0 { Text(formatDistance(navigation.distanceRemainingM)).font(.caption.monospacedDigit()) }
+                    if let eta = navigation.eta { Text("ETA \(eta.formatted(date: .omitted, time: .shortened))").font(.caption) }
+                }.foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        }.padding(14).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var bottomHUD: some View {
         VStack(spacing: 8) {
-            if let fineText = location.fineEstimate?.displayText {
-                Text("🚨 \(fineText)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.red.opacity(0.92), in: RoundedRectangle(cornerRadius: 12))
-            }
-
             if let alert = location.currentAlert {
-                HStack {
-                    Text(alert.icon).font(.title2)
-                    VStack(alignment: .leading) {
-                        Text(alert.label).font(.subheadline.bold())
-                        Text("over \(alert.distance_m) m").font(.caption).foregroundStyle(.red)
+                HStack(spacing: 12) {
+                    Text(alert.icon).font(.title)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(alert.label).font(.headline).foregroundStyle(.white)
+                        Text("Over \(alert.distance_m) meter").font(.subheadline.bold()).foregroundStyle(.white.opacity(0.9))
                     }
                     Spacer()
-                }
-                .padding(12)
-                .background(Color.red.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+                }.padding(12).background(Color.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
             }
-
+            if let fineText = location.fineEstimate?.displayText {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "eurosign.circle.fill").font(.title2)
+                    Text(fineText).font(.subheadline.bold()).lineLimit(3).minimumScaleFactor(0.82)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.white).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.red.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+            }
             HStack {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(location.currentSpeedKmh.map(String.init) ?? "--")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
-                        .monospacedDigit()
+                    Text(location.currentSpeedKmh.map(String.init) ?? "--").font(.system(size: 36, weight: .bold, design: .rounded)).monospacedDigit()
                     Text("km/u").font(.caption2).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if let limit = location.speedLimit {
                     VStack(spacing: 2) {
-                        Text("\(limit)")
-                            .font(.title2.bold().monospacedDigit())
-                            .frame(width: 52, height: 52)
-                            .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 2))
+                        Text("\(limit)").font(.title2.bold().monospacedDigit()).frame(width: 52, height: 52)
+                            .background(.white, in: Circle()).foregroundStyle(.black)
+                            .overlay(Circle().strokeBorder(.red, lineWidth: 5))
                         Text("limiet").font(.caption2).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
-                Toggle(isOn: $navigation.voiceEnabled) {
-                    Image(systemName: navigation.voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash")
-                }
-                .labelsHidden()
-            }
-            .padding(14)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                Toggle(isOn: $navigation.voiceEnabled) { Image(systemName: navigation.voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash") }.labelsHidden()
+            }.padding(14).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 
-    private func runSearch() async {
-        guard let user = location.lastLocation else { return }
-        await navigation.search(near: user.coordinate)
-    }
-
-    private func followUser(heading: Bool) {
-        cameraPosition = .userLocation(followsHeading: heading, fallback: .automatic)
-    }
-
-    private func formatDistance(_ meters: Int) -> String {
-        if meters >= 1000 {
-            return String(format: "%.1f km", Double(meters) / 1000)
-        }
-        return "\(meters) m"
-    }
+    private func runSearch() async { guard let user = location.lastLocation else { return }; await navigation.search(near: user.coordinate) }
+    private func formatDistance(_ meters: Int) -> String { meters >= 1000 ? String(format: "%.1f km", Double(meters) / 1000) : "\(meters) m" }
 }
 
 private extension MKPolyline {
