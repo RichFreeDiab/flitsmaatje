@@ -101,15 +101,31 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
 function updateSpeed(position) {
   let kmh = null;
 
+  // Gebruik directe GPS-snelheid als beschikbaar (real-time)
   if (position.coords.speed !== null && position.coords.speed >= 0) {
     kmh = position.coords.speed * 3.6;
-  } else if (lastPos && lastPosTime) {
-    const dist = haversineMeters(lastPos.lat, lastPos.lng, position.coords.latitude, position.coords.longitude);
-    const dt = (position.timestamp - lastPosTime) / 1000;
-    if (dt > 0) kmh = (dist / dt) * 3.6;
   }
 
+  // Fallback: bereken op basis van recente positieverandering
+  // Alleen gebruiken als GPS-snelheid 0 is of niet beschikbaar
+  if (kmh === null && lastPos && lastPosTime) {
+    const dist = haversineMeters(lastPos.lat, lastPos.lng, position.coords.latitude, position.coords.longitude);
+    const dt = (position.timestamp - lastPosTime) / 1000;
+    if (dt > 0 && dt <= 2) { // alleen als het zeer recent is (max 2 seconden)
+      kmh = (dist / dt) * 3.6;
+    }
+  }
+
+  // Alleen updaten als we een geldige snelheid hebben
   if (kmh !== null && !isNaN(kmh)) {
+    // Filter extreme sprongen (meer dan 50 km/u in 1 seconde is onrealistisch)
+    if (currentSpeedKmh !== null) {
+      const delta = Math.abs(kmh - currentSpeedKmh);
+      if (delta > 50 && kmh < 10) {
+        // Waarschijnlijk een glitch, behoud de vorige waarde
+        kmh = currentSpeedKmh;
+      }
+    }
     currentSpeedKmh = kmh;
     speedValueEl.textContent = Math.round(kmh);
   }
@@ -133,6 +149,7 @@ function onPosition(position) {
     map.panTo([lat, lng], { animate: true });
   }
 
+  // Update snelheid direct (real-time)
   updateSpeed(position);
   checkProximityWarnings();
   maybeCheckSpeedLimit();
