@@ -193,21 +193,9 @@ final class CarPlayNavigationCoordinator: NSObject {
 
     private func updateManeuvers(for route: MKRoute) {
         guard let session = navigationSession else { return }
-        let startIndex = navigationService?.currentStepIndex ?? 0
-        let maneuvers: [CPManeuver] = route.steps.dropFirst(startIndex).prefix(3).compactMap { step in
-            let text = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { return nil }
-            let maneuver = CPManeuver()
-            maneuver.instructionVariants = [text]
-            maneuver.dashboardInstructionVariants = [text]
-            maneuver.notificationInstructionVariants = [text]
-            maneuver.initialTravelEstimates = CPTravelEstimates(
-                distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
-                timeRemaining: max(1, step.distance / 13.9)
-            )
-            return maneuver
-        }
-        session.upcomingManeuvers = maneuvers
+        // Geen native CPManeuver-banner: die verschijnt als groot rood vak
+        // boven Apple Kaarten en zit de eigen FlitsMaatje-weergave in de weg.
+        session.upcomingManeuvers = []
     }
 
     private func endGuidance() {
@@ -232,14 +220,16 @@ final class CarPlayNavigationCoordinator: NSObject {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: user.coordinate))
         request.destination = mapItem
         request.transportType = .automobile
+        request.requestsAlternateRoutes = true
 
         do {
             let response = try await MKDirections(request: request).calculate()
-            guard let route = response.routes.first else {
+            guard let route = response.routes.min(by: { $0.expectedTravelTime < $1.expectedTravelTime }) else {
                 AppLogger.error("CarPlay route: geen route")
                 return
             }
-            navigationService?.route = route
+        navigationService?.route = route
+            navigationService?.setDestinationCoordinate(mapItem.placemark.coordinate)
             navigationService?.currentStepIndex = 0
             navigationService?.isNavigating = false
             navigationService?.destinationName = mapItem.name ?? "Bestemming"

@@ -83,7 +83,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
         fineLabel.text = fineText.map { "🚨 BOETE-INDICATIE  •  \($0)" } ?? ""
-        fineLabel.textColor = .systemRed
+        fineLabel.textColor = .systemOrange
         finePanel.isHidden = fineText == nil
     }
 

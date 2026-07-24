@@ -6,6 +6,7 @@ import UserNotifications
 
 /// Geluid, trilling, CarPlay-notificatie en gesproken waarschuwing bij flitsers in de buurt.
 enum AlertNotifier {
+    static var speechEnabled = true
     private static let flitserCategoryId = "flitser.carplay"
     private static let speedingCategoryId = "speeding.carplay"
     private static let speedingNotificationId = "flitsmaatje.speeding.live"
@@ -87,6 +88,7 @@ enum AlertNotifier {
 
     /// Gesproken waarschuwing via autoradio — alleen voor flitsers, niet voor boetes.
     static func speakFlitser(alert: NearbyAlert) {
+        guard speechEnabled else { return }
         let now = Date()
         guard now.timeIntervalSince(lastSpokenAt) >= 20 else { return }
         guard shouldSpeakInCar() else { return }
@@ -100,6 +102,13 @@ enum AlertNotifier {
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.preUtteranceDelay = 0.05
         synthesizer.speak(utterance)
+    }
+
+    static func setSpeechEnabled(_ enabled: Bool) {
+        speechEnabled = enabled
+        if !enabled {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
     }
 
     private static func registerCategories() {

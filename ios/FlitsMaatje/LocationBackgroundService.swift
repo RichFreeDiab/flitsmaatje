@@ -45,6 +45,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var isAppActive = false
     private var recentSpeedSamples: [Int] = []
     private var lastAcceptedSpeedAt: Date = .distantPast
+    private var previousLocation: CLLocation?
 
     /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update
     /// direct als routevoortgang te verwerken.
@@ -52,7 +53,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     private let distanceAlarmThresholds = [600, 400, 200, 100]
     private let alarmRepeatInterval: TimeInterval = 25
-    private let carPlayRefreshInterval: TimeInterval = 2
+    private let carPlayRefreshInterval: TimeInterval = 0.5
 
     func prepareForUse() {
         BootLogger.mark("location-prepare")
@@ -120,6 +121,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         fineEstimate = nil
         roadName = nil
         lastLocation = nil
+        previousLocation = nil
         resetAlarmState()
         clearSpeedingState()
         persistSnapshot(lat: nil, lng: nil, alert: nil, message: "Tracking gestopt")
@@ -230,6 +232,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastLocation = location
         AppLogger.log("GPS update accuracy=\(Int(location.horizontalAccuracy))m speed=\(currentSpeedKmh ?? -1)kmh")
         updateCurrentSpeed(from: location)
+        // CarPlay leest dezelfde App Group-snapshot; schrijf snelheid direct weg.
+        persistSnapshot(lat: location.coordinate.latitude, lng: location.coordinate.longitude, alert: currentAlert, message: statusText)
         onLocationUpdate?(location)
 
         let lat = location.coordinate.latitude
@@ -240,11 +244,13 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         if shouldRunSpeedCheck(now: now, location: location) {
             lastSpeedCheckAt = now
             lastSpeedCheckLocation = location
-            await fetchSpeedCheckOffMain(lat: lat, lng: lng, speedKmh: speed)
+            Task { @MainActor in
+                await self.fetchSpeedCheckOffMain(lat: lat, lng: lng, speedKmh: speed)
+            }
         }
 
         if Task.isCancelled { return }
-        guard now.timeIntervalSince(lastPollAt) >= 8 else { return }
+        guard now.timeIntervalSince(lastPollAt) >= 2 else { return }
         lastPollAt = now
 
         do {
@@ -297,6 +303,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 statusText = fineText
             }
             handleSpeedingFine()
+            persistSnapshot(
+                lat: lastLocation?.coordinate.latitude,
+                lng: lastLocation?.coordinate.longitude,
+                alert: currentAlert,
+                message: statusText
+            )
         } catch {
             if !Task.isCancelled {
                 AppLogger.error("API speed-check mislukt: \(error.localizedDescription)")
@@ -305,13 +317,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func updateCurrentSpeed(from location: CLLocation) {
-        guard location.speed >= 0,
-              location.horizontalAccuracy >= 0,
-              location.horizontalAccuracy <= 60 else {
+        guard location.horizontalAccuracy >= 0,
+              location.horizontalAccuracy <= 80 else {
             return
         }
 
-        let candidate = Int((location.speed * 3.6).rounded())
+        let measuredSpeed = location.speed >= 0 ? location.speed : calculatedSpeed(from: location)
+        guard measuredSpeed >= 0 else { return }
+        let candidate = Int((measuredSpeed * 3.6).rounded())
         guard candidate <= 220 else {
             AppLogger.error("GPS snelheid genegeerd: \(candidate) km/u")
             return
@@ -331,12 +344,20 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         currentSpeedKmh = sorted[sorted.count / 2]
         lastAcceptedSpeedAt = now
         handleSpeedingFine()
+        previousLocation = location
+    }
+
+    private func calculatedSpeed(from location: CLLocation) -> CLLocationSpeed {
+        guard let previousLocation else { return -1 }
+        let seconds = location.timestamp.timeIntervalSince(previousLocation.timestamp)
+        guard seconds >= 0.5, seconds <= 10 else { return -1 }
+        return location.distance(from: previousLocation) / seconds
     }
 
     private func shouldRunSpeedCheck(now: Date, location: CLLocation) -> Bool {
         let isSpeeding = isCurrentlySpeeding()
-        let minInterval: TimeInterval = isSpeeding ? 3 : 5
-        let minDistance: CLLocationDistance = isSpeeding ? 20 : 40
+        let minInterval: TimeInterval = isSpeeding ? 1.5 : 2.5
+        let minDistance: CLLocationDistance = isSpeeding ? 10 : 20
 
         guard now.timeIntervalSince(lastSpeedCheckAt) >= minInterval else { return false }
         guard let last = lastSpeedCheckLocation else { return true }

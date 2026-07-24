@@ -15,7 +15,9 @@ final class NavigationService: ObservableObject {
     @Published var distanceRemainingM = 0
     @Published var eta: Date?
     @Published var destinationName: String?
-    @Published var voiceEnabled = true
+    @Published var voiceEnabled = true {
+        didSet { AlertNotifier.setSpeechEnabled(voiceEnabled) }
+    }
     @Published var reroutingEnabled = true
     @Published var finesEnabled = true
     @Published var alertsEnabled = true
@@ -25,6 +27,10 @@ final class NavigationService: ObservableObject {
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var lastRerouteAt = Date.distantPast
     private var isRerouting = false
+
+    func setDestinationCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        destinationCoordinate = coordinate
+    }
 
     var currentInstruction: String {
         guard let route, !route.steps.isEmpty else { return "Kies een bestemming" }
