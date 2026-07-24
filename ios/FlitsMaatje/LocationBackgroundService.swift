@@ -8,6 +8,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var isTracking = false
     @Published var statusText = "Wacht op locatietoestemming…"
     @Published var currentAlert: NearbyAlert?
+    @Published var mapReports: [MapReport] = []
     @Published var currentSpeedKmh: Int?
     @Published var speedLimit: Int?
     @Published var fineEstimate: FineEstimate?
@@ -111,6 +112,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         isTracking = false
         statusText = "Tracking gestopt"
         currentAlert = nil
+        mapReports = []
         currentSpeedKmh = nil
         recentSpeedSamples.removeAll()
         lastAcceptedSpeedAt = .distantPast
@@ -246,12 +248,17 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastPollAt = now
 
         do {
-            let alert = try await Task.detached(priority: .utility) {
+            async let alertRequest = Task.detached(priority: .utility) {
                 try await FlitsMaatjeAPI.fetchNearbyAlert(lat: lat, lng: lng)
             }.value
+            async let reportsRequest = Task.detached(priority: .utility) {
+                try await FlitsMaatjeAPI.fetchReports(lat: lat, lng: lng)
+            }.value
+            let (alert, reports) = try await (alertRequest, reportsRequest)
             if Task.isCancelled { return }
 
             currentAlert = alert
+            mapReports = reports
             if let alert {
                 statusText = "\(alert.label) over \(alert.distance_m) m"
                 persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)

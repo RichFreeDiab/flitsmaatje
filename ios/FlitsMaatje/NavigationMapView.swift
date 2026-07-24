@@ -75,6 +75,16 @@ struct NavigationMapView: View {
                 if let route = navigation.route {
                     MapPolyline(route.polyline).stroke(.blue, lineWidth: 7)
                 }
+                ForEach(location.mapReports) { report in
+                    Annotation(report.label, coordinate: CLLocationCoordinate2D(latitude: report.lat, longitude: report.lng)) {
+                        VStack(spacing: 1) {
+                            Text(report.icon).font(.title3)
+                            Text(report.label).font(.caption2.bold()).foregroundStyle(.white)
+                        }
+                        .padding(5)
+                        .background(markerColor(for: report.type).opacity(0.95), in: RoundedRectangle(cornerRadius: 9))
+                    }
+                }
                 if let alert = location.currentAlert {
                     Annotation(alert.label, coordinate: CLLocationCoordinate2D(latitude: alert.lat, longitude: alert.lng)) {
                         VStack(spacing: 2) {
@@ -187,6 +197,33 @@ struct NavigationMapView: View {
 
     private var bottomHUD: some View {
         VStack(spacing: 8) {
+            if navigation.finesEnabled,
+               let fineText = location.fineEstimate?.displayText(
+                speedKmh: location.currentSpeedKmh,
+                limit: location.speedLimit
+               ) {
+                HStack(spacing: 8) {
+                    Image(systemName: "eurosign.circle.fill")
+                        .font(.headline)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Boete-indicatie")
+                            .font(.caption.weight(.bold))
+                        Text(fineText)
+                            .font(.subheadline.weight(.bold))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.black)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .frame(maxWidth: 290, alignment: .leading)
+                .background(Color.orange, in: RoundedRectangle(cornerRadius: 13))
+                .shadow(color: .black.opacity(0.22), radius: 5, y: 2)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityLabel("Boete-indicatie: \(fineText)")
+            }
             if navigation.alertsEnabled, let alert = location.currentAlert {
                 HStack(spacing: 12) {
                     Text(alert.icon).font(.title)
@@ -196,20 +233,6 @@ struct NavigationMapView: View {
                     }
                     Spacer()
                 }.padding(12).background(Color.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
-            }
-            if navigation.finesEnabled,
-               let fineText = location.fineEstimate?.displayText(
-                speedKmh: location.currentSpeedKmh,
-                limit: location.speedLimit
-               ) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: "eurosign.circle.fill").font(.title2)
-                    Text(fineText).font(.subheadline.bold()).lineLimit(3).minimumScaleFactor(0.82)
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(.white).padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                .foregroundStyle(.primary).padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
             }
             HStack {
                 VStack(alignment: .leading, spacing: 0) {
@@ -233,6 +256,16 @@ struct NavigationMapView: View {
 
     private func runSearch() async { guard let user = location.lastLocation else { return }; await navigation.search(near: user.coordinate) }
     private func formatDistance(_ meters: Int) -> String { meters >= 1000 ? String(format: "%.1f km", Double(meters) / 1000) : "\(meters) m" }
+
+    private func markerColor(for type: String) -> Color {
+        switch type {
+        case "flitser_vast", "trajectcontrole": return .orange
+        case "file": return .yellow
+        case "ongeval": return .red
+        case "wegwerkzaamheden": return .blue
+        default: return .purple
+        }
+    }
 
     private var settingsView: some View {
         NavigationStack {

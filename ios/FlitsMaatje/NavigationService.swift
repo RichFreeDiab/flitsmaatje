@@ -67,10 +67,12 @@ final class NavigationService: ObservableObject {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: location.coordinate))
         request.destination = destination
         request.transportType = .automobile
+        request.requestsAlternateRoutes = true
 
         do {
             let response = try await calculateDirections(request)
-            guard let best = response.routes.first else {
+            // Kies consequent de route met de kortste actuele reistijd.
+            guard let best = response.routes.min(by: { $0.expectedTravelTime < $1.expectedTravelTime }) else {
                 statusMessage = "Geen route gevonden"
                 return
             }

@@ -31,6 +31,21 @@ enum FlitsMaatjeAPI {
         return decoded.alert
     }
 
+    static func fetchReports(lat: Double, lng: Double, radiusKm: Double = AppConfig.pollRadiusKm) async throws -> [MapReport] {
+        var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/reports"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lng", value: String(lng)),
+            URLQueryItem(name: "radius_km", value: String(radiusKm)),
+        ]
+        guard let url = components?.url else { throw APIError.badURL }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badResponse
+        }
+        return try JSONDecoder().decode(ReportsResponse.self, from: data).reports
+    }
+
     static func fetchSpeedCheck(lat: Double, lng: Double, speedKmh: Double?) async throws -> SpeedCheckResponse {
         var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/speed-check"), resolvingAgainstBaseURL: false)
         var query = [

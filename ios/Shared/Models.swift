@@ -4,6 +4,45 @@ struct NearbyAlertResponse: Codable {
     let alert: NearbyAlert?
 }
 
+struct ReportsResponse: Codable {
+    let reports: [MapReport]
+}
+
+struct MapReport: Codable, Equatable, Identifiable {
+    let id: String
+    let type: String
+    let lat: Double
+    let lng: Double
+    let confirms: Int
+    let distance_km: Double
+
+    var label: String {
+        switch type {
+        case "flitser_vast": return "Vaste flitspaal"
+        case "flitser_mobiel": return "Mobiele flitser"
+        case "trajectcontrole": return "Trajectcontrole"
+        case "file": return "File"
+        case "ongeval": return "Ongeval"
+        case "wegwerkzaamheden": return "Wegomleiding / werkzaamheden"
+        case "gevaar": return "Gevaar op de weg"
+        default: return "Verkeersmelding"
+        }
+    }
+
+    var icon: String {
+        switch type {
+        case "flitser_vast": return "📷"
+        case "trajectcontrole": return "📡"
+        case "flitser_mobiel": return "🚐"
+        case "file": return "🚗"
+        case "ongeval": return "💥"
+        case "wegwerkzaamheden": return "🚧"
+        case "gevaar": return "⚠️"
+        default: return "⚠️"
+        }
+    }
+}
+
 struct NearbyAlert: Codable, Equatable {
     let id: String
     let type: String
