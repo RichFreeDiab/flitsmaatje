@@ -197,6 +197,17 @@ struct NavigationMapView: View {
 
     private var bottomHUD: some View {
         VStack(spacing: 8) {
+            if let traffic = location.trafficInfo, let delay = traffic.delay_s, delay >= 60 {
+                HStack(spacing: 8) {
+                    Image(systemName: traffic.road_closure ? "exclamationmark.triangle.fill" : "car.fill")
+                    Text(traffic.road_closure ? "Wegafsluiting gemeld" : "TomTom: +\(delay / 60) min vertraging")
+                        .font(.caption.weight(.bold))
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.primary)
+                .padding(10)
+                .background(Color.yellow.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+            }
             if navigation.finesEnabled,
                let fineText = location.fineEstimate?.displayText(
                 speedKmh: location.currentSpeedKmh,

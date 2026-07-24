@@ -12,6 +12,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var currentSpeedKmh: Int?
     @Published var speedLimit: Int?
     @Published var fineEstimate: FineEstimate?
+    @Published var trafficInfo: TomTomTraffic?
     @Published var roadName: String?
     @Published var lastLocation: CLLocation?
 
@@ -119,6 +120,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastAcceptedSpeedAt = .distantPast
         speedLimit = nil
         fineEstimate = nil
+        trafficInfo = nil
         roadName = nil
         lastLocation = nil
         previousLocation = nil
@@ -297,6 +299,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             speedLimit = response.limit.maxspeed
             roadName = response.limit.road_name
             fineEstimate = response.fine
+            trafficInfo = response.traffic
 
             if currentAlert == nil,
                let fineText = response.fine?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) {

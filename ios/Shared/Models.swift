@@ -103,6 +103,18 @@ struct FineEstimate: Codable, Equatable {
 struct SpeedCheckResponse: Codable {
     let limit: SpeedLimitInfo
     let fine: FineEstimate?
+    let traffic: TomTomTraffic?
+}
+
+struct TomTomTraffic: Codable, Equatable {
+    let current_speed_kmh: Int?
+    let free_flow_speed_kmh: Int?
+    let current_travel_time_s: Int?
+    let free_flow_travel_time_s: Int?
+    let delay_s: Int?
+    let road_closure: Bool
+    let confidence: Double?
+    let source: String
 }
 
 struct WidgetSnapshot: Codable, Equatable {

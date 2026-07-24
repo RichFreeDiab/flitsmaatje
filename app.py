@@ -18,6 +18,8 @@ import uuid
 from pathlib import Path
 import requests
 from flask import Flask, request, jsonify, g, send_from_directory
+from ndw_feeds import sync_ndw_reports
+from tomtom_traffic import fetch_flow_segment, fetch_incidents
 
 DB_PATH = Path(__file__).parent / "flitsmaatje.db"
 
@@ -453,7 +455,20 @@ def speed_check():
         except ValueError:
             pass
 
-    return jsonify({"limit": limit_info, "fine": fine})
+    return jsonify({"limit": limit_info, "fine": fine, "traffic": fetch_flow_segment(lat, lng)})
+
+
+@app.route("/api/traffic-info", methods=["GET"])
+def traffic_info():
+    """Actuele TomTom-verkeersinformatie op de dichtstbijzijnde weg."""
+    try:
+        lat = float(request.args.get("lat"))
+        lng = float(request.args.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "lat en lng zijn verplicht"}), 400
+    traffic = fetch_flow_segment(lat, lng)
+    incidents = fetch_incidents(lat, lng)
+    return jsonify({"traffic": traffic, "incidents": incidents}), (200 if traffic or incidents else 503)
 
 
 @app.route("/api/reports", methods=["GET"])
@@ -468,6 +483,7 @@ def get_reports():
     radius_km = float(request.args.get("radius_km", 15))
 
     db = get_db()
+    sync_ndw_reports(db)
     cleanup_expired(db)
 
     # Grove bounding box filter in SQL (sneller dan alles ophalen), daarna exacte haversine check
@@ -495,6 +511,22 @@ def get_reports():
                 "distance_km": round(dist, 3),
             })
 
+    # TomTom levert actuele files, ongevallen en wegwerkzaamheden naast de
+    # eigen vaste flitsers en NDW-meldingen. Deze meldingen worden niet in de
+    # database opgeslagen, zodat ze vanzelf vers blijven.
+    for incident in fetch_incidents(lat, lng, radius_km):
+        dist = haversine_km(lat, lng, incident["lat"], incident["lng"])
+        if dist <= radius_km:
+            results.append({
+                "id": incident["id"], "type": incident["type"],
+                "lat": incident["lat"], "lng": incident["lng"],
+                "heading": None, "created_at": incident["created_at"],
+                "expires_at": incident["expires_at"], "confirms": 1,
+                "denies": 0, "distance_km": round(dist, 3),
+                "description": incident["description"],
+                "delay_s": incident["delay_s"],
+            })
+
     results.sort(key=lambda r: r["distance_km"])
     return jsonify({"reports": results})
 
@@ -515,6 +547,7 @@ def nearby_alert():
 
     radius_km = float(request.args.get("radius_km", 15))
     db = get_db()
+    sync_ndw_reports(db)
     cleanup_expired(db)
 
     deg_margin = radius_km / 111.0
@@ -535,6 +568,7 @@ def nearby_alert():
         for row in rows
     ]
     candidates.extend(fetch_osm_speed_cameras(lat, lng))
+    candidates.extend(fetch_incidents(lat, lng, radius_km))
 
     closest = None
     closest_dist_m = None
