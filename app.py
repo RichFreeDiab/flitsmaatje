@@ -21,6 +21,13 @@ from flask import Flask, request, jsonify, g, send_from_directory
 from ndw_feeds import sync_ndw_reports
 from tomtom_traffic import fetch_flow_segment, fetch_incidents
 
+# Nightscout configuratie
+NIGHTSCOUT_URL = "https://nightscout.readvanes.nl"
+NIGHTSCOUT_API_TOKEN = None  # Geen token nodig als de site publiek is
+NIGHTSCOUT_CACHE_TTL = 60  # 60 seconden cache
+_nightscout_cache = {}
+_nightscout_cache_time = 0
+
 DB_PATH = Path(__file__).parent / "flitsmaatje.db"
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
