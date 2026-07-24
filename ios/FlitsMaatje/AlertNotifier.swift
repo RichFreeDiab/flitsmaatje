@@ -6,7 +6,8 @@ import UserNotifications
 
 /// Geluid, trilling, CarPlay-notificatie en gesproken waarschuwing bij flitsers in de buurt.
 enum AlertNotifier {
-    static var speechEnabled = true
+    // Korte systeemtoon blijft actief; gesproken tekst staat standaard uit.
+    static var speechEnabled = false
     private static let flitserCategoryId = "flitser.carplay"
     private static let speedingCategoryId = "speeding.carplay"
     private static let speedingNotificationId = "flitsmaatje.speeding.live"

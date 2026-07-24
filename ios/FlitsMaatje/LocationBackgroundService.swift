@@ -342,9 +342,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
 
         recentSpeedSamples.append(candidate)
-        recentSpeedSamples = Array(recentSpeedSamples.suffix(5))
+        // Twee samples houden de weergave stabiel zonder merkbare vertraging.
+        recentSpeedSamples = Array(recentSpeedSamples.suffix(2))
         let sorted = recentSpeedSamples.sorted()
-        currentSpeedKmh = sorted[sorted.count / 2]
+        currentSpeedKmh = Int(Double(sorted.reduce(0, +)) / Double(sorted.count))
         lastAcceptedSpeedAt = now
         handleSpeedingFine()
         previousLocation = location
@@ -443,7 +444,6 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastAlarmAt = Date()
         AlertNotifier.playFlitserAlarm()
         AlertNotifier.notifyFlitser(alert: alert)
-        AlertNotifier.speakFlitser(alert: alert)
     }
 
     private func resetAlarmState() {

@@ -260,7 +260,6 @@ struct NavigationMapView: View {
                     }
                 }
                 Spacer()
-                Toggle(isOn: $navigation.voiceEnabled) { Image(systemName: navigation.voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash") }.labelsHidden()
             }.padding(14).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
     }
@@ -283,7 +282,6 @@ struct NavigationMapView: View {
             Form {
                 Section("Navigatie") {
                     Toggle("Automatisch herrouteren", isOn: $navigation.reroutingEnabled)
-                    Toggle("Gesproken aanwijzingen", isOn: $navigation.voiceEnabled)
                 }
                 Section("Meldingen") {
                     Toggle("Boete-indicatie tonen", isOn: $navigation.finesEnabled)

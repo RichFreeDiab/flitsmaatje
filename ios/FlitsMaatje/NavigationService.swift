@@ -15,7 +15,7 @@ final class NavigationService: ObservableObject {
     @Published var distanceRemainingM = 0
     @Published var eta: Date?
     @Published var destinationName: String?
-    @Published var voiceEnabled = true {
+    @Published var voiceEnabled = false {
         didSet { AlertNotifier.setSpeechEnabled(voiceEnabled) }
     }
     @Published var reroutingEnabled = true
@@ -93,7 +93,6 @@ final class NavigationService: ObservableObject {
             searchResults = []
             searchQuery = destinationName ?? ""
             statusMessage = "Navigatie gestart"
-            speakCurrentStepIfNeeded()
         } catch {
             statusMessage = "Route berekenen mislukt"
         }
@@ -180,7 +179,6 @@ final class NavigationService: ObservableObject {
                 break
             }
             currentStepIndex += 1
-            speakCurrentStepIfNeeded()
         }
     }
 

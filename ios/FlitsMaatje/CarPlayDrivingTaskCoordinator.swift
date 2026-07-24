@@ -15,15 +15,18 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
     private var listTemplate: CPListTemplate?
     private var lastLoggedAlertId: String?
     private var lastLoggedFineText: String?
+    private weak var mapViewController: CarPlayMapViewController?
 
-    func attach(interfaceController: CPInterfaceController) {
+    func attach(interfaceController: CPInterfaceController, mapViewController: CarPlayMapViewController? = nil) {
         self.interfaceController = interfaceController
+        self.mapViewController = mapViewController
         listTemplate = makeListTemplate()
     }
 
     func detach() {
         interfaceController = nil
         listTemplate = nil
+        mapViewController = nil
         lastLoggedAlertId = nil
         lastLoggedFineText = nil
     }
@@ -58,6 +61,7 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
     }
 
     private func refreshList() {
+        mapViewController?.updateFromSnapshot(SharedStore.load())
         if let template = listTemplate {
             template.updateSections(makeSections())
         } else {

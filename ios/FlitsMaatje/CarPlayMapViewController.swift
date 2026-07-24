@@ -87,6 +87,11 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         finePanel.isHidden = fineText == nil
     }
 
+    func updateFromSnapshot(_ snapshot: WidgetSnapshot) {
+        let alertText = snapshot.alert.map { "\($0.icon) \($0.label)  •  over \($0.distance_m) m" }
+        update(speedKmh: snapshot.speedKmh, limit: snapshot.speedLimitKmh, alert: alertText, fineText: snapshot.fineText)
+    }
+
     func showRoute(_ route: MKRoute) { mapView.removeOverlays(mapView.overlays); mapView.addOverlay(route.polyline); recenter() }
 
     func follow(location: CLLocation) {
