@@ -371,11 +371,135 @@ async function fetchSpeedCheck() {
   try {
     const res = await fetch(`/api/speed-check?lat=${userPos.lat}&lng=${userPos.lng}${speedParam}`);
     const data = await res.json();
-    // Verwerk de snelheid en limiet hier
+    renderSpeedLimit(data.limit, data.fine);
   } catch (e) {
-    console.error("Kon snelheidscheck niet uitvoeren:", e);
+    console.error("Kon snelheidslimiet niet ophalen:", e);
   }
 }
 
-// Start GPS tracking
+function renderSpeedLimit(limit, fine) {
+  if (!limit || limit.maxspeed === null || limit.maxspeed === undefined) {
+    limitRowEl.classList.add("hidden");
+    speedPanelEl.classList.remove("speeding");
+    fineBanner.classList.add("hidden");
+    return;
+  }
+
+  limitBadgeEl.textContent = limit.maxspeed;
+  limitRowEl.classList.remove("hidden");
+
+  if (!fine || fine.bedrag === 0) {
+    speedPanelEl.classList.remove("speeding");
+    fineBanner.classList.add("hidden");
+    return;
+  }
+
+  speedPanelEl.classList.add("speeding");
+
+  if (fine.om_zaak) {
+    fineText.textContent = `${fine.excess_kmh} km/u te hard — geen vaste boete, dagvaarding OM (mogelijk rijontzegging)`;
+  } else {
+    fineText.textContent = `${fine.excess_kmh} km/u te hard — indicatief €${fine.bedrag} (incl. €${ADMIN_COST_DISPLAY} adm.kosten)`;
+  }
+  fineBanner.classList.remove("hidden");
+  playFineBeep();
+}
+
+const ADMIN_COST_DISPLAY = 9;
+
+let lastFineBeepTime = 0;
+function playFineBeep() {
+  const now = Date.now();
+  if (now - lastFineBeepTime < 20000) return; // niet vaker dan elke 20s zeuren
+  lastFineBeepTime = now;
+  unlockAudio();
+  try {
+    beep(440, 0.3, 0.3, "square");
+  } catch (e) {
+    // geen geluid beschikbaar
+  }
+}
+
+// --- Melding maken via FAB knop ---
+reportFab.addEventListener("click", () => {
+  reportMenu.classList.toggle("hidden");
+});
+reportCancel.addEventListener("click", () => {
+  reportMenu.classList.add("hidden");
+});
+
+document.querySelectorAll(".report-btn").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    if (!userPos) {
+      alert("Je locatie is nog niet bekend.");
+      return;
+    }
+    const type = btn.getAttribute("data-type");
+    reportMenu.classList.add("hidden");
+    try {
+      await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, lat: userPos.lat, lng: userPos.lng, heading: currentHeading }),
+      });
+      fetchReports();
+    } catch (e) {
+      console.error("Melding plaatsen mislukt:", e);
+    }
+  });
+});
+
 startGPS();
+
+// --- PWA: service worker, install-tip, audio ontgrendelen ---
+
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    }
+  } catch (e) {
+    // niet ondersteund of geweigerd
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && userPos) requestWakeLock();
+});
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+const installHint = document.getElementById("install-hint");
+const installHintClose = document.getElementById("install-hint-close");
+const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+
+if (!isStandalone && !localStorage.getItem("install_hint_dismissed")) {
+  installHint.classList.remove("hidden");
+}
+installHintClose.addEventListener("click", () => {
+  installHint.classList.add("hidden");
+  localStorage.setItem("install_hint_dismissed", "1");
+});
+
+["click", "touchstart"].forEach((ev) => {
+  document.addEventListener(ev, unlockAudio, { once: true, passive: true });
+});
+
+
+// --- Diagnostics: captureer onverwachte frontend-fouten voor bugonderzoek ---
+(() => {
+  const diagnostic = (reason, detail) => {
+    const payload = String(detail || "").slice(0, 1000);
+    console.error("[FlitsMaatje]", reason, payload);
+    try {
+      navigator.sendBeacon("/api/diagnostic-log", new Blob([payload], {type: "text/plain"}));
+    } catch (_) {}
+  };
+  window.addEventListener("error", event => diagnostic("window-error", event.message));
+  window.addEventListener("unhandledrejection", event => diagnostic("unhandled-rejection", event.reason));
+  document.addEventListener("visibilitychange", () => console.info("[FlitsMaatje] visibility", document.visibilityState));
+})();
