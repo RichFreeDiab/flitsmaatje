@@ -1,1 +1,1 @@
-AI-Brein plan-smoke OK 2026-07-24T191920Z
+AI-Brein plan-verify OK 2026-07-24T194638Z
