@@ -19,7 +19,7 @@ from pathlib import Path
 import requests
 from flask import Flask, request, jsonify, g, send_from_directory
 from ndw_feeds import sync_ndw_reports
-from tomtom_traffic import fetch_flow_segment, fetch_incidents, fetch_tomtom_speed_limit
+from tomtom_traffic import fetch_flow_segment, fetch_incidents, fetch_tomtom_speed_limit, fetch_lane_guidance
 
 # Nightscout configuratie
 NIGHTSCOUT_URL = "https://nightscout.readvanes.nl"
@@ -491,6 +491,18 @@ def traffic_info():
     traffic = fetch_flow_segment(lat, lng)
     incidents = fetch_incidents(lat, lng)
     return jsonify({"traffic": traffic, "incidents": incidents}), (200 if traffic or incidents else 503)
+
+
+@app.route("/api/lane-guidance", methods=["GET"])
+def lane_guidance():
+    try:
+        origin_lat = float(request.args.get("origin_lat"))
+        origin_lng = float(request.args.get("origin_lng"))
+        destination_lat = float(request.args.get("destination_lat"))
+        destination_lng = float(request.args.get("destination_lng"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "origin en destination zijn verplicht"}), 400
+    return jsonify({"sections": fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng)})
 
 
 @app.route("/api/reports", methods=["GET"])

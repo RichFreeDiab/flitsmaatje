@@ -214,6 +214,17 @@ struct NavigationMapView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.82)
             }
+            if let section = navigation.laneSections.first, !section.lanes.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
+                        Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
+                            .font(.system(size: 16, weight: lane.follow != nil ? .bold : .regular))
+                            .foregroundStyle(lane.follow != nil ? .blue : .secondary)
+                            .frame(width: 22, height: 27)
+                            .background(lane.follow != nil ? Color.blue.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+                    }
+                }
+            }
             Spacer(minLength: 0)
         }
         .padding(10)
@@ -231,6 +242,15 @@ struct NavigationMapView: View {
         if text.contains("rechts") || text.contains("right") { return "arrow.turn.up.right" }
         if text.contains("rechtdoor") || text.contains("straight") { return "arrow.up" }
         return "arrow.up.right"
+    }
+
+    private func laneSymbol(_ direction: String?) -> String {
+        switch direction {
+        case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": return "arrow.up.left"
+        case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": return "arrow.up.right"
+        case "LEFT_U_TURN", "RIGHT_U_TURN": return "arrow.uturn.up"
+        default: return "arrow.up"
+        }
     }
 
     private var bottomHUD: some View {

@@ -106,6 +106,21 @@ struct SpeedCheckResponse: Codable {
     let traffic: TomTomTraffic?
 }
 
+struct LaneGuidanceResponse: Codable {
+    let sections: [LaneSection]
+}
+
+struct LaneSection: Codable, Equatable {
+    let start_point_index: Int
+    let end_point_index: Int
+    let lanes: [Lane]
+}
+
+struct Lane: Codable, Equatable {
+    let directions: [String]
+    let follow: String?
+}
+
 struct TomTomTraffic: Codable, Equatable {
     let current_speed_kmh: Int?
     let free_flow_speed_kmh: Int?

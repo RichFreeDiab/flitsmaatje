@@ -15,6 +15,7 @@ final class NavigationService: ObservableObject {
     @Published var distanceRemainingM = 0
     @Published var eta: Date?
     @Published var destinationName: String?
+    @Published var laneSections: [LaneSection] = []
     @Published var voiceEnabled = false {
         didSet { AlertNotifier.setSpeechEnabled(voiceEnabled) }
     }
@@ -84,6 +85,10 @@ final class NavigationService: ObservableObject {
             }
 
             route = best
+            laneSections = (try? await FlitsMaatjeAPI.fetchLaneGuidance(
+                origin: location.coordinate,
+                destination: destination.placemark.coordinate
+            )) ?? []
             currentStepIndex = 0
             lastSpokenStep = -1
             isNavigating = true
@@ -112,6 +117,7 @@ final class NavigationService: ObservableObject {
         distanceRemainingM = 0
         eta = nil
         destinationName = nil
+        laneSections = []
         destinationCoordinate = nil
         statusMessage = "Navigatie gestopt"
         synthesizer.stopSpeaking(at: .immediate)

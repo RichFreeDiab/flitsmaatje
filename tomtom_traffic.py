@@ -11,6 +11,55 @@ import requests
 TOMTOM_URL = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
 TOMTOM_INCIDENTS_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 TOMTOM_SNAP_URL = "https://api.tomtom.com/snapToRoads/1/"
+TOMTOM_ROUTING_URL = "https://api.tomtom.com/routing/1/calculateRoute"
+
+
+def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng):
+    """Fetch TomTom v1 lane sections for the active route."""
+    api_key = os.environ.get("TOMTOM_API_KEY")
+    if not api_key:
+        return []
+    try:
+        response = requests.get(
+            f"{TOMTOM_ROUTING_URL}/{origin_lat},{origin_lng}:{destination_lat},{destination_lng}/json",
+            params={
+                "key": api_key,
+                "traffic": "true",
+                "routeType": "fastest",
+                "travelMode": "car",
+                "instructionsType": "text",
+                "language": "nl-NL",
+                "sectionType": "lanes",
+                "instructionAnnouncementPoints": "all",
+            },
+            headers={"User-Agent": "FlitsMaatje/1.1"},
+            timeout=8,
+        )
+        response.raise_for_status()
+        routes = response.json().get("routes") or []
+        if not routes:
+            return []
+        sections = routes[0].get("sections") or []
+        result = []
+        for section in sections:
+            if section.get("sectionType") != "LANES":
+                continue
+            lanes = []
+            for lane in section.get("lanes") or []:
+                directions = lane.get("directions") or []
+                lanes.append({
+                    "directions": directions,
+                    "follow": lane.get("follow"),
+                })
+            if lanes:
+                result.append({
+                    "start_point_index": section.get("startPointIndex", 0),
+                    "end_point_index": section.get("endPointIndex", 0),
+                    "lanes": lanes,
+                })
+        return result
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        return []
 
 
 def fetch_tomtom_speed_limit(lat, lng):
