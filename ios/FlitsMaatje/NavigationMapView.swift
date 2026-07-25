@@ -212,7 +212,7 @@ struct NavigationMapView: View {
                let fineText = location.fineEstimate?.displayText(
                 speedKmh: location.currentSpeedKmh,
                 limit: location.speedLimit
-               ) {
+               ) ?? location.speedingWarningText {
                 HStack(spacing: 8) {
                     Image(systemName: "eurosign.circle.fill")
                         .font(.headline)

@@ -16,6 +16,13 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var roadName: String?
     @Published var lastLocation: CLLocation?
 
+    var speedingWarningText: String? {
+        guard let speed = currentSpeedKmh, let limit = speedLimit else { return nil }
+        let corrected = speed <= 100 ? speed - 3 : Int(Double(speed) * 0.97)
+        let excess = corrected - limit
+        return excess >= 4 ? "Te hard: +\(excess) km/u" : nil
+    }
+
     var managerAuthorizationIsAlways: Bool {
         manager.authorizationStatus == .authorizedAlways
     }
@@ -37,6 +44,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }()
     private var didConfigureManager = false
     private var locationProcessingTask: Task<Void, Never>?
+    private var speedCheckTask: Task<Void, Never>?
     private var lastPollAt: Date = .distantPast
     private var lastSpeedCheckAt: Date = .distantPast
     private var lastSpeedCheckLocation: CLLocation?
@@ -111,7 +119,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     func stop() {
         AppLogger.log("Locatie: stop")
         locationProcessingTask?.cancel()
+        speedCheckTask?.cancel()
         locationProcessingTask = nil
+        speedCheckTask = nil
         manager.stopUpdatingLocation()
         isTracking = false
         statusText = "Tracking gestopt"
@@ -152,7 +162,6 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func scheduleLocationProcessing(_ location: CLLocation) {
-        locationProcessingTask?.cancel()
         locationProcessingTask = Task {
             await processLocation(location)
         }
@@ -248,7 +257,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         if shouldRunSpeedCheck(now: now, location: location) {
             lastSpeedCheckAt = now
             lastSpeedCheckLocation = location
-            Task { @MainActor in
+            speedCheckTask = Task { @MainActor in
                 await self.fetchSpeedCheckOffMain(lat: lat, lng: lng, speedKmh: speed)
             }
         }
@@ -343,11 +352,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             return
         }
 
-        recentSpeedSamples.append(candidate)
-        // Twee samples houden de weergave stabiel zonder merkbare vertraging.
-        recentSpeedSamples = Array(recentSpeedSamples.suffix(2))
-        let sorted = recentSpeedSamples.sorted()
-        currentSpeedKmh = Int(Double(sorted.reduce(0, +)) / Double(sorted.count))
+        // Toon de actuele Core Location-snelheid direct; middelen veroorzaakte
+        // merkbare vertraging bij optrekken en afremmen.
+        currentSpeedKmh = candidate
         lastAcceptedSpeedAt = now
         handleSpeedingFine()
         previousLocation = location
@@ -378,8 +385,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func handleSpeedingFine() {
-        guard let fine = fineEstimate,
-              let body = fine.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) else {
+        guard let body = fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? speedingWarningText else {
             clearSpeedingState()
             return
         }
@@ -388,7 +394,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         guard signature != lastSpeedingSignature else { return }
         lastSpeedingSignature = signature
 
-        AlertNotifier.updateSpeedingPopup(speedKmh: currentSpeedKmh, limit: speedLimit, fine: fine)
+        if let fine = fineEstimate {
+            AlertNotifier.updateSpeedingPopup(speedKmh: currentSpeedKmh, limit: speedLimit, fine: fine)
+        }
         refreshCarPlaySpeeding()
 
         if currentAlert == nil {
@@ -462,7 +470,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             alert: alert,
             speedKmh: currentSpeedKmh,
             speedLimitKmh: speedLimit,
-            fineText: fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit),
+            fineText: fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? speedingWarningText,
             statusMessage: message
         )
         SharedStore.save(snapshot)
