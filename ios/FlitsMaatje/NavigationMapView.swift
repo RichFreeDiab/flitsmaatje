@@ -18,6 +18,9 @@ struct NavigationMapView: View {
             mapLayer
             VStack(spacing: 10) {
                 searchBar
+                if navigation.isNavigating {
+                    maneuverBanner
+                }
                 favoriteButtons
                 if navigation.isNavigating { turnBanner }
                 Spacer()
@@ -193,6 +196,41 @@ struct NavigationMapView: View {
             }
             Spacer(minLength: 0)
         }.padding(14).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var maneuverBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
+                .font(.system(size: 25, weight: .bold))
+                .frame(width: 34, height: 34)
+                .foregroundStyle(.white)
+                .background(Color.blue, in: RoundedRectangle(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Volgende afslag")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(navigation.currentInstruction)
+                    .font(.headline.weight(.bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: 330, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func maneuverSymbol(for instruction: String) -> String {
+        let text = instruction.lowercased()
+        if text.contains("rotonde") { return "arrow.clockwise" }
+        if text.contains("keer") || text.contains("u-turn") { return "arrow.uturn.backward" }
+        if text.contains("links") || text.contains("left") { return "arrow.turn.up.left" }
+        if text.contains("rechts") || text.contains("right") { return "arrow.turn.up.right" }
+        if text.contains("rechtdoor") || text.contains("straight") { return "arrow.up" }
+        return "arrow.up.right"
     }
 
     private var bottomHUD: some View {
