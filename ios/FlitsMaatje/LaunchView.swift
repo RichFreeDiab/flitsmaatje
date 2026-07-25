@@ -207,6 +207,9 @@ struct LaunchView: View {
             let service = LocationBackgroundService()
             location = service
             navigationService = NavigationService()
+            service.onLocationUpdate = { [weak navigationService] location in
+                navigationService?.updateProgress(location: location)
+            }
             // CarPlay may connect before the phone dashboard is opened. Keep the
             // shared coordinator connected to the live GPS service immediately.
             CarPlayDrivingTaskCoordinator.shared.locationService = service

@@ -75,12 +75,12 @@ struct FineEstimate: Codable, Equatable {
     func displayText(speedKmh: Int?, limit: Int?) -> String? {
         guard excess_kmh >= 4 else { return nil }
         if om_zaak {
-            return "\(excess_kmh) km/u te hard na meetcorrectie — controleer OM Boetebase"
+            return "Te hard: +\(excess_kmh) km/u · OM-tarief"
         }
         if let bedrag {
-            return "\(excess_kmh) km/u te hard na meetcorrectie — indicatief €\(bedrag) incl. kosten"
+            return "Te hard: +\(excess_kmh) km/u · indicatief €\(bedrag)"
         }
-        return "\(excess_kmh) km/u te hard na meetcorrectie"
+        return "Te hard: +\(excess_kmh) km/u"
     }
 
     func carPlaySubtitle(speedKmh: Int?, limit: Int?) -> String {
@@ -96,7 +96,7 @@ struct FineEstimate: Codable, Equatable {
 
     func carPlayNotificationSubtitle(speedKmh: Int?, limit: Int?) -> String? {
         guard carPlayNotificationTitle(speedKmh: speedKmh, limit: limit) != nil else { return nil }
-        return "\(carPlaySubtitle(speedKmh: speedKmh, limit: limit)) · \(excess_kmh) km/u na correctie"
+        return carPlaySubtitle(speedKmh: speedKmh, limit: limit)
     }
 }
 

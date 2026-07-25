@@ -89,7 +89,7 @@ struct NavigationMapView: View {
                     Annotation(alert.label, coordinate: CLLocationCoordinate2D(latitude: alert.lat, longitude: alert.lng)) {
                         VStack(spacing: 2) {
                             Text(alert.icon).font(.title2)
-                            Text("\(alert.distance_m) m").font(.caption2.bold()).foregroundStyle(.white)
+                            Text(String(format: "%.1f km", Double(alert.distance_m) / 1000)).font(.caption2.bold()).foregroundStyle(.white)
                         }
                         .padding(7)
                         .background(.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
@@ -240,7 +240,7 @@ struct NavigationMapView: View {
                     Text(alert.icon).font(.title)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(alert.label).font(.headline).foregroundStyle(.white)
-                        Text("Over \(alert.distance_m) meter").font(.subheadline.bold()).foregroundStyle(.white.opacity(0.9))
+                        Text(String(format: "Over %.1f km", Double(alert.distance_m) / 1000)).font(.subheadline.bold()).foregroundStyle(.white.opacity(0.9))
                     }
                     Spacer()
                 }.padding(12).background(Color.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
@@ -265,7 +265,7 @@ struct NavigationMapView: View {
     }
 
     private func runSearch() async { guard let user = location.lastLocation else { return }; await navigation.search(near: user.coordinate) }
-    private func formatDistance(_ meters: Int) -> String { meters >= 1000 ? String(format: "%.1f km", Double(meters) / 1000) : "\(meters) m" }
+    private func formatDistance(_ meters: Int) -> String { String(format: "%.1f km", Double(meters) / 1000) }
 
     private func markerColor(for type: String) -> Color {
         switch type {

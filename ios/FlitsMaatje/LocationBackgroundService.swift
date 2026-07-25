@@ -28,7 +28,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         let m = CLLocationManager()
         m.delegate = self
         m.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        m.distanceFilter = 15
+        // Navigatie-apps krijgen zo vrijwel iedere GPS-update; 15 meter gaf
+        // bij lage snelheid en optrekken een zichtbare achterstand.
+        m.distanceFilter = kCLDistanceFilterNone
         m.pausesLocationUpdatesAutomatically = false
         m.activityType = .automotiveNavigation
         return m
@@ -335,8 +337,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
         let now = Date()
         if let current = currentSpeedKmh,
-           abs(candidate - current) > 35,
-           now.timeIntervalSince(lastAcceptedSpeedAt) < 4 {
+           abs(candidate - current) > 50,
+           now.timeIntervalSince(lastAcceptedSpeedAt) < 1.5 {
             AppLogger.error("GPS snelheidssprong genegeerd: \(current)→\(candidate) km/u")
             return
         }

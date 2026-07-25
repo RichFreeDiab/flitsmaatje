@@ -518,6 +518,18 @@ def get_reports():
                 "distance_km": round(dist, 3),
             })
 
+    # Vaste flitscamera's horen ook op de kaart te staan, niet alleen in de
+    # dichtstbijzijnde-waarschuwing.
+    for camera in fetch_osm_speed_cameras(lat, lng):
+        dist = haversine_km(lat, lng, camera["lat"], camera["lng"])
+        if dist <= radius_km:
+            results.append({
+                "id": camera["id"], "type": camera["type"],
+                "lat": camera["lat"], "lng": camera["lng"],
+                "heading": None, "created_at": None, "expires_at": None,
+                "confirms": 1, "denies": 0, "distance_km": round(dist, 3),
+            })
+
     # TomTom levert actuele files, ongevallen en wegwerkzaamheden naast de
     # eigen vaste flitsers en NDW-meldingen. Deze meldingen worden niet in de
     # database opgeslagen, zodat ze vanzelf vers blijven.

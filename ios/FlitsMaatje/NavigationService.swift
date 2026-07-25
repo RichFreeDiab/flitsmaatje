@@ -122,8 +122,10 @@ final class NavigationService: ObservableObject {
 
         if reroutingEnabled,
            let destinationCoordinate,
-           distanceFromRoute(location, route: route) > 80,
-           Date().timeIntervalSince(lastRerouteAt) > 10,
+           location.horizontalAccuracy >= 0,
+           location.horizontalAccuracy <= 50,
+           distanceFromRoute(location, route: route) > 55,
+           Date().timeIntervalSince(lastRerouteAt) > 5,
            !isRerouting {
             isRerouting = true
             lastRerouteAt = Date()
@@ -142,8 +144,9 @@ final class NavigationService: ObservableObject {
             }
         }
         distanceRemainingM = max(0, Int(remaining))
-        if remaining > 0, location.speed > 1 {
-            eta = Date().addingTimeInterval(remaining / location.speed)
+        if remaining > 0, route.distance > 0, route.expectedTravelTime > 0 {
+            let routeFraction = min(1, max(0, remaining / route.distance))
+            eta = Date().addingTimeInterval(route.expectedTravelTime * routeFraction)
         }
 
         if currentStepIndex >= route.steps.count {
