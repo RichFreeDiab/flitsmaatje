@@ -19,7 +19,7 @@ from pathlib import Path
 import requests
 from flask import Flask, request, jsonify, g, send_from_directory
 from ndw_feeds import sync_ndw_reports
-from tomtom_traffic import fetch_flow_segment, fetch_incidents
+from tomtom_traffic import fetch_flow_segment, fetch_incidents, fetch_tomtom_speed_limit
 
 # Nightscout configuratie
 NIGHTSCOUT_URL = "https://nightscout.readvanes.nl"
@@ -222,7 +222,16 @@ def fetch_speed_limit(lat, lng):
     try:
         data = run_overpass_query(query)
     except Exception as error:
-        # Nooit een exception naar de rijdende app laten ontsnappen.
+        # Overpass kan tijdens drukte time-outen. Gebruik TomTom als primaire
+        # fallback, zodat de boeteberekening niet stilvalt zonder limiet.
+        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
+        if tomtom_limit is not None:
+            return {
+                "maxspeed": tomtom_limit,
+                "zone": classify_zone(None, tomtom_limit),
+                "road_name": None,
+                "source": "tomtom_snap_to_roads",
+            }
         return {
             "maxspeed": None,
             "zone": None,
@@ -254,6 +263,12 @@ def fetch_speed_limit(lat, lng):
     if maxspeed is None:
         maxspeed = DEFAULT_LIMIT_BY_HIGHWAY.get(highway_type)
         source = "default_estimate"
+
+    if maxspeed is None:
+        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
+        if tomtom_limit is not None:
+            maxspeed = tomtom_limit
+            source = "tomtom_snap_to_roads"
 
     result = {
         "maxspeed": maxspeed,

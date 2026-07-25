@@ -10,6 +10,40 @@ import requests
 
 TOMTOM_URL = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
 TOMTOM_INCIDENTS_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
+TOMTOM_SNAP_URL = "https://api.tomtom.com/snapToRoads/1/"
+
+
+def fetch_tomtom_speed_limit(lat, lng):
+    """Return the static speed limit from TomTom's road-matching service."""
+    api_key = os.environ.get("TOMTOM_API_KEY")
+    if not api_key:
+        return None
+    fields = "{route{properties{speedLimits{value,unit}}}}"
+    try:
+        response = requests.get(
+            TOMTOM_SNAP_URL,
+            params={
+                "key": api_key,
+                "points": f"{lng},{lat}",
+                "fields": fields,
+                "vehicleType": "PassengerCar",
+                "measurementSystem": "metric",
+                "offroadMargin": 50,
+            },
+            headers={"User-Agent": "FlitsMaatje/1.1"},
+            timeout=5,
+        )
+        response.raise_for_status()
+        route = response.json().get("route") or {}
+        properties = route.get("properties") or {}
+        limits = properties.get("speedLimits") or []
+        for item in limits:
+            value = item.get("value") if isinstance(item, dict) else None
+            if value is not None:
+                return int(round(float(value)))
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        return None
+    return None
 
 
 def fetch_flow_segment(lat, lng):
