@@ -10,7 +10,9 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     speedPanel
-                    fineBanner(location.fineStatusText)
+                    if let fineText = location.fineStatusText {
+                        fineBanner(fineText)
+                    }
                     if let alert = location.currentAlert {
                         flitserCard(alert)
                     } else {

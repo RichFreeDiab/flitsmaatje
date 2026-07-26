@@ -9,9 +9,11 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private let alertLabel = UILabel()
     private let fineLabel = UILabel()
     private let laneLabel = UILabel()
+    private let maneuverLabel = UILabel()
     private let alertPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let finePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let lanePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let maneuverPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private var refreshTimer: Timer?
 
     override func viewDidLoad() {
@@ -62,18 +64,21 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         fineLabel.font = .systemFont(ofSize: 16, weight: .bold); fineLabel.numberOfLines = 3; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.82
         laneLabel.font = .systemFont(ofSize: 22, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
         lanePanel.isHidden = true
+        maneuverLabel.font = .systemFont(ofSize: 18, weight: .bold); maneuverLabel.numberOfLines = 2; maneuverLabel.textColor = .white
 
         let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
         speedStack.translatesAutoresizingMaskIntoConstraints = false; statusPanel.contentView.addSubview(speedStack)
 
-        [alertPanel, finePanel, lanePanel].forEach { panel in panel.translatesAutoresizingMaskIntoConstraints = false; panel.layer.cornerRadius = 12; panel.clipsToBounds = true; view.addSubview(panel) }
-        alertLabel.translatesAutoresizingMaskIntoConstraints = false; fineLabel.translatesAutoresizingMaskIntoConstraints = false; laneLabel.translatesAutoresizingMaskIntoConstraints = false
-        alertPanel.contentView.addSubview(alertLabel); finePanel.contentView.addSubview(fineLabel); lanePanel.contentView.addSubview(laneLabel)
+        [alertPanel, finePanel, lanePanel, maneuverPanel].forEach { panel in panel.translatesAutoresizingMaskIntoConstraints = false; panel.layer.cornerRadius = 12; panel.clipsToBounds = true; view.addSubview(panel) }
+        alertLabel.translatesAutoresizingMaskIntoConstraints = false; fineLabel.translatesAutoresizingMaskIntoConstraints = false; laneLabel.translatesAutoresizingMaskIntoConstraints = false; maneuverLabel.translatesAutoresizingMaskIntoConstraints = false
+        alertPanel.contentView.addSubview(alertLabel); finePanel.contentView.addSubview(fineLabel); lanePanel.contentView.addSubview(laneLabel); maneuverPanel.contentView.addSubview(maneuverLabel)
 
         NSLayoutConstraint.activate([
             statusPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), statusPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
             speedStack.topAnchor.constraint(equalTo: statusPanel.contentView.topAnchor, constant: 9), speedStack.bottomAnchor.constraint(equalTo: statusPanel.contentView.bottomAnchor, constant: -9), speedStack.leadingAnchor.constraint(equalTo: statusPanel.contentView.leadingAnchor, constant: 11), speedStack.trailingAnchor.constraint(equalTo: statusPanel.contentView.trailingAnchor, constant: -11),
-            lanePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), lanePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), lanePanel.bottomAnchor.constraint(equalTo: alertPanel.topAnchor, constant: -8),
+            maneuverPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), maneuverPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14), maneuverPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 330),
+            maneuverLabel.topAnchor.constraint(equalTo: maneuverPanel.contentView.topAnchor, constant: 8), maneuverLabel.bottomAnchor.constraint(equalTo: maneuverPanel.contentView.bottomAnchor, constant: -8), maneuverLabel.leadingAnchor.constraint(equalTo: maneuverPanel.contentView.leadingAnchor, constant: 12), maneuverLabel.trailingAnchor.constraint(equalTo: maneuverPanel.contentView.trailingAnchor, constant: -12),
+            lanePanel.leadingAnchor.constraint(equalTo: maneuverPanel.leadingAnchor), lanePanel.trailingAnchor.constraint(equalTo: maneuverPanel.trailingAnchor), lanePanel.topAnchor.constraint(equalTo: maneuverPanel.bottomAnchor, constant: 6),
             laneLabel.topAnchor.constraint(equalTo: lanePanel.contentView.topAnchor, constant: 6), laneLabel.bottomAnchor.constraint(equalTo: lanePanel.contentView.bottomAnchor, constant: -6), laneLabel.leadingAnchor.constraint(equalTo: lanePanel.contentView.leadingAnchor, constant: 12), laneLabel.trailingAnchor.constraint(equalTo: lanePanel.contentView.trailingAnchor, constant: -12),
             alertPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), alertPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), alertPanel.bottomAnchor.constraint(equalTo: finePanel.topAnchor, constant: -8),
             alertLabel.topAnchor.constraint(equalTo: alertPanel.contentView.topAnchor, constant: 10), alertLabel.bottomAnchor.constraint(equalTo: alertPanel.contentView.bottomAnchor, constant: -10), alertLabel.leadingAnchor.constraint(equalTo: alertPanel.contentView.leadingAnchor, constant: 12), alertLabel.trailingAnchor.constraint(equalTo: alertPanel.contentView.trailingAnchor, constant: -12),
@@ -88,10 +93,9 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.text = alert ?? "Geen flitser in de buurt"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
-        let visibleFineText = fineText ?? "Boete-indicatie laden…"
-        fineLabel.text = visibleFineText
-        fineLabel.textColor = visibleFineText.hasPrefix("Geen") ? .secondaryLabel : .systemOrange
-        finePanel.isHidden = false
+        fineLabel.text = fineText ?? ""
+        fineLabel.textColor = .systemOrange
+        finePanel.isHidden = fineText == nil
     }
 
     func updateLaneSections(_ sections: [LaneSection]) {
@@ -109,6 +113,17 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             }
         }.joined(separator: "   ")
         lanePanel.isHidden = false
+    }
+
+    func updateManeuver(instruction: String?, distanceText: String?, laneSections: [LaneSection]) {
+        guard let instruction, !instruction.isEmpty else {
+            maneuverPanel.isHidden = true
+            lanePanel.isHidden = true
+            return
+        }
+        maneuverLabel.text = distanceText.map { "\($0)  •  \(instruction)" } ?? instruction
+        maneuverPanel.isHidden = false
+        updateLaneSections(laneSections)
     }
 
     func updateFromSnapshot(_ snapshot: WidgetSnapshot) {

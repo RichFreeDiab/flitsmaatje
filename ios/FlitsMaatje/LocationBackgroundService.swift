@@ -23,10 +23,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         return excess >= 4 ? "Te hard: +\(excess) km/u" : nil
     }
 
-    var fineStatusText: String {
+    var fineStatusText: String? {
         fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit)
             ?? speedingWarningText
-            ?? (speedLimit == nil ? "Boete: laden…" : "Boete: geen")
     }
 
     var managerAuthorizationIsAlways: Bool {

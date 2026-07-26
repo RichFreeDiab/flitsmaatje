@@ -74,6 +74,11 @@ final class CarPlayNavigationCoordinator: NSObject {
         }
 
         updateManeuvers(for: route)
+        mapViewController?.updateManeuver(
+            instruction: navigationService.currentInstruction,
+            distanceText: navigationService.distanceRemainingM > 0 ? String(format: "%.1f km", Double(navigationService.distanceRemainingM) / 1000) : nil,
+            laneSections: navigationService.laneSections
+        )
         if let trip = activeTrip {
             let estimates = CPTravelEstimates(
                 distanceRemaining: Measurement(
@@ -160,6 +165,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         activeRoute = route
         activeTrip = trip
         mapViewController?.showRoute(route)
+        mapViewController?.updateManeuver(instruction: navigationService?.currentInstruction, distanceText: nil, laneSections: navigationService?.laneSections ?? [])
 
         let config = CPTripPreviewTextConfiguration(
             startButtonTitle: "Start",

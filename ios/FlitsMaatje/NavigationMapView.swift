@@ -269,8 +269,7 @@ struct NavigationMapView: View {
                 .padding(10)
                 .background(Color.yellow.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
             }
-            if navigation.finesEnabled {
-               let fineText = location.fineStatusText
+            if navigation.finesEnabled, let fineText = location.fineStatusText {
                 HStack(spacing: 8) {
                     Image(systemName: "eurosign.circle.fill")
                         .font(.headline)
