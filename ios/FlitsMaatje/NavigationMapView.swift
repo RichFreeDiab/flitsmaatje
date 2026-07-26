@@ -78,7 +78,7 @@ struct NavigationMapView: View {
                 if let route = navigation.route {
                     MapPolyline(route.polyline).stroke(.blue, lineWidth: 7)
                 }
-                ForEach(location.mapReports) { report in
+                ForEach(location.mapReports.filter { $0.type != "flitser_vast" }) { report in
                     Annotation(report.label, coordinate: CLLocationCoordinate2D(latitude: report.lat, longitude: report.lng)) {
                         VStack(spacing: 1) {
                             Text(report.icon).font(.title3)
@@ -86,6 +86,24 @@ struct NavigationMapView: View {
                         }
                         .padding(5)
                         .background(markerColor(for: report.type).opacity(0.95), in: RoundedRectangle(cornerRadius: 9))
+                    }
+                }
+                ForEach(location.mapReports.filter { $0.type == "flitser_vast" }) { report in
+                    Annotation("Vaste flitspaal", coordinate: CLLocationCoordinate2D(latitude: report.lat, longitude: report.lng)) {
+                        VStack(spacing: 2) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 34, height: 34)
+                                .background(.red, in: Circle())
+                                .overlay(Circle().stroke(.white, lineWidth: 2))
+                            Text("Flitspaal")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(.red.opacity(0.95), in: Capsule())
+                        }
                     }
                 }
                 if let alert = location.currentAlert {

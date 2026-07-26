@@ -9,6 +9,7 @@ import tomtom_traffic
 class NavigationFeatureTests(unittest.TestCase):
     def setUp(self):
         app._speed_limit_cache.clear()
+        app._camera_cache.clear()
 
     def test_speed_check_uses_tomtom_when_overpass_finds_no_road(self):
         with (
@@ -61,6 +62,29 @@ class NavigationFeatureTests(unittest.TestCase):
         self.assertEqual(sections[0]["start_lat"], 52.01)
         self.assertEqual(sections[0]["start_lng"], 5.01)
         self.assertEqual(sections[0]["lanes"][0]["follow"], "STRAIGHT")
+
+    def test_reports_include_fixed_cameras_for_the_map(self):
+        camera = {
+            "id": "osm-speed-camera-node-42",
+            "type": "flitser_vast",
+            "lat": 52.001,
+            "lng": 5.001,
+            "confirms": 0,
+        }
+        with (
+            patch.object(app, "sync_ndw_reports"),
+            patch.object(app, "fetch_osm_speed_cameras", return_value=[camera]),
+            patch.object(app, "fetch_incidents", return_value=[]),
+        ):
+            response = app.app.test_client().get(
+                "/api/reports?lat=52.0&lng=5.0&radius_km=5"
+            )
+
+        fixed = [
+            report for report in response.get_json()["reports"]
+            if report["type"] == "flitser_vast"
+        ]
+        self.assertTrue(any(report["id"] == camera["id"] for report in fixed))
 
 
 if __name__ == "__main__":

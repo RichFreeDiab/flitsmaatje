@@ -62,6 +62,7 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
 
     private func refreshList() {
         mapViewController?.updateFromSnapshot(SharedStore.load())
+        mapViewController?.updateReports(locationService?.mapReports ?? [])
         if let template = listTemplate {
             template.updateSections(makeSections())
         } else {

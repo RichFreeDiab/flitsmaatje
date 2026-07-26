@@ -150,6 +150,8 @@ _speed_limit_cache = {}
 SPEED_LIMIT_CACHE_TTL = 120  # seconden
 _camera_cache = {}
 CAMERA_CACHE_TTL = 300  # seconden
+CAMERA_FAILURE_CACHE_TTL = 20
+CAMERA_OVERPASS_TIMEOUT = 6
 
 # Als een weg geen expliciete maxspeed-tag heeft, vallen we terug op een
 # vuistregel per wegtype (Nederlandse standaardlimieten). Dit is een
@@ -173,7 +175,7 @@ DEFAULT_LIMIT_BY_HIGHWAY = {
 }
 
 
-def run_overpass_query(query):
+def run_overpass_query(query, timeout=OVERPASS_TIMEOUT):
     """Gebruik een tweede Overpass-server als de eerste traag of onbereikbaar is."""
     last_error = None
     for endpoint in OVERPASS_URLS:
@@ -182,7 +184,7 @@ def run_overpass_query(query):
                 endpoint,
                 data={"data": query},
                 headers=OVERPASS_HEADERS,
-                timeout=OVERPASS_TIMEOUT,
+                timeout=timeout,
             )
             response.raise_for_status()
             return response.json()
@@ -295,13 +297,14 @@ def fetch_speed_limit(lat, lng):
 
 def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
     """Laad vaste flitsers uit OpenStreetMap met cache; tijdelijke meldingen blijven uit SQLite komen."""
-    cache_key = (round(lat, 2), round(lng, 2))
+    radius_m = max(500, min(int(radius_m), 5000))
+    cache_key = (round(lat, 2), round(lng, 2), radius_m)
     cached = _camera_cache.get(cache_key)
-    if cached and (time.time() - cached[1]) < CAMERA_CACHE_TTL:
+    if cached and (time.time() - cached[1]) < cached[2]:
         return cached[0]
 
     query = f"""
-        [out:json][timeout:{OVERPASS_TIMEOUT}];
+        [out:json][timeout:{CAMERA_OVERPASS_TIMEOUT}];
         (
           node(around:{radius_m},{lat},{lng})[highway=speed_camera];
           node(around:{radius_m},{lat},{lng})[man_made=surveillance][surveillance:type=speed_camera];
@@ -311,11 +314,11 @@ def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
     """
 
     try:
-        elements = run_overpass_query(query).get("elements", [])
+        elements = run_overpass_query(query, timeout=CAMERA_OVERPASS_TIMEOUT).get("elements", [])
     except Exception:
-        # Cache ook een tijdelijke storing. Zonder dit zou elke GPS-poll opnieuw
-        # op twee externe servers wachten en de waarschuwingen vertragen.
-        _camera_cache[cache_key] = ([], time.time())
+        # Een tijdelijke storing mag de palen niet vijf minuten verbergen.
+        # Twintig seconden voorkomt tegelijk dat elke GPS-poll Overpass raakt.
+        _camera_cache[cache_key] = ([], time.time(), CAMERA_FAILURE_CACHE_TTL)
         return []
 
     cameras = []
@@ -333,7 +336,7 @@ def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
             "confirms": 0,
         })
 
-    _camera_cache[cache_key] = (cameras, time.time())
+    _camera_cache[cache_key] = (cameras, time.time(), CAMERA_CACHE_TTL)
     return cameras
 
 
@@ -562,7 +565,8 @@ def get_reports():
 
     # Vaste flitscamera's horen ook op de kaart te staan, niet alleen in de
     # dichtstbijzijnde-waarschuwing.
-    for camera in fetch_osm_speed_cameras(lat, lng):
+    camera_radius_m = min(5000, max(2000, int(radius_km * 1000)))
+    for camera in fetch_osm_speed_cameras(lat, lng, radius_m=camera_radius_m):
         dist = haversine_km(lat, lng, camera["lat"], camera["lng"])
         if dist <= radius_km:
             results.append({

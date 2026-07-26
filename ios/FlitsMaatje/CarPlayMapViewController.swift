@@ -2,6 +2,19 @@ import CoreLocation
 import MapKit
 import UIKit
 
+private final class ReportMapAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let reportType: String
+    let title: String?
+
+    init(report: MapReport) {
+        coordinate = CLLocationCoordinate2D(latitude: report.lat, longitude: report.lng)
+        reportType = report.type
+        title = report.label
+        super.init()
+    }
+}
+
 final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     let mapView = MKMapView()
     private let speedLabel = UILabel()
@@ -15,6 +28,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private let lanePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let maneuverPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private var refreshTimer: Timer?
+    private var reportSignature = ""
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -131,6 +145,19 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         update(speedKmh: snapshot.speedKmh, limit: snapshot.speedLimitKmh, alert: alertText, fineText: snapshot.fineText)
     }
 
+    func updateReports(_ reports: [MapReport]) {
+        let signature = reports
+            .map { "\($0.id):\($0.lat):\($0.lng):\($0.type)" }
+            .sorted()
+            .joined(separator: "|")
+        guard signature != reportSignature else { return }
+        reportSignature = signature
+
+        let oldAnnotations = mapView.annotations.compactMap { $0 as? ReportMapAnnotation }
+        mapView.removeAnnotations(oldAnnotations)
+        mapView.addAnnotations(reports.map(ReportMapAnnotation.init))
+    }
+
     func showRoute(_ route: MKRoute) { mapView.removeOverlays(mapView.overlays); mapView.addOverlay(route.polyline); recenter() }
 
     func follow(location: CLLocation) {
@@ -147,5 +174,40 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if let polyline = overlay as? MKPolyline { let renderer = MKPolylineRenderer(polyline: polyline); renderer.strokeColor = .systemBlue; renderer.lineWidth = 7; return renderer }
         return MKOverlayRenderer(overlay: overlay)
+    }
+
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+        guard let report = annotation as? ReportMapAnnotation else { return nil }
+        let identifier = "FlitsMaatjeReport"
+        let marker = (mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView)
+            ?? MKMarkerAnnotationView(annotation: report, reuseIdentifier: identifier)
+        marker.annotation = report
+        marker.canShowCallout = true
+        marker.glyphImage = UIImage(systemName: glyphName(for: report.reportType))
+        marker.markerTintColor = markerTintColor(for: report.reportType)
+        marker.displayPriority = report.reportType == "flitser_vast" ? .required : .defaultHigh
+        return marker
+    }
+
+    private func glyphName(for type: String) -> String {
+        switch type {
+        case "flitser_vast": return "camera.fill"
+        case "flitser_mobiel": return "car.fill"
+        case "trajectcontrole": return "dot.radiowaves.left.and.right"
+        case "file": return "car.2.fill"
+        case "ongeval": return "exclamationmark.triangle.fill"
+        case "wegwerkzaamheden": return "wrench.and.screwdriver.fill"
+        default: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func markerTintColor(for type: String) -> UIColor {
+        switch type {
+        case "flitser_vast", "flitser_mobiel", "trajectcontrole": return .systemRed
+        case "file": return .systemOrange
+        case "ongeval": return .systemPink
+        case "wegwerkzaamheden": return .systemYellow
+        default: return .systemBlue
+        }
     }
 }
