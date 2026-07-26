@@ -4,6 +4,7 @@ The API key is deliberately read only from TOMTOM_API_KEY. Never ship it in
 the iOS app or commit it to the repository.
 """
 import os
+import threading
 import time
 
 import requests
@@ -12,6 +13,28 @@ TOMTOM_URL = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute
 TOMTOM_INCIDENTS_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 TOMTOM_SNAP_URL = "https://api.tomtom.com/snapToRoads/1/"
 TOMTOM_ROUTING_URL = "https://api.tomtom.com/routing/1/calculateRoute"
+_cache = {}
+_cache_lock = threading.Lock()
+_CACHE_MAX = 512
+
+
+def _cached(key):
+    now = time.monotonic()
+    with _cache_lock:
+        item = _cache.get(key)
+        if item and item[0] > now:
+            return True, item[1]
+        if item:
+            _cache.pop(key, None)
+    return False, None
+
+
+def _store(key, value, ttl):
+    with _cache_lock:
+        if len(_cache) >= _CACHE_MAX:
+            oldest = min(_cache, key=lambda cache_key: _cache[cache_key][0])
+            _cache.pop(oldest, None)
+        _cache[key] = (time.monotonic() + ttl, value)
 
 
 def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng):
@@ -67,6 +90,10 @@ def fetch_tomtom_speed_limit(lat, lng):
     api_key = os.environ.get("TOMTOM_API_KEY")
     if not api_key:
         return None
+    cache_key = ("limit", round(lat, 4), round(lng, 4))
+    hit, cached = _cached(cache_key)
+    if hit:
+        return cached
     fields = "{route{properties{speedLimits{value,unit}}}}"
     try:
         response = requests.get(
@@ -89,9 +116,13 @@ def fetch_tomtom_speed_limit(lat, lng):
         for item in limits:
             value = item.get("value") if isinstance(item, dict) else None
             if value is not None:
-                return int(round(float(value)))
+                result = int(round(float(value)))
+                _store(cache_key, result, 300)
+                return result
     except (requests.RequestException, ValueError, TypeError, KeyError):
+        _store(cache_key, None, 20)
         return None
+    _store(cache_key, None, 20)
     return None
 
 
@@ -99,6 +130,10 @@ def fetch_flow_segment(lat, lng):
     api_key = os.environ.get("TOMTOM_API_KEY")
     if not api_key:
         return None
+    cache_key = ("flow", round(lat, 3), round(lng, 3))
+    hit, cached = _cached(cache_key)
+    if hit:
+        return cached
 
     try:
         response = requests.get(
@@ -116,7 +151,7 @@ def fetch_flow_segment(lat, lng):
         delay = None
         if travel_time is not None and free_flow_time is not None:
             delay = max(0, int(travel_time) - int(free_flow_time))
-        return {
+        result = {
             "current_speed_kmh": current,
             "free_flow_speed_kmh": free_flow,
             "current_travel_time_s": travel_time,
@@ -126,8 +161,11 @@ def fetch_flow_segment(lat, lng):
             "confidence": data.get("confidence"),
             "source": "tomtom",
         }
+        _store(cache_key, result, 20)
+        return result
     except Exception:
         # TomTom is an enhancement; keep the existing NDW/OSM flow available.
+        _store(cache_key, None, 10)
         return None
 
 
@@ -148,6 +186,11 @@ def fetch_incidents(lat, lng, radius_km=15):
     api_key = os.environ.get("TOMTOM_API_KEY")
     if not api_key:
         return []
+
+    cache_key = ("incidents", round(lat, 2), round(lng, 2), round(radius_km, 1))
+    hit, cached = _cached(cache_key)
+    if hit:
+        return cached
 
     margin = radius_km / 111.0
     bbox = f"{lng - margin},{lat - margin},{lng + margin},{lat + margin}"
@@ -187,6 +230,8 @@ def fetch_incidents(lat, lng, radius_km=15):
                 "created_at": time.time(),
                 "expires_at": time.time() + 15 * 60,
             })
+        _store(cache_key, reports, 60)
         return reports
     except Exception:
+        _store(cache_key, [], 15)
         return []
