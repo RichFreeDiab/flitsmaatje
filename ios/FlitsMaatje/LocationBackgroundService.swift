@@ -26,7 +26,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     var fineStatusText: String {
         fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit)
             ?? speedingWarningText
-            ?? (speedLimit == nil ? "Boete-indicatie laden…" : "Geen boete-indicatie")
+            ?? (speedLimit == nil ? "Boete: laden…" : "Boete: geen")
     }
 
     var managerAuthorizationIsAlways: Bool {

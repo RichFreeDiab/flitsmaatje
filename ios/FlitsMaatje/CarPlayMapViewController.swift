@@ -8,8 +8,10 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private let limitLabel = UILabel()
     private let alertLabel = UILabel()
     private let fineLabel = UILabel()
+    private let laneLabel = UILabel()
     private let alertPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let finePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let lanePanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private var refreshTimer: Timer?
 
     override func viewDidLoad() {
@@ -58,17 +60,21 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         limitLabel.textColor = .white; limitLabel.font = .systemFont(ofSize: 15, weight: .bold)
         alertLabel.font = .systemFont(ofSize: 17, weight: .bold); alertLabel.numberOfLines = 2; alertLabel.textAlignment = .center
         fineLabel.font = .systemFont(ofSize: 16, weight: .bold); fineLabel.numberOfLines = 3; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.82
+        laneLabel.font = .systemFont(ofSize: 22, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
+        lanePanel.isHidden = true
 
         let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
         speedStack.translatesAutoresizingMaskIntoConstraints = false; statusPanel.contentView.addSubview(speedStack)
 
-        [alertPanel, finePanel].forEach { panel in panel.translatesAutoresizingMaskIntoConstraints = false; panel.layer.cornerRadius = 12; panel.clipsToBounds = true; view.addSubview(panel) }
-        alertLabel.translatesAutoresizingMaskIntoConstraints = false; fineLabel.translatesAutoresizingMaskIntoConstraints = false
-        alertPanel.contentView.addSubview(alertLabel); finePanel.contentView.addSubview(fineLabel)
+        [alertPanel, finePanel, lanePanel].forEach { panel in panel.translatesAutoresizingMaskIntoConstraints = false; panel.layer.cornerRadius = 12; panel.clipsToBounds = true; view.addSubview(panel) }
+        alertLabel.translatesAutoresizingMaskIntoConstraints = false; fineLabel.translatesAutoresizingMaskIntoConstraints = false; laneLabel.translatesAutoresizingMaskIntoConstraints = false
+        alertPanel.contentView.addSubview(alertLabel); finePanel.contentView.addSubview(fineLabel); lanePanel.contentView.addSubview(laneLabel)
 
         NSLayoutConstraint.activate([
             statusPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), statusPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
             speedStack.topAnchor.constraint(equalTo: statusPanel.contentView.topAnchor, constant: 9), speedStack.bottomAnchor.constraint(equalTo: statusPanel.contentView.bottomAnchor, constant: -9), speedStack.leadingAnchor.constraint(equalTo: statusPanel.contentView.leadingAnchor, constant: 11), speedStack.trailingAnchor.constraint(equalTo: statusPanel.contentView.trailingAnchor, constant: -11),
+            lanePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), lanePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), lanePanel.bottomAnchor.constraint(equalTo: alertPanel.topAnchor, constant: -8),
+            laneLabel.topAnchor.constraint(equalTo: lanePanel.contentView.topAnchor, constant: 6), laneLabel.bottomAnchor.constraint(equalTo: lanePanel.contentView.bottomAnchor, constant: -6), laneLabel.leadingAnchor.constraint(equalTo: lanePanel.contentView.leadingAnchor, constant: 12), laneLabel.trailingAnchor.constraint(equalTo: lanePanel.contentView.trailingAnchor, constant: -12),
             alertPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), alertPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), alertPanel.bottomAnchor.constraint(equalTo: finePanel.topAnchor, constant: -8),
             alertLabel.topAnchor.constraint(equalTo: alertPanel.contentView.topAnchor, constant: 10), alertLabel.bottomAnchor.constraint(equalTo: alertPanel.contentView.bottomAnchor, constant: -10), alertLabel.leadingAnchor.constraint(equalTo: alertPanel.contentView.leadingAnchor, constant: 12), alertLabel.trailingAnchor.constraint(equalTo: alertPanel.contentView.trailingAnchor, constant: -12),
             finePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -14),
@@ -83,9 +89,26 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
         let visibleFineText = fineText ?? "Boete-indicatie laden…"
-        fineLabel.text = "🚨 BOETE-INDICATIE  •  \(visibleFineText)"
+        fineLabel.text = visibleFineText
         fineLabel.textColor = visibleFineText.hasPrefix("Geen") ? .secondaryLabel : .systemOrange
         finePanel.isHidden = false
+    }
+
+    func updateLaneSections(_ sections: [LaneSection]) {
+        guard let section = sections.first, !section.lanes.isEmpty else {
+            lanePanel.isHidden = true
+            return
+        }
+        laneLabel.text = section.lanes.map { lane in
+            let direction = lane.follow ?? lane.directions.first ?? "STRAIGHT"
+            switch direction {
+            case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": return "↖"
+            case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": return "↗"
+            case "LEFT_U_TURN", "RIGHT_U_TURN": return "↩"
+            default: return "↑"
+            }
+        }.joined(separator: "   ")
+        lanePanel.isHidden = false
     }
 
     func updateFromSnapshot(_ snapshot: WidgetSnapshot) {

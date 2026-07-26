@@ -228,7 +228,11 @@ final class CarPlayNavigationCoordinator: NSObject {
                 AppLogger.error("CarPlay route: geen route")
                 return
             }
-        navigationService?.route = route
+            let laneSections = (try? await FlitsMaatjeAPI.fetchLaneGuidance(
+                origin: user.coordinate,
+                destination: mapItem.placemark.coordinate
+            )) ?? []
+            navigationService?.route = route
             navigationService?.setDestinationCoordinate(mapItem.placemark.coordinate)
             navigationService?.currentStepIndex = 0
             navigationService?.isNavigating = false
@@ -240,6 +244,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                 destinationName: mapItem.name ?? "Bestemming",
                 from: user
             )
+            mapViewController?.updateLaneSections(laneSections)
             try? await interfaceController?.popTemplate(animated: true)
         } catch {
             AppLogger.error("CarPlay route mislukt: \(error.localizedDescription)")
