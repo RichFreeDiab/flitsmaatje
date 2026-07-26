@@ -90,7 +90,7 @@ struct ContentView: View {
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(text.hasPrefix("Geen") ? .secondary : .white)
+        .foregroundStyle(text.hasPrefix("Geen") ? Color.secondary : Color.white)
         .padding()
         .frame(maxWidth: .infinity)
         .background(text.hasPrefix("Geen") ? Color(.secondarySystemBackground) : Color.red.opacity(0.88), in: RoundedRectangle(cornerRadius: 14))
