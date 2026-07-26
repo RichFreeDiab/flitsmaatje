@@ -227,6 +227,9 @@ struct NavigationMapView: View {
             }
             Spacer(minLength: 0)
         }
+        .onChange(of: location.mapReports) { _, reports in
+            navigation.updateTrafficReports(reports)
+        }
         .padding(10)
         .frame(maxWidth: 330, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))

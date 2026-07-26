@@ -16,6 +16,7 @@ final class NavigationService: ObservableObject {
     @Published var eta: Date?
     @Published var destinationName: String?
     @Published var laneSections: [LaneSection] = []
+    @Published private(set) var trafficReports: [MapReport] = []
     @Published var voiceEnabled = false {
         didSet { AlertNotifier.setSpeechEnabled(voiceEnabled) }
     }
@@ -28,6 +29,10 @@ final class NavigationService: ObservableObject {
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var lastRerouteAt = Date.distantPast
     private var isRerouting = false
+
+    func updateTrafficReports(_ reports: [MapReport]) {
+        trafficReports = reports.filter { $0.type == "file" || $0.type == "ongeval" || $0.type == "wegwerkzaamheden" }
+    }
 
     func setDestinationCoordinate(_ coordinate: CLLocationCoordinate2D) {
         destinationCoordinate = coordinate
@@ -78,8 +83,10 @@ final class NavigationService: ObservableObject {
 
         do {
             let response = try await calculateDirections(request)
-            // Kies consequent de route met de kortste actuele reistijd.
-            guard let best = response.routes.min(by: { $0.expectedTravelTime < $1.expectedTravelTime }) else {
+            // Kies niet alleen de theoretisch snelste route: NDW-oponthoud
+            // krijgt een concrete straf zodat een filevrije alternatiefroute
+            // wordt gekozen wanneer die merkbaar sneller is.
+            guard let best = response.routes.min(by: { routeScore($0) < routeScore($1) }) else {
                 statusMessage = "Geen route gevonden"
                 return
             }
@@ -118,6 +125,7 @@ final class NavigationService: ObservableObject {
         eta = nil
         destinationName = nil
         laneSections = []
+        trafficReports = []
         destinationCoordinate = nil
         statusMessage = "Navigatie gestopt"
         synthesizer.stopSpeaking(at: .immediate)
@@ -137,6 +145,17 @@ final class NavigationService: ObservableObject {
             lastRerouteAt = Date()
             Task { @MainActor in
                 await self.reroute(from: location, to: destinationCoordinate)
+                self.isRerouting = false
+            }
+        }
+
+        if reroutingEnabled,
+           Date().timeIntervalSince(lastRerouteAt) > 60,
+           routeHasMeaningfulNDWDelay(route: route) {
+            isRerouting = true
+            lastRerouteAt = Date()
+            Task { @MainActor in
+                await self.reroute(from: location, to: self.destinationCoordinate ?? route.polyline.coordinates.last ?? location.coordinate)
                 self.isRerouting = false
             }
         }
@@ -174,6 +193,31 @@ final class NavigationService: ObservableObject {
         item.name = destinationName ?? "Bestemming"
         await startNavigation(to: item, from: location)
         statusMessage = "Route automatisch herberekend"
+    }
+
+    private func routeScore(_ route: MKRoute) -> TimeInterval {
+        route.expectedTravelTime + ndwPenalty(for: route)
+    }
+
+    private func ndwPenalty(for route: MKRoute) -> TimeInterval {
+        let points = route.polyline.coordinates
+        guard !points.isEmpty else { return 0 }
+        return trafficReports.reduce(0) { total, report in
+            let reportLocation = CLLocation(latitude: report.lat, longitude: report.lng)
+            let nearRoute = points.contains {
+                reportLocation.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= 180
+            }
+            guard nearRoute else { return total }
+            switch report.type {
+            case "ongeval": return total + 600
+            case "wegwerkzaamheden": return total + 300
+            default: return total + 240
+            }
+        }
+    }
+
+    private func routeHasMeaningfulNDWDelay(route: MKRoute) -> Bool {
+        ndwPenalty(for: route) >= 240
     }
 
     private func advanceStepsIfNeeded(location: CLLocation, route: MKRoute) {

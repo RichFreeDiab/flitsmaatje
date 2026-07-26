@@ -46,6 +46,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CarPlayDrivingTaskCoordinator.shared.attach(interfaceController: interfaceController, mapViewController: mapViewController)
 
             locationService.onLocationUpdate = { [weak self, weak navigationService] location in
+                navigationService?.updateTrafficReports(locationService?.mapReports ?? [])
                 navigationService?.updateProgress(location: location)
                 self?.mapViewController?.follow(location: location)
                 CarPlayNavigationCoordinator.shared.updateNavigationProgress()
