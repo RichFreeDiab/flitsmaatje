@@ -68,6 +68,12 @@ final class CarPlayNavigationCoordinator: NSObject {
             return
         }
 
+        if activeRoute !== route {
+            activeRoute = route
+            mapViewController?.showRoute(route)
+            AppLogger.log("CarPlay-kaart bijgewerkt met herberekende route")
+        }
+
         if navigationService.currentStepIndex >= route.steps.count {
             endGuidance()
             return
@@ -239,6 +245,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                 destination: mapItem.placemark.coordinate
             )) ?? []
             navigationService?.route = route
+            navigationService?.laneSections = laneSections
             navigationService?.setDestinationCoordinate(mapItem.placemark.coordinate)
             navigationService?.currentStepIndex = 0
             navigationService?.isNavigating = false
@@ -250,7 +257,11 @@ final class CarPlayNavigationCoordinator: NSObject {
                 destinationName: mapItem.name ?? "Bestemming",
                 from: user
             )
-            mapViewController?.updateLaneSections(laneSections)
+            mapViewController?.updateManeuver(
+                instruction: navigationService?.currentInstruction,
+                distanceText: String(format: "%.1f km", route.distance / 1000),
+                laneSections: laneSections
+            )
             try? await interfaceController?.popTemplate(animated: true)
         } catch {
             AppLogger.error("CarPlay route mislukt: \(error.localizedDescription)")

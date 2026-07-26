@@ -62,7 +62,13 @@ def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng
         routes = response.json().get("routes") or []
         if not routes:
             return []
-        sections = routes[0].get("sections") or []
+        route = routes[0]
+        sections = route.get("sections") or []
+        route_points = []
+        for leg in route.get("legs") or []:
+            for point in leg.get("points") or []:
+                if not route_points or point != route_points[-1]:
+                    route_points.append(point)
         result = []
         for section in sections:
             if section.get("sectionType") != "LANES":
@@ -75,9 +81,17 @@ def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng
                     "follow": lane.get("follow"),
                 })
             if lanes:
+                start_index = int(section.get("startPointIndex", 0))
+                end_index = int(section.get("endPointIndex", start_index))
+                start_point = route_points[start_index] if 0 <= start_index < len(route_points) else {}
+                end_point = route_points[end_index] if 0 <= end_index < len(route_points) else {}
                 result.append({
-                    "start_point_index": section.get("startPointIndex", 0),
-                    "end_point_index": section.get("endPointIndex", 0),
+                    "start_point_index": start_index,
+                    "end_point_index": end_index,
+                    "start_lat": start_point.get("latitude"),
+                    "start_lng": start_point.get("longitude"),
+                    "end_lat": end_point.get("latitude"),
+                    "end_lng": end_point.get("longitude"),
                     "lanes": lanes,
                 })
         return result

@@ -29,6 +29,7 @@ final class NavigationService: ObservableObject {
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var lastRerouteAt = Date.distantPast
     private var isRerouting = false
+    private var consecutiveOffRouteUpdates = 0
 
     func updateTrafficReports(_ reports: [MapReport]) {
         trafficReports = reports.filter { $0.type == "file" || $0.type == "ongeval" || $0.type == "wegwerkzaamheden" }
@@ -127,6 +128,7 @@ final class NavigationService: ObservableObject {
         laneSections = []
         trafficReports = []
         destinationCoordinate = nil
+        consecutiveOffRouteUpdates = 0
         statusMessage = "Navigatie gestopt"
         synthesizer.stopSpeaking(at: .immediate)
     }
@@ -134,15 +136,27 @@ final class NavigationService: ObservableObject {
     func updateProgress(location: CLLocation) {
         guard isNavigating, let route else { return }
 
+        updateUpcomingLaneSections(from: location)
+
+        let accuracyIsUsable = location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 50
+        let deviationThreshold = max(35, location.horizontalAccuracy * 1.5)
+        let routeDeviation = accuracyIsUsable ? distanceFromRoute(location, route: route) : 0
+        if accuracyIsUsable && routeDeviation > deviationThreshold {
+            consecutiveOffRouteUpdates += 1
+        } else {
+            consecutiveOffRouteUpdates = 0
+        }
+
         if reroutingEnabled,
            let destinationCoordinate,
-           location.horizontalAccuracy >= 0,
-           location.horizontalAccuracy <= 50,
-           distanceFromRoute(location, route: route) > 55,
+           consecutiveOffRouteUpdates >= 2,
            Date().timeIntervalSince(lastRerouteAt) > 5,
            !isRerouting {
             isRerouting = true
+            consecutiveOffRouteUpdates = 0
             lastRerouteAt = Date()
+            statusMessage = "Route herberekenen…"
+            AppLogger.log("Herrouteren: \(Int(routeDeviation)) m van route")
             Task { @MainActor in
                 await self.reroute(from: location, to: destinationCoordinate)
                 self.isRerouting = false
@@ -182,17 +196,56 @@ final class NavigationService: ObservableObject {
 
     private func distanceFromRoute(_ location: CLLocation, route: MKRoute) -> CLLocationDistance {
         let points = route.polyline.coordinates
-        guard !points.isEmpty else { return .greatestFiniteMagnitude }
-        return points.map {
-            location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
-        }.min() ?? .greatestFiniteMagnitude
+        guard points.count >= 2 else {
+            return points.first.map {
+                location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
+            } ?? .greatestFiniteMagnitude
+        }
+
+        let userPoint = MKMapPoint(location.coordinate)
+        var minimum = CLLocationDistance.greatestFiniteMagnitude
+        for index in 0..<(points.count - 1) {
+            let start = MKMapPoint(points[index])
+            let end = MKMapPoint(points[index + 1])
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let lengthSquared = dx * dx + dy * dy
+            let fraction: Double
+            if lengthSquared == 0 {
+                fraction = 0
+            } else {
+                fraction = min(1, max(0, ((userPoint.x - start.x) * dx + (userPoint.y - start.y) * dy) / lengthSquared))
+            }
+            let projected = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+            minimum = min(minimum, userPoint.distance(to: projected))
+        }
+        return minimum
     }
 
     private func reroute(from location: CLLocation, to destination: CLLocationCoordinate2D) async {
+        let previousRoute = route
         let item = MKMapItem(placemark: MKPlacemark(coordinate: destination))
         item.name = destinationName ?? "Bestemming"
         await startNavigation(to: item, from: location)
-        statusMessage = "Route automatisch herberekend"
+        if route !== previousRoute {
+            statusMessage = "Route automatisch herberekend"
+            AppLogger.log("Route automatisch herberekend")
+        } else {
+            statusMessage = "Herberekenen mislukt – oude route blijft actief"
+            AppLogger.error("Herrouteren leverde geen nieuwe route op")
+        }
+    }
+
+    private func updateUpcomingLaneSections(from location: CLLocation) {
+        guard laneSections.count > 1 else { return }
+        laneSections.sort { left, right in
+            laneDistance(left, from: location) < laneDistance(right, from: location)
+        }
+    }
+
+    private func laneDistance(_ section: LaneSection, from location: CLLocation) -> CLLocationDistance {
+        guard let coordinate = section.startCoordinate else { return .greatestFiniteMagnitude }
+        return location.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
     }
 
     private func routeScore(_ route: MKRoute) -> TimeInterval {

@@ -242,7 +242,19 @@ def fetch_speed_limit(lat, lng):
 
     elements = data.get("elements", [])
     if not elements:
-        result = {"maxspeed": None, "zone": None, "road_name": None, "source": "not_found"}
+        # Een geldige GPS-positie kan buiten de kleine Overpass-radius vallen,
+        # bijvoorbeeld op brede of parallelle rijbanen. Probeer dan alsnog de
+        # TomTom road match; zonder limiet kan de app geen boetebedrag tonen.
+        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
+        if tomtom_limit is not None:
+            result = {
+                "maxspeed": tomtom_limit,
+                "zone": classify_zone(None, tomtom_limit),
+                "road_name": None,
+                "source": "tomtom_snap_to_roads",
+            }
+        else:
+            result = {"maxspeed": None, "zone": None, "road_name": None, "source": "not_found"}
         _speed_limit_cache[cache_key] = (result, time.time())
         return result
 
@@ -469,11 +481,14 @@ def speed_check():
     fine = None
     # Ook bij een afgeleide limiet geven we een bedrag, maar de iOS-app
     # markeert dit nadrukkelijk als indicatief. De bebording blijft leidend.
-    if (speed_param is not None and limit_info.get("maxspeed") is not None
-            and limit_info.get("zone") is not None):
+    if speed_param is not None and limit_info.get("maxspeed") is not None:
         try:
             speed_kmh = float(speed_param)
-            fine = estimate_fine(limit_info["zone"], speed_kmh, limit_info["maxspeed"])
+            zone = limit_info.get("zone") or classify_zone(
+                limit_info.get("highway_type"),
+                limit_info["maxspeed"],
+            )
+            fine = estimate_fine(zone, speed_kmh, limit_info["maxspeed"])
         except ValueError:
             pass
 

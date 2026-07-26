@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 struct NearbyAlertResponse: Codable {
@@ -113,7 +114,16 @@ struct LaneGuidanceResponse: Codable {
 struct LaneSection: Codable, Equatable {
     let start_point_index: Int
     let end_point_index: Int
+    let start_lat: Double?
+    let start_lng: Double?
+    let end_lat: Double?
+    let end_lng: Double?
     let lanes: [Lane]
+
+    var startCoordinate: CLLocationCoordinate2D? {
+        guard let start_lat, let start_lng else { return nil }
+        return CLLocationCoordinate2D(latitude: start_lat, longitude: start_lng)
+    }
 }
 
 struct Lane: Codable, Equatable {

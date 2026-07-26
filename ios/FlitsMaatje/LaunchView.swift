@@ -208,6 +208,7 @@ struct LaunchView: View {
             location = service
             navigationService = NavigationService()
             service.onLocationUpdate = { [weak navigationService] location in
+                navigationService?.updateTrafficReports(service.mapReports)
                 navigationService?.updateProgress(location: location)
             }
             // CarPlay may connect before the phone dashboard is opened. Keep the
