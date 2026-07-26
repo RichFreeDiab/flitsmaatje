@@ -82,9 +82,10 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.text = alert ?? "Geen flitser in de buurt"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
-        fineLabel.text = fineText.map { "🚨 BOETE-INDICATIE  •  \($0)" } ?? ""
-        fineLabel.textColor = .systemOrange
-        finePanel.isHidden = fineText == nil
+        let visibleFineText = fineText ?? "Boete-indicatie laden…"
+        fineLabel.text = "🚨 BOETE-INDICATIE  •  \(visibleFineText)"
+        fineLabel.textColor = visibleFineText.hasPrefix("Geen") ? .secondaryLabel : .systemOrange
+        finePanel.isHidden = false
     }
 
     func updateFromSnapshot(_ snapshot: WidgetSnapshot) {

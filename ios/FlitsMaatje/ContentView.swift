@@ -10,12 +10,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     speedPanel
-                    if let fineText = location.fineEstimate?.displayText(
-                        speedKmh: location.currentSpeedKmh,
-                        limit: location.speedLimit
-                    ) {
-                        fineBanner(fineText)
-                    }
+                    fineBanner(location.fineStatusText)
                     if let alert = location.currentAlert {
                         flitserCard(alert)
                     } else {
@@ -95,10 +90,10 @@ struct ContentView: View {
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(text.hasPrefix("Geen") ? .secondary : .white)
         .padding()
         .frame(maxWidth: .infinity)
-        .background(Color.red.opacity(0.88), in: RoundedRectangle(cornerRadius: 14))
+        .background(text.hasPrefix("Geen") ? Color(.secondarySystemBackground) : Color.red.opacity(0.88), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func flitserCard(_ alert: NearbyAlert) -> some View {

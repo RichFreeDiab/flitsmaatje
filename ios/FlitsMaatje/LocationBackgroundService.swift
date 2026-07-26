@@ -23,6 +23,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         return excess >= 4 ? "Te hard: +\(excess) km/u" : nil
     }
 
+    var fineStatusText: String {
+        fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit)
+            ?? speedingWarningText
+            ?? (speedLimit == nil ? "Boete-indicatie laden…" : "Geen boete-indicatie")
+    }
+
     var managerAuthorizationIsAlways: Bool {
         manager.authorizationStatus == .authorizedAlways
     }
@@ -470,7 +476,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             alert: alert,
             speedKmh: currentSpeedKmh,
             speedLimitKmh: speedLimit,
-            fineText: fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? speedingWarningText,
+            fineText: fineStatusText,
             statusMessage: message
         )
         SharedStore.save(snapshot)
