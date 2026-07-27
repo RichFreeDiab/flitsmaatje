@@ -8,6 +8,11 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Voorkom dat oude macOS/TestFlight-runs de nieuwste release blokkeren.
+concurrency:
+  group: ios-verify-main
+  cancel-in-progress: true
+
 jobs:
   carplay-selftest:
     name: CarPlay selftest
