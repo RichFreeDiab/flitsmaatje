@@ -7,7 +7,7 @@ import UserNotifications
 /// Geluid, trilling, CarPlay-notificatie en gesproken waarschuwing bij flitsers in de buurt.
 enum AlertNotifier {
     // Korte systeemtoon blijft actief; gesproken tekst staat standaard uit.
-    static var speechEnabled = false
+    static var speechEnabled = true
     private static let flitserCategoryId = "flitser.carplay"
     private static let speedingCategoryId = "speeding.carplay"
     private static let speedingNotificationId = "flitsmaatje.speeding.live"
@@ -31,6 +31,7 @@ enum AlertNotifier {
 
     /// Toont een banner op CarPlay (iOS 18.4+) ook als Flitsmeister op het hoofdscherm staat.
     static func notifyFlitser(alert: NearbyAlert) {
+        speakFlitser(alert: alert)
         let now = Date()
         guard now.timeIntervalSince(lastFlitserNotificationAt) >= 20 else { return }
         lastFlitserNotificationAt = now
