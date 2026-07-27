@@ -52,15 +52,25 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     func handleFlitserAlert(_ alert: NearbyAlert?) {
-        // Geen CPNavigationAlert: een modal boven Apple Kaarten veroorzaakt
-        // overlap en kan de actieve CarPlay-navigatiesessie onderbreken.
-        guard let alert else {
+        guard let alert, let mapTemplate, navigationSession != nil else {
             lastFlitserAlertId = nil
             return
         }
         guard lastFlitserAlertId != alert.id else { return }
         lastFlitserAlertId = alert.id
-        AppLogger.log("CarPlay flitserstatus: \(alert.label) op \(alert.distance_m)m")
+
+        // Alleen in de eigen actieve navigatiesessie: zo krijgt de bestuurder
+        // een tijdige CarPlay-waarschuwing zonder Apple Kaarten te overlappen.
+        let warning = CPNavigationAlert(
+            titleVariants: ["\(alert.icon) \(alert.label)"],
+            subtitleVariants: ["Over \(alert.distance_m) meter"],
+            imageSet: nil,
+            primaryAction: CPAlertAction(title: "OK", style: .default) { _ in },
+            secondaryAction: nil,
+            duration: 8
+        )
+        mapTemplate.present(navigationAlert: warning, animated: true)
+        AppLogger.log("CarPlay flitserwaarschuwing: \(alert.label) op \(alert.distance_m)m")
     }
 
     func updateNavigationProgress() {
