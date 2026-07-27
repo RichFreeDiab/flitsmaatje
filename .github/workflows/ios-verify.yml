@@ -42,7 +42,7 @@ jobs:
 
   ios-simulator-build:
     name: iOS simulator compile
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 20
     env:
       HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
@@ -84,7 +84,7 @@ jobs:
   testflight:
     name: TestFlight deploy
     needs: [carplay-selftest, ios-simulator-build]
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 45
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     permissions:
