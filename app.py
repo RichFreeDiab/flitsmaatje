@@ -596,6 +596,20 @@ def get_reports():
     return jsonify({"reports": results})
 
 
+def heading_matches(user_heading, report_heading, tolerance=70):
+    """Return True when a directional report is relevant for the current lane.
+    Reports without heading stay eligible because fixed cameras and some
+    imported sources do not publish direction metadata.
+    """
+    if user_heading is None or report_heading is None:
+        return True
+    try:
+        difference = abs((float(user_heading) - float(report_heading) + 180) % 360 - 180)
+        return difference <= tolerance
+    except (TypeError, ValueError):
+        return True
+
+
 @app.route("/api/nearby-alert", methods=["GET"])
 def nearby_alert():
     """Dichtstbijzijnde actieve melding voor iOS/CarPlay.
@@ -607,6 +621,7 @@ def nearby_alert():
     try:
         lat = float(request.args.get("lat"))
         lng = float(request.args.get("lng"))
+        heading = float(request.args["heading"]) if request.args.get("heading") is not None else None
     except (TypeError, ValueError):
         return jsonify({"error": "lat en lng zijn verplicht"}), 400
 
@@ -628,9 +643,11 @@ def nearby_alert():
             "type": row["type"],
             "lat": row["lat"],
             "lng": row["lng"],
+            "heading": row["heading"],
             "confirms": row["confirms"],
         }
         for row in rows
+        if heading_matches(heading, row["heading"])
     ]
     candidates.extend(fetch_osm_speed_cameras(lat, lng))
     candidates.extend(fetch_incidents(lat, lng, radius_km))
