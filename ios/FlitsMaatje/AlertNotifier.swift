@@ -31,6 +31,7 @@ enum AlertNotifier {
 
     /// Toont een banner op CarPlay (iOS 18.4+) ook als Flitsmeister op het hoofdscherm staat.
     static func notifyFlitser(alert: NearbyAlert) {
+        speakFlitser(alert: alert)
         let now = Date()
         guard now.timeIntervalSince(lastFlitserNotificationAt) >= 20 else { return }
         lastFlitserNotificationAt = now
