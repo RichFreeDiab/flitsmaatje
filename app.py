@@ -328,11 +328,25 @@ def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
         camera_lng = element.get("lon", center.get("lon"))
         if camera_lat is None or camera_lng is None:
             continue
+        tags = element.get("tags") or {}
+        raw_heading = tags.get("direction") or tags.get("camera:direction")
+        camera_heading = None
+        try:
+            # OSM gebruikt soms graden; tekstwaarden zoals forward/backward
+            # zijn te onbetrouwbaar zonder weggeometrie en blijven onbekend.
+            if raw_heading is not None:
+                candidate_heading = float(str(raw_heading).strip().replace(",", "."))
+                if 0 <= candidate_heading < 360:
+                    camera_heading = candidate_heading
+        except (TypeError, ValueError):
+            camera_heading = None
+
         cameras.append({
             "id": f"osm-speed-camera-{element.get('type', 'node')}-{element.get('id')}",
             "type": "flitser_vast",
             "lat": camera_lat,
             "lng": camera_lng,
+            "heading": camera_heading,
             "confirms": 0,
         })
 
@@ -649,7 +663,10 @@ def nearby_alert():
         for row in rows
         if heading_matches(heading, row["heading"])
     ]
-    candidates.extend(fetch_osm_speed_cameras(lat, lng))
+    candidates.extend(
+        camera for camera in fetch_osm_speed_cameras(lat, lng)
+        if heading_matches(heading, camera.get("heading"))
+    )
     candidates.extend(fetch_incidents(lat, lng, radius_km))
 
     closest = None
