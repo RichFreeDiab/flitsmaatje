@@ -78,6 +78,9 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         fineLabel.font = .systemFont(ofSize: 16, weight: .bold); fineLabel.numberOfLines = 3; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.82
         laneLabel.font = .systemFont(ofSize: 22, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
         lanePanel.isHidden = true
+        // De native CPMapTemplate toont de routekaart bovenop deze view.
+        // Geen tweede tekstkaart tekenen: dat veroorzaakte dubbele/overlappende instructies.
+        maneuverPanel.isHidden = true
         maneuverLabel.font = .systemFont(ofSize: 18, weight: .bold); maneuverLabel.numberOfLines = 2; maneuverLabel.textColor = .white
 
         let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
@@ -135,8 +138,9 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             lanePanel.isHidden = true
             return
         }
-        maneuverLabel.text = distanceText.map { "\($0)  •  \(instruction)" } ?? instruction
-        maneuverPanel.isHidden = false
+        // De native CarPlay-manoeuvrekaart toont instruction + afstand.
+        // FlitsMaatje tekent alleen aanvullende rijstrookpijlen en meldingen.
+        maneuverPanel.isHidden = true
         updateLaneSections(laneSections)
     }
 
