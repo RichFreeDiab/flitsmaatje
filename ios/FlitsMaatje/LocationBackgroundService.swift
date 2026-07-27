@@ -275,7 +275,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
         do {
             async let alertRequest = Task.detached(priority: .utility) {
-                try await FlitsMaatjeAPI.fetchNearbyAlert(lat: lat, lng: lng)
+                try await FlitsMaatjeAPI.fetchNearbyAlert(lat: lat, lng: lng, heading: location.course >= 0 ? location.course : nil)
             }.value
             async let reportsRequest = Task.detached(priority: .utility) {
                 try await FlitsMaatjeAPI.fetchReports(lat: lat, lng: lng)
