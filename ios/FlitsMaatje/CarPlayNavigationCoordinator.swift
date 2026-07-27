@@ -205,9 +205,25 @@ final class CarPlayNavigationCoordinator: NSObject {
 
     private func updateManeuvers(for route: MKRoute) {
         guard let session = navigationSession else { return }
-        // Geen native CPManeuver-banner: die verschijnt als groot rood vak
-        // boven Apple Kaarten en zit de eigen FlitsMaatje-weergave in de weg.
-        session.upcomingManeuvers = []
+        let startIndex = navigationService?.currentStepIndex ?? 0
+        let maneuvers: [CPManeuver] = route.steps
+            .dropFirst(startIndex)
+            .prefix(3)
+            .compactMap { step in
+                let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !instruction.isEmpty else { return nil }
+
+                let maneuver = CPManeuver()
+                maneuver.instructionVariants = [instruction]
+                maneuver.dashboardInstructionVariants = [instruction]
+                maneuver.notificationInstructionVariants = [instruction]
+                maneuver.initialTravelEstimates = CPTravelEstimates(
+                    distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
+                    timeRemaining: max(1, step.distance / 13.9)
+                )
+                return maneuver
+            }
+        session.upcomingManeuvers = maneuvers
     }
 
     private func endGuidance() {
