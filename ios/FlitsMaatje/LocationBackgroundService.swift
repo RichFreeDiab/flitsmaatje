@@ -167,8 +167,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func scheduleLocationProcessing(_ location: CLLocation) {
-        locationProcessingTask = Task {
-            await processLocation(location)
+        locationProcessingTask?.cancel()
+        locationProcessingTask = Task { [weak self] in
+            guard let self else { return }
+            await self.processLocation(location)
         }
     }
 
