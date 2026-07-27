@@ -99,9 +99,6 @@ jobs:
           bundler-cache: true
           working-directory: ios
 
-      - name: "Homebrew: untap aws/tap (workaround)"
-        run: brew untap aws/tap || true
-
       - name: Install XcodeGen
         run: brew install xcodegen
 
