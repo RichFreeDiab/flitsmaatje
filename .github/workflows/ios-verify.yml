@@ -1,3 +1,4 @@
+# Release diagnostics: fase-markers staan in ios/fastlane/Fastfile.
 # Verificatie + automatische TestFlight alleen als alles groen is.
 # Trigger CI after Fastfile repair.
 # Trigger TestFlight build for CarPlay entitlement verification.
