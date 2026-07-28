@@ -107,11 +107,17 @@ class CarPlaySimulator:
         self.carplay_events.append(f"CPALERT: {label} over {distance} m")
         return True
 
-    def handle_speeding(self, speed_kmh: int, limit: int, fine: dict[str, Any]) -> bool:
-        excess = int(fine.get("excess_kmh", speed_kmh - limit))
+    def handle_speeding(self, speed_kmh: int, limit: int, fine: dict[str, Any] | int | float | None) -> bool:
+        fine_payload = fine if isinstance(fine, dict) else {}
+        if not fine_payload and isinstance(fine, (int, float)):
+            fine_payload = {
+                "excess_kmh": max(0, speed_kmh - limit),
+                "bedrag": int(fine),
+            }
+        excess = int(fine_payload.get("excess_kmh", speed_kmh - limit))
         if excess < 4:
             return False
-        bedrag = fine.get("bedrag")
+        bedrag = fine_payload.get("bedrag")
         title = f"Te hard — indicatief €{bedrag}" if bedrag else f"Te hard — {excess} km/u"
         if self.carplay_app == "flitsmeister":
             self.carplay_events.append(f"STILLE BANNER: {title} ({speed_kmh} km/u, limiet {limit})")
@@ -179,7 +185,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
     try:
         status, data = _get(
             base_url,
-            "/api/v1/nearby-alert",
+            "/api/nearby-alert",
             {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
         )
         add("api_nearby_alert", status == 200 and isinstance(data, dict), f"HTTP {status}")
@@ -192,7 +198,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         try:
             status, _ = _post_json(
                 base_url,
-                "/api/v1/reports",
+                "/api/reports",
                 {"type": "flitser_vast", "lat": FLITSER_LAT, "lng": FLITSER_LNG},
             )
             add("seed_demo_flitser", status in (200, 201), f"HTTP {status}")
@@ -202,7 +208,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         try:
             status, data = _get(
                 base_url,
-                "/api/v1/nearby-alert",
+                "/api/nearby-alert",
                 {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
             )
             alert = data.get("alert") if isinstance(data, dict) else None
@@ -255,7 +261,8 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         limit = 100
 
     sim.set_carplay_app("flitsmeister")
-    fine = fine or {"excess_kmh": 12, "bedrag": 228}
+    if fine is None:
+        fine = {"excess_kmh": 12, "bedrag": 228}
     speed_ok = sim.handle_speeding(112, int(limit or 100), fine)
     add("speeding_silent_banner", speed_ok, sim.carplay_events[-1] if speed_ok else "geen boete")
 

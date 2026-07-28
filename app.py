@@ -231,7 +231,7 @@ def nearby_alert():
             "distance_m": round(closest_dist_m),
             "lat": closest["lat"],
             "lng": closest["lng"],
-            "confirms": closest.get("confirms", 0),
+            "confirms": closest["confirms"] if closest["confirms"] is not None else 0,
         }
     })
 
