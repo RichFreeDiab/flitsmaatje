@@ -179,7 +179,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
     try:
         status, data = _get(
             base_url,
-            "/api/nearby-alert",
+            "/api/v1/nearby-alert",
             {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
         )
         add("api_nearby_alert", status == 200 and isinstance(data, dict), f"HTTP {status}")
@@ -192,7 +192,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         try:
             status, _ = _post_json(
                 base_url,
-                "/api/reports",
+                "/api/v1/reports",
                 {"type": "flitser_vast", "lat": FLITSER_LAT, "lng": FLITSER_LNG},
             )
             add("seed_demo_flitser", status in (200, 201), f"HTTP {status}")
@@ -202,7 +202,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         try:
             status, data = _get(
                 base_url,
-                "/api/nearby-alert",
+                "/api/v1/nearby-alert",
                 {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
             )
             alert = data.get("alert") if isinstance(data, dict) else None
