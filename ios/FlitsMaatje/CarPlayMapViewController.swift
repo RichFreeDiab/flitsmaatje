@@ -109,12 +109,21 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.text = alert ?? "Geen flitser in de buurt"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
-        // CPMapTemplate/CPManeuver is de enige zichtbare navigatielaag.
-        // De custom kaartlaag veroorzaakte dubbele blauwe/rode kaarten.
-        fineLabel.text = ""
-        finePanel.isHidden = true
+        // De native CPMapTemplate blijft de enige route-/lane-laag.
+        // Toon alleen een echte boete; placeholders zoals “Boete —” nooit.
+        let hasFine = fineText.map { text in
+            let normalized = text.replacingOccurrences(of: "—", with: "")
+                .replacingOccurrences(of: "-", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !normalized.isEmpty && normalized.lowercased() != "boete"
+        } ?? false
+        fineLabel.text = hasFine ? fineText : nil
+        fineLabel.textColor = .white
+        finePanel.contentView.backgroundColor = UIColor(red: 0.32, green: 0.10, blue: 0.04, alpha: 0.96)
+        finePanel.isHidden = !hasFine
         maneuverPanel.isHidden = true
         lanePanel.isHidden = true
+        if hasFine { view.bringSubviewToFront(finePanel) }
     }
 
     func updateManeuver(instruction: String?, distanceText: String?, laneSections: [LaneSection]) {
