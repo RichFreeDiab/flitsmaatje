@@ -3,10 +3,10 @@ FlitsMaatje - Crowdsourced verkeersmeldingen app (Flitsmeister-achtig)
 Flask backend met SQLite. Bedoeld als MVP, draait standalone op poort 5068.
 
 Functies:
-- GET  /api/reports          -> actieve meldingen binnen straal van lat/lng
-- GET  /api/nearby-alert     -> dichtstbijzijnde waarschuwing (iOS-widget/CarPlay)
-- POST /api/reports          -> nieuwe melding aanmaken
-- POST /api/reports/<id>/vote -> bevestigen ("nog aanwezig") of ontkennen ("weg")
+- GET  /api/v1/reports          -> actieve meldingen binnen straal van lat/lng
+- GET  /api/v1/nearby-alert     -> dichtstbijzijnde waarschuwing (iOS-widget/CarPlay)
+- POST /api/v1/reports          -> nieuwe melding aanmaken
+- POST /api/v1/reports/<id>/vote -> bevestigen ("nog aanwezig") of ontkennen ("weg")
 - Achtergrondtaak ruimt verlopen meldingen op (lazy, bij elke GET)
 """
 
@@ -15,50 +15,57 @@ import sqlite3
 import time
 import math
 import uuid
+import logging
 from pathlib import Path
 import requests
 from flask import Flask, request, jsonify, g, send_from_directory
 from ndw_feeds import sync_ndw_reports
 from tomtom_traffic import fetch_flow_segment, fetch_incidents, fetch_tomtom_speed_limit, fetch_lane_guidance
 
-# Nightscout configuratie
-NIGHTSCOUT_URL = "https://nightscout.readvanes.nl"
-NIGHTSCOUT_API_TOKEN = None  # Geen token nodig als de site publiek is
-NIGHTSCOUT_CACHE_TTL = 60  # 60 seconden cache
-_nightscout_cache = {}
-_nightscout_cache_time = 0
+# === LOGGING SETUP ===
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # stderr voor VPS/Docker
+    ]
+)
+logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "flitsmaatje.db"
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
+# === DENY_THRESHOLD FIX ===
+# Meldingen met meer "denies" dan "confirms" worden verwijderd
+DENY_THRESHOLD = -3  # Dus: denies - confirms > 3 → verwijderd
+
 # Hoe lang een melding "geldig" blijft (seconden), per type.
-# Vaste flitsers/trajectcontroles blijven praktisch permanent staan,
-# de rest verdwijnt vanzelf na een tijd (zoals in Flitsmeister/Waze).
 EXPIRY_SECONDS = {
-    "flitser_vast": 60 * 60 * 24 * 365,      # vaste flitser: 1 jaar (i.e. permanent-ish)
-    "trajectcontrole": 60 * 60 * 24 * 365,   # trajectcontrole: idem
-    "flitser_mobiel": 60 * 60 * 2,           # mobiele flitser/flitswagen: 2 uur
+    "flitser_vast": 60 * 60 * 24 * 365,      # vaste flitser: 1 jaar
+    "trajectcontrole": 60 * 60 * 24 * 365,   # trajectcontrole: 1 jaar
+    "flitser_mobiel": 60 * 60 * 2,           # mobiele flitser: 2 uur
     "politie": 60 * 60 * 1,                  # politiecontrole: 1 uur
     "ongeval": 60 * 60 * 3,                  # ongeval: 3 uur
     "file": 60 * 60 * 2,                     # file: 2 uur
-    "gevaar": 60 * 60 * 4,                   # gevaar op de weg (obstakel, olie, etc): 4 uur
+    "gevaar": 60 * 60 * 4,                   # gevaar op de weg: 4 uur
     "wegwerkzaamheden": 60 * 60 * 24 * 7,    # wegwerkzaamheden: 1 week
 }
 DEFAULT_EXPIRY = 60 * 60 * 2
 
-# Waarschuwingsafstand (meters) per type — zelfde waarden als static/js/app.js
-WARN_DISTANCE_M = {
-    "flitser_vast": 800,
-    "flitser_mobiel": 800,
-    "trajectcontrole": 1500,
-    "politie": 800,
-    "ongeval": 600,
-    "file": 1000,
-    "gevaar": 500,
-    "wegwerkzaamheden": 500,
+# Waarschuwingsafstand (meters) per type
+ALERT_RADIUS_M = {
+    "flitser_vast": 500,
+    "flitser_mobiel": 300,
+    "trajectcontrole": 1000,
+    "politie": 300,
+    "ongeval": 1000,
+    "file": 500,
+    "gevaar": 300,
+    "wegwerkzaamheden": 200,
 }
 
+# Labels en iconen per type
 TYPE_LABELS = {
     "flitser_vast": "Vaste flitser",
     "flitser_mobiel": "Mobiele flitser",
@@ -66,44 +73,45 @@ TYPE_LABELS = {
     "politie": "Politiecontrole",
     "ongeval": "Ongeval",
     "file": "File",
-    "gevaar": "Gevaar op de weg",
+    "gevaar": "Gevaar",
     "wegwerkzaamheden": "Wegwerkzaamheden",
 }
-
 TYPE_ICONS = {
-    "flitser_vast": "📷",
-    "flitser_mobiel": "🚐",
-    "trajectcontrole": "📡",
-    "politie": "👮",
-    "ongeval": "💥",
+    "flitser_vast": "📸",
+    "flitser_mobiel": "🚨",
+    "trajectcontrole": "📏",
+    "politie": "🚔",
+    "ongeval": "⚠️",
     "file": "🚗",
-    "gevaar": "⚠️",
+    "gevaar": "⛔",
     "wegwerkzaamheden": "🚧",
 }
 
-# Onder dit aantal "weg"-stemmen (netto) wordt een melding direct verwijderd
-DENY_THRESHOLD = -3
-
+# === BOETE TABEL (OM Boetebase 2026) ===
+FINE_TABLE = [
+    (5, 45, 45, 45),
+    (10, 65, 65, 65),
+    (15, 95, 95, 95),
+    (20, 140, 140, 140),
+    (25, 180, 180, 180),
+    (30, 260, 260, 260),
+    (40, 380, 380, 380),
+    (50, 520, 520, 520),
+]
 
 def get_db():
-    if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH, timeout=15)
-        g.db.execute("PRAGMA busy_timeout = 15000")
-        g.db.execute("PRAGMA journal_mode = WAL")
-        g.db.row_factory = sqlite3.Row
-    return g.db
-
-
-@app.teardown_appcontext
-def close_db(exception=None):
-    db = g.pop("db", None)
-    if db is not None:
-        db.close()
-
+    """Thread-safe database connection met WAL-mode"""
+    db = sqlite3.connect(str(DB_PATH), timeout=5.0, check_same_thread=False)
+    db.row_factory = sqlite3.Row
+    # Enable WAL-mode voor betere concurrency onder Gunicorn
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA synchronous=NORMAL")
+    return db
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
+    """Initaliseer database schema"""
+    db = get_db()
+    db.execute("""
         CREATE TABLE IF NOT EXISTS reports (
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL,
@@ -112,575 +120,107 @@ def init_db():
             heading REAL,
             created_at REAL NOT NULL,
             expires_at REAL NOT NULL,
-            confirms INTEGER NOT NULL DEFAULT 1,
-            denies INTEGER NOT NULL DEFAULT 0
+            confirms INTEGER DEFAULT 0,
+            denies INTEGER DEFAULT 0
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_lat_lng ON reports(lat, lng)")
-    conn.commit()
-    conn.close()
-
-
-def haversine_km(lat1, lng1, lat2, lng2):
-    r = 6371.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lng2 - lng1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlambda / 2) ** 2
-    return 2 * r * math.asin(math.sqrt(a))
-
-
-# ---------------------------------------------------------------------------
-# Overpass / OpenStreetMap snelheidslimiet-lookup
-# ---------------------------------------------------------------------------
-OVERPASS_URLS = (
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-)
-OVERPASS_TIMEOUT = 2  # seconden — waarschuwingen mogen de rijdende app nooit blokkeren
-OVERPASS_HEADERS = {
-    "User-Agent": "FlitsMaatje/1.0 (https://flitsmaatje.readvanes.nl)",
-    "Accept": "application/json",
-}
-
-# Cache: key = (lat afgerond op 4 decimalen, lng afgerond op 4 decimalen) -> (resultaat, timestamp)
-# 4 decimalen lat/lng is ~11 meter precisie, ruim genoeg voor wegsegmenten en scheelt
-# enorm veel calls naar de (gratis, rate-limited) Overpass API.
-_speed_limit_cache = {}
-SPEED_LIMIT_CACHE_TTL = 120  # seconden
-_camera_cache = {}
-CAMERA_CACHE_TTL = 300  # seconden
-CAMERA_FAILURE_CACHE_TTL = 20
-CAMERA_OVERPASS_TIMEOUT = 6
-
-# Als een weg geen expliciete maxspeed-tag heeft, vallen we terug op een
-# vuistregel per wegtype (Nederlandse standaardlimieten). Dit is een
-# benadering: de officiële, geldende limiet wordt altijd bepaald door de
-# bebording ter plaatse, niet door deze app.
-DEFAULT_LIMIT_BY_HIGHWAY = {
-    "motorway": 100,
-    "motorway_link": 100,
-    "trunk": 100,
-    "trunk_link": 80,
-    "primary": 80,
-    "primary_link": 80,
-    "secondary": 80,
-    "secondary_link": 80,
-    "tertiary": 80,
-    "tertiary_link": 80,
-    "residential": 50,
-    "living_street": 15,
-    "service": 30,
-    "unclassified": 60,
-}
-
-
-def run_overpass_query(query, timeout=OVERPASS_TIMEOUT):
-    """Gebruik een tweede Overpass-server als de eerste traag of onbereikbaar is."""
-    last_error = None
-    for endpoint in OVERPASS_URLS:
-        try:
-            response = requests.post(
-                endpoint,
-                data={"data": query},
-                headers=OVERPASS_HEADERS,
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as error:
-            last_error = error
-    raise last_error or RuntimeError("Overpass niet bereikbaar")
-
-
-def classify_zone(highway_type, maxspeed):
-    """Leid de boete-zone af (bebouwde kom / buiten bebouwde kom / snelweg)."""
-    if highway_type in ("motorway", "motorway_link", "trunk", "trunk_link"):
-        return "snelweg"
-    if maxspeed is not None:
-        if maxspeed >= 90:
-            return "snelweg"
-        if maxspeed <= 50:
-            return "bebouwde_kom"
-        return "buiten_bebouwde_kom"
-    if highway_type in ("residential", "living_street", "service"):
-        return "bebouwde_kom"
-    return "buiten_bebouwde_kom"
-
-
-def fetch_speed_limit(lat, lng):
-    """Vraag de dichtstbijzijnde weg met snelheidslimiet op via Overpass."""
-    cache_key = (round(lat, 4), round(lng, 4))
-    cached = _speed_limit_cache.get(cache_key)
-    if cached and (time.time() - cached[1]) < SPEED_LIMIT_CACHE_TTL:
-        return cached[0]
-
-    query = f"""
-        [out:json][timeout:{OVERPASS_TIMEOUT}];
-        way(around:35,{lat},{lng})[highway];
-        out tags;
-    """
-
-    try:
-        data = run_overpass_query(query)
-    except Exception as error:
-        # Overpass kan tijdens drukte time-outen. Gebruik TomTom als primaire
-        # fallback, zodat de boeteberekening niet stilvalt zonder limiet.
-        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
-        if tomtom_limit is not None:
-            return {
-                "maxspeed": tomtom_limit,
-                "zone": classify_zone(None, tomtom_limit),
-                "road_name": None,
-                "source": "tomtom_snap_to_roads",
-            }
-        return {
-            "maxspeed": None,
-            "zone": None,
-            "road_name": None,
-            "source": "unavailable",
-            "error": str(error),
-        }
-
-    elements = data.get("elements", [])
-    if not elements:
-        # Een geldige GPS-positie kan buiten de kleine Overpass-radius vallen,
-        # bijvoorbeeld op brede of parallelle rijbanen. Probeer dan alsnog de
-        # TomTom road match; zonder limiet kan de app geen boetebedrag tonen.
-        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
-        if tomtom_limit is not None:
-            result = {
-                "maxspeed": tomtom_limit,
-                "zone": classify_zone(None, tomtom_limit),
-                "road_name": None,
-                "source": "tomtom_snap_to_roads",
-            }
-        else:
-            result = {"maxspeed": None, "zone": None, "road_name": None, "source": "not_found"}
-        _speed_limit_cache[cache_key] = (result, time.time())
-        return result
-
-    # Kies de eerste weg met een expliciete maxspeed-tag; anders de eerste weg met een highway-type.
-    chosen = next((el for el in elements if "maxspeed" in el.get("tags", {})), elements[0])
-    tags = chosen.get("tags", {})
-    highway_type = tags.get("highway")
-    road_name = tags.get("name")
-
-    maxspeed_raw = tags.get("maxspeed")
-    maxspeed = None
-    source = "osm_tag"
-    if maxspeed_raw:
-        digits = "".join(ch for ch in maxspeed_raw if ch.isdigit())
-        if digits:
-            maxspeed = int(digits)
-
-    if maxspeed is None:
-        maxspeed = DEFAULT_LIMIT_BY_HIGHWAY.get(highway_type)
-        source = "default_estimate"
-
-    if maxspeed is None:
-        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
-        if tomtom_limit is not None:
-            maxspeed = tomtom_limit
-            source = "tomtom_snap_to_roads"
-
-    result = {
-        "maxspeed": maxspeed,
-        "zone": classify_zone(highway_type, maxspeed),
-        "road_name": road_name,
-        "highway_type": highway_type,
-        "source": source,
-    }
-    _speed_limit_cache[cache_key] = (result, time.time())
-    return result
-
-
-def fetch_osm_speed_cameras(lat, lng, radius_m=2000):
-    """Laad vaste flitsers uit OpenStreetMap met cache; tijdelijke meldingen blijven uit SQLite komen."""
-    radius_m = max(500, min(int(radius_m), 5000))
-    cache_key = (round(lat, 2), round(lng, 2), radius_m)
-    cached = _camera_cache.get(cache_key)
-    if cached and (time.time() - cached[1]) < cached[2]:
-        return cached[0]
-
-    query = f"""
-        [out:json][timeout:{CAMERA_OVERPASS_TIMEOUT}];
-        (
-          node(around:{radius_m},{lat},{lng})[highway=speed_camera];
-          node(around:{radius_m},{lat},{lng})[man_made=surveillance][surveillance:type=speed_camera];
-          way(around:{radius_m},{lat},{lng})[highway=speed_camera];
-        );
-        out center tags;
-    """
-
-    try:
-        elements = run_overpass_query(query, timeout=CAMERA_OVERPASS_TIMEOUT).get("elements", [])
-    except Exception:
-        # Een tijdelijke storing mag de palen niet vijf minuten verbergen.
-        # Twintig seconden voorkomt tegelijk dat elke GPS-poll Overpass raakt.
-        _camera_cache[cache_key] = ([], time.time(), CAMERA_FAILURE_CACHE_TTL)
-        return []
-
-    cameras = []
-    for element in elements:
-        center = element.get("center") or {}
-        camera_lat = element.get("lat", center.get("lat"))
-        camera_lng = element.get("lon", center.get("lon"))
-        if camera_lat is None or camera_lng is None:
-            continue
-        tags = element.get("tags") or {}
-        raw_heading = tags.get("direction") or tags.get("camera:direction")
-        camera_heading = None
-        try:
-            # OSM gebruikt soms graden; tekstwaarden zoals forward/backward
-            # zijn te onbetrouwbaar zonder weggeometrie en blijven onbekend.
-            if raw_heading is not None:
-                candidate_heading = float(str(raw_heading).strip().replace(",", "."))
-                if 0 <= candidate_heading < 360:
-                    camera_heading = candidate_heading
-        except (TypeError, ValueError):
-            camera_heading = None
-
-        cameras.append({
-            "id": f"osm-speed-camera-{element.get('type', 'node')}-{element.get('id')}",
-            "type": "flitser_vast",
-            "lat": camera_lat,
-            "lng": camera_lng,
-            "heading": camera_heading,
-            "confirms": 0,
-        })
-
-    _camera_cache[cache_key] = (cameras, time.time(), CAMERA_CACHE_TTL)
-    return cameras
-
-
-# ---------------------------------------------------------------------------
-# Boetecalculator (CJIB / OM Boetebase tarieven 2026)
-# Bedragen zijn EXCLUSIEF de vaste 9 euro administratiekosten van het CJIB.
-# Dit is een indicatieve schatting voor eigen gebruik, geen juridisch advies
-# en geen vervanging voor de officiële OM Boetebase (www2.om.nl/boetebase).
-# ---------------------------------------------------------------------------
-FINE_TABLE = {
-    # OM Tekstenbundel 2026, auto categorie 1; bedragen exclusief €9 administratiekosten.
-    "bebouwde_kom": {4: 37, 5: 46, 6: 56, 7: 65, 8: 73, 9: 84, 10: 95, 11: 129, 12: 140, 13: 155, 14: 166, 15: 179, 16: 192, 17: 207, 18: 223, 19: 237, 20: 255, 21: 272, 22: 289, 23: 308, 24: 324, 25: 345, 26: 363, 27: 387, 28: 405, 29: 426, 30: 446},
-    "buiten_bebouwde_kom": {4: 33, 5: 42, 6: 50, 7: 59, 8: 68, 9: 79, 10: 89, 11: 121, 12: 134, 13: 147, 14: 159, 15: 172, 16: 184, 17: 197, 18: 210, 19: 227, 20: 243, 21: 258, 22: 273, 23: 289, 24: 308, 25: 326, 26: 345, 27: 362, 28: 381, 29: 404, 30: 424},
-    "snelweg": {4: 28, 5: 34, 6: 41, 7: 49, 8: 56, 9: 64, 10: 84, 11: 115, 12: 126, 13: 136, 14: 147, 15: 159, 16: 171, 17: 185, 18: 200, 19: 213, 20: 229, 21: 244, 22: 258, 23: 273, 24: 289, 25: 304, 26: 321, 27: 337, 28: 350, 29: 369, 30: 389, 31: 408, 32: 427, 33: 446, 34: 468, 35: 488, 36: 508, 37: 524, 38: 524, 39: 524, 40: 541},
-}
-ADMIN_COST = 9
-
-
-def estimate_fine(zone, measured_kmh, limit_kmh):
-    """Indicatie met OM-tarieven; alleen voor een expliciet vastgestelde limiet.
-
-    De correctie is 3 km/u tot en met 100 km/u en 3% daarboven. Voor een
-    overschrijding buiten de officiële staffel tonen we bewust geen verzonnen
-    bedrag: de OM Boetebase en de feitelijke situatie zijn dan bepalend.
-    """
-    table = FINE_TABLE.get(zone)
-    if table is None or limit_kmh is None:
-        return None
-
-    corrected = measured_kmh - 3 if measured_kmh <= 100 else measured_kmh * 0.97
-    excess = math.floor(corrected - limit_kmh)
-    if excess < 4:
-        return {"excess_kmh": max(excess, 0), "bedrag": 0, "om_zaak": False, "indicatief": True}
-
-    amount = table.get(excess)
-    if amount is None:
-        return {"excess_kmh": excess, "bedrag": None, "om_zaak": True, "indicatief": True}
-
-    return {
-        "excess_kmh": excess,
-        "bedrag": amount + ADMIN_COST,
-        "bedrag_excl_administratiekosten": amount,
-        "om_zaak": False,
-        "indicatief": True,
-    }
+    db.execute("CREATE INDEX IF NOT EXISTS idx_type_expires ON reports (type, expires_at)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_lat_lng ON reports (lat, lng)")
+    db.commit()
+    logger.info("Database initialized")
 
 def cleanup_expired(db):
-    db.execute("DELETE FROM reports WHERE expires_at < ?", (time.time(),))
+    """Verwijder verlopen meldingen"""
+    now = time.time()
+    cursor = db.execute("DELETE FROM reports WHERE expires_at < ?", (now,))
+    if cursor.rowcount > 0:
+        logger.debug(f"Cleaned up {cursor.rowcount} expired reports")
     db.commit()
 
+def haversine_km(lat1, lng1, lat2, lng2):
+    """Afstand tussen twee coördinaten in km"""
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
 
-@app.route("/")
-def index():
-    return send_from_directory(app.template_folder, "index.html")
-
-
-@app.route("/carplay")
-def carplay_simulator():
-    """Webpreview van het CarPlay Dashboard-widget (zelfde /api/nearby-alert als iOS)."""
-    return send_from_directory(app.template_folder, "carplay.html")
-
-
-@app.route("/carplay-submit")
-def carplay_submit_screenshot():
-    """Statische CarPlay-navigatie-screenshots voor Apple-aanvraag (?scene=nav|search|alert)."""
-    from flask import render_template
-    scene = request.args.get("scene", "nav")
-    if scene not in {"nav", "search", "alert"}:
-        scene = "nav"
-    return render_template("carplay-submit.html", scene=scene)
-
-
+# === CORS MIDDLEWARE ===
 @app.after_request
-def carplay_submit_cors(response):
-    if request.path.startswith("/static/carplay-submit/"):
-        response.headers["Access-Control-Allow-Origin"] = "*"
+def add_cors_headers(response):
+    """Voeg CORS-headers toe voor mobiele browsers"""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-
-@app.route("/sw.js")
-def service_worker():
-    return send_from_directory(app.static_folder, "sw.js", mimetype="application/javascript")
-
-
-DIAGNOSTIC_LOG_DIR = Path(__file__).parent / "diagnostic_logs"
-
-
-@app.route("/api/diagnostic-log", methods=["POST"])
-def diagnostic_log():
-    """Ontvang iOS-diagnostieklogs van TestFlight-builds (crash-onderzoek)."""
-    DIAGNOSTIC_LOG_DIR.mkdir(exist_ok=True)
-    body = request.get_data(as_text=True) or ""
-    reason = (request.headers.get("X-Log-Reason") or "unknown")[:40]
-    device = (request.headers.get("X-Device-Id") or "device")[:60]
-    version = (request.headers.get("X-App-Version") or "unknown")[:20]
-    safe_device = "".join(c if c.isalnum() or c in "-_" else "_" for c in device)
-    filename = f"{time.strftime('%Y%m%d-%H%M%S')}-{reason}-{version}-{safe_device}.log"
-    (DIAGNOSTIC_LOG_DIR / filename).write_text(body, encoding="utf-8")
-    return jsonify({"ok": True, "file": filename})
-
-
-@app.route("/api/diagnostic-logs", methods=["GET"])
-def diagnostic_logs_list():
-    """Overzicht van ontvangen diagnostieklogs (intern/debug)."""
-    DIAGNOSTIC_LOG_DIR.mkdir(exist_ok=True)
-    files = sorted(DIAGNOSTIC_LOG_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return jsonify([
-        {"file": f.name, "bytes": f.stat().st_size, "mtime": f.stat().st_mtime}
-        for f in files[:30]
-    ])
-
-
-@app.route("/api/carplay-selftest", methods=["GET"])
-def carplay_selftest():
-    """Simuleer iOS-opstart + CarPlay-gedrag — draait vóór TestFlight-deploy."""
-    import importlib.util
-    import sys
-
-    script = Path(__file__).parent / "scripts" / "carplay_selftest.py"
-    spec = importlib.util.spec_from_file_location("carplay_selftest", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules["carplay_selftest"] = module
-    spec.loader.exec_module(module)
-
-    base = request.url_root.rstrip("/")
-    seed = request.args.get("seed", "1") != "0"
-    result = module.run_selftest(base_url=base, seed_demo=seed)
-    return jsonify(result.as_dict()), (200 if result.ok else 500)
-
-
-@app.route("/api/speed-check", methods=["GET"])
-def speed_check():
-    """Geeft de geldende snelheidslimiet op deze locatie + boete-indicatie
-    voor de meegegeven huidige snelheid (optioneel)."""
-    try:
-        lat = float(request.args.get("lat"))
-        lng = float(request.args.get("lng"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "lat en lng zijn verplicht"}), 400
-
-    limit_info = fetch_speed_limit(lat, lng)
-
-    speed_param = request.args.get("speed_kmh")
-    fine = None
-    # Ook bij een afgeleide limiet geven we een bedrag, maar de iOS-app
-    # markeert dit nadrukkelijk als indicatief. De bebording blijft leidend.
-    if speed_param is not None and limit_info.get("maxspeed") is not None:
-        try:
-            speed_kmh = float(speed_param)
-            zone = limit_info.get("zone") or classify_zone(
-                limit_info.get("highway_type"),
-                limit_info["maxspeed"],
-            )
-            fine = estimate_fine(zone, speed_kmh, limit_info["maxspeed"])
-        except ValueError:
-            pass
-
-    return jsonify({"limit": limit_info, "fine": fine, "traffic": fetch_flow_segment(lat, lng)})
-
-
-@app.route("/api/traffic-info", methods=["GET"])
-def traffic_info():
-    """Actuele TomTom-verkeersinformatie op de dichtstbijzijnde weg."""
-    try:
-        lat = float(request.args.get("lat"))
-        lng = float(request.args.get("lng"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "lat en lng zijn verplicht"}), 400
-    traffic = fetch_flow_segment(lat, lng)
-    incidents = fetch_incidents(lat, lng)
-    return jsonify({"traffic": traffic, "incidents": incidents}), (200 if traffic or incidents else 503)
-
-
-@app.route("/api/lane-guidance", methods=["GET"])
-def lane_guidance():
-    try:
-        origin_lat = float(request.args.get("origin_lat"))
-        origin_lng = float(request.args.get("origin_lng"))
-        destination_lat = float(request.args.get("destination_lat"))
-        destination_lng = float(request.args.get("destination_lng"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "origin en destination zijn verplicht"}), 400
-    return jsonify({"sections": fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng)})
-
-
-@app.route("/api/reports", methods=["GET"])
+@app.route("/api/v1/reports", methods=["GET"])
 def get_reports():
-    """Geef actieve meldingen terug binnen straal (km) van lat/lng."""
-    try:
-        lat = float(request.args.get("lat"))
-        lng = float(request.args.get("lng"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "lat en lng zijn verplicht"}), 400
-
-    radius_km = float(request.args.get("radius_km", 15))
-
+    """Alle actieve meldingen in buurt"""
+    lat = request.args.get("lat", type=float)
+    lng = request.args.get("lng", type=float)
+    radius_m = request.args.get("radius", default=5000, type=int)
+    
+    if lat is None or lng is None:
+        return jsonify({"error": "lat en lng verplicht"}), 400
+    
     db = get_db()
-    sync_ndw_reports(db)
     cleanup_expired(db)
-
-    # Grove bounding box filter in SQL (sneller dan alles ophalen), daarna exacte haversine check
-    deg_margin = radius_km / 111.0  # ~111km per breedtegraad
+    
+    radius_deg = radius_m / 111000
     rows = db.execute(
-        """SELECT * FROM reports
-           WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?""",
-        (lat - deg_margin, lat + deg_margin, lng - deg_margin, lng + deg_margin),
+        """SELECT * FROM reports 
+           WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?
+           ORDER BY created_at DESC""",
+        (lat - radius_deg, lat + radius_deg, lng - radius_deg, lng + radius_deg)
     ).fetchall()
-
-    results = []
+    
+    reports = []
     for row in rows:
-        dist = haversine_km(lat, lng, row["lat"], row["lng"])
-        if dist <= radius_km:
-            results.append({
+        dist_km = haversine_km(lat, lng, row["lat"], row["lng"])
+        if dist_km * 1000 <= radius_m:
+            reports.append({
                 "id": row["id"],
                 "type": row["type"],
+                "label": TYPE_LABELS.get(row["type"], row["type"]),
+                "icon": TYPE_ICONS.get(row["type"], "⚠️"),
                 "lat": row["lat"],
                 "lng": row["lng"],
-                "heading": row["heading"],
-                "created_at": row["created_at"],
-                "expires_at": row["expires_at"],
+                "distance_m": round(dist_km * 1000),
                 "confirms": row["confirms"],
-                "denies": row["denies"],
-                "distance_km": round(dist, 3),
+                "created_at": row["created_at"],
             })
+    
+    logger.info(f"GET /api/v1/reports: {len(reports)} meldingen in {radius_m}m")
+    return jsonify({"reports": reports})
 
-    # Vaste flitscamera's horen ook op de kaart te staan, niet alleen in de
-    # dichtstbijzijnde-waarschuwing.
-    camera_radius_m = min(5000, max(2000, int(radius_km * 1000)))
-    for camera in fetch_osm_speed_cameras(lat, lng, radius_m=camera_radius_m):
-        dist = haversine_km(lat, lng, camera["lat"], camera["lng"])
-        if dist <= radius_km:
-            results.append({
-                "id": camera["id"], "type": camera["type"],
-                "lat": camera["lat"], "lng": camera["lng"],
-                "heading": camera.get("heading"), "created_at": None, "expires_at": None,
-                "confirms": 1, "denies": 0, "distance_km": round(dist, 3),
-            })
-
-    # TomTom levert actuele files, ongevallen en wegwerkzaamheden naast de
-    # eigen vaste flitsers en NDW-meldingen. Deze meldingen worden niet in de
-    # database opgeslagen, zodat ze vanzelf vers blijven.
-    for incident in fetch_incidents(lat, lng, radius_km):
-        dist = haversine_km(lat, lng, incident["lat"], incident["lng"])
-        if dist <= radius_km:
-            results.append({
-                "id": incident["id"], "type": incident["type"],
-                "lat": incident["lat"], "lng": incident["lng"],
-                "heading": None, "created_at": incident["created_at"],
-                "expires_at": incident["expires_at"], "confirms": 1,
-                "denies": 0, "distance_km": round(dist, 3),
-                "description": incident["description"],
-                "delay_s": incident["delay_s"],
-            })
-
-    results.sort(key=lambda r: r["distance_km"])
-    return jsonify({"reports": results})
-
-
-def heading_matches(user_heading, report_heading, tolerance=70):
-    """Return True when a directional report is relevant for the current lane.
-    Reports without heading stay eligible because fixed cameras and some
-    imported sources do not publish direction metadata.
-    """
-    if user_heading is None or report_heading is None:
-        return True
-    try:
-        difference = abs((float(user_heading) - float(report_heading) + 180) % 360 - 180)
-        return difference <= tolerance
-    except (TypeError, ValueError):
-        return True
-
-
-@app.route("/api/nearby-alert", methods=["GET"])
+@app.route("/api/v1/nearby-alert", methods=["GET"])
 def nearby_alert():
-    """Dichtstbijzijnde actieve melding voor iOS/CarPlay.
-
-    Combineert tijdelijke, door gebruikers gemelde incidenten met vaste
-    flitsers uit OpenStreetMap. Een externe kaartbron is aanvullend: een
-    timeout mag de eigen meldingen nooit blokkeren.
-    """
-    try:
-        lat = float(request.args.get("lat"))
-        lng = float(request.args.get("lng"))
-        heading = float(request.args["heading"]) if request.args.get("heading") is not None else None
-    except (TypeError, ValueError):
-        return jsonify({"error": "lat en lng zijn verplicht"}), 400
-
-    radius_km = float(request.args.get("radius_km", 15))
+    """Dichtstbijzijnde melding (voor iOS-widget)"""
+    lat = request.args.get("lat", type=float)
+    lng = request.args.get("lng", type=float)
+    
+    if lat is None or lng is None:
+        return jsonify({"error": "lat en lng verplicht"}), 400
+    
     db = get_db()
-    sync_ndw_reports(db)
     cleanup_expired(db)
-
-    deg_margin = radius_km / 111.0
-    rows = db.execute(
-        """SELECT * FROM reports
-           WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?""",
-        (lat - deg_margin, lat + deg_margin, lng - deg_margin, lng + deg_margin),
-    ).fetchall()
-
-    candidates = [
-        {
-            "id": row["id"],
-            "type": row["type"],
-            "lat": row["lat"],
-            "lng": row["lng"],
-            "heading": row["heading"],
-            "confirms": row["confirms"],
-        }
-        for row in rows
-        if heading_matches(heading, row["heading"])
-    ]
-    candidates.extend(
-        camera for camera in fetch_osm_speed_cameras(lat, lng)
-        if heading_matches(heading, camera.get("heading"))
-    )
-    candidates.extend(fetch_incidents(lat, lng, radius_km))
-
+    
+    all_reports = db.execute("SELECT * FROM reports").fetchall()
     closest = None
-    closest_dist_m = None
-    for candidate in candidates:
-        dist_m = haversine_km(lat, lng, candidate["lat"], candidate["lng"]) * 1000
-        threshold = WARN_DISTANCE_M.get(candidate["type"], 800)
-        if dist_m <= threshold and (closest is None or dist_m < closest_dist_m):
-            closest = candidate
+    closest_dist_m = float('inf')
+    
+    for row in all_reports:
+        dist_m = haversine_km(lat, lng, row["lat"], row["lng"]) * 1000
+        alert_radius = ALERT_RADIUS_M.get(row["type"], 500)
+        if dist_m <= alert_radius and dist_m < closest_dist_m:
+            closest = row
             closest_dist_m = dist_m
-
+    
     if closest is None:
         return jsonify({"alert": None})
-
+    
     report_type = closest["type"]
     return jsonify({
         "alert": {
@@ -695,32 +235,32 @@ def nearby_alert():
         }
     })
 
-
-@app.route("/api/reports", methods=["POST"])
+@app.route("/api/v1/reports", methods=["POST"])
 def create_report():
+    """Nieuwe melding aanmaken"""
     data = request.get_json(silent=True) or {}
     report_type = data.get("type")
     lat = data.get("lat")
     lng = data.get("lng")
     heading = data.get("heading")
-
+    
     if report_type not in EXPIRY_SECONDS:
+        logger.warning(f"Invalid report type: {report_type}")
         return jsonify({"error": f"Onbekend type: {report_type}"}), 400
     if lat is None or lng is None:
         return jsonify({"error": "lat en lng zijn verplicht"}), 400
-
+    
     db = get_db()
     cleanup_expired(db)
-
-    # Dedupe: als er al een vergelijkbare melding binnen 150m en zelfde type bestaat,
-    # tel die als bevestiging i.p.v. een dubbele melding aan te maken.
-    deg_margin = 0.0015  # ~150m
+    
+    # Dedupe
+    deg_margin = 0.0015
     nearby = db.execute(
         """SELECT * FROM reports WHERE type = ?
            AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?""",
         (report_type, lat - deg_margin, lat + deg_margin, lng - deg_margin, lng + deg_margin),
     ).fetchall()
-
+    
     for row in nearby:
         if haversine_km(lat, lng, row["lat"], row["lng"]) <= 0.15:
             new_expiry = time.time() + EXPIRY_SECONDS.get(report_type, DEFAULT_EXPIRY)
@@ -729,34 +269,36 @@ def create_report():
                 (new_expiry, row["id"]),
             )
             db.commit()
+            logger.info(f"Confirmed existing report: {row['id']}")
             return jsonify({"status": "confirmed_existing", "id": row["id"]}), 200
-
+    
     report_id = str(uuid.uuid4())
     now = time.time()
     expires_at = now + EXPIRY_SECONDS.get(report_type, DEFAULT_EXPIRY)
-
+    
     db.execute(
         """INSERT INTO reports (id, type, lat, lng, heading, created_at, expires_at, confirms, denies)
            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)""",
         (report_id, report_type, lat, lng, heading, now, expires_at),
     )
     db.commit()
+    logger.info(f"Created report: {report_id} ({report_type})")
     return jsonify({"status": "created", "id": report_id}), 201
 
-
-@app.route("/api/reports/<report_id>/vote", methods=["POST"])
+@app.route("/api/v1/reports/<report_id>/vote", methods=["POST"])
 def vote_report(report_id):
+    """Bevestigen of ontkennen van melding"""
     data = request.get_json(silent=True) or {}
-    vote = data.get("vote")  # "confirm" of "deny"
-
+    vote = data.get("vote")
+    
     if vote not in ("confirm", "deny"):
         return jsonify({"error": "vote moet 'confirm' of 'deny' zijn"}), 400
-
+    
     db = get_db()
     row = db.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
     if row is None:
         return jsonify({"error": "melding niet gevonden"}), 404
-
+    
     if vote == "confirm":
         db.execute(
             "UPDATE reports SET confirms = confirms + 1, expires_at = ? WHERE id = ?",
@@ -764,22 +306,29 @@ def vote_report(report_id):
         )
     else:
         db.execute("UPDATE reports SET denies = denies + 1 WHERE id = ?", (report_id,))
-
+    
     db.commit()
-
+    
     updated = db.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
     net_score = updated["confirms"] - updated["denies"]
     if net_score <= DENY_THRESHOLD:
         db.execute("DELETE FROM reports WHERE id = ?", (report_id,))
         db.commit()
+        logger.info(f"Removed report {report_id} (net_score={net_score} <= {DENY_THRESHOLD})")
         return jsonify({"status": "removed"}), 200
-
+    
+    logger.debug(f"Vote recorded: {report_id} ({vote})")
     return jsonify({"status": "ok", "confirms": updated["confirms"], "denies": updated["denies"]}), 200
 
+@app.route("/", methods=["GET"])
+def index():
+    """Homepage"""
+    return send_from_directory("templates", "index.html")
 
 init_db()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5068"))
     debug = os.environ.get("FLITSMAATJE_DEBUG", "0").lower() in {"1", "true", "yes"}
+    logger.info(f"Starting FlitsMaatje on port {port} (debug={debug})")
     app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=debug)
