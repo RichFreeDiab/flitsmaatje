@@ -175,19 +175,11 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
     add("boot_sequence", not missing, "ontbreekt: " + ", ".join(missing) if missing else "OK")
     result.boot_stages = sim.boot_stages
 
-    # --- API: nearby-alert ---
-    try:
-        status, data = _get(
-            base_url,
-            "/api/nearby-alert",
-            {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
-        )
-        add("api_nearby_alert", status == 200 and isinstance(data, dict), f"HTTP {status}")
-    except Exception as exc:
-        add("api_nearby_alert", False, str(exc))
-        data = {}
-
-    # --- Seed demo flitser (optioneel) ---
+    # --- API: nearby-alert + seeded demo flitser ---
+    # Voer geen lege preflight uit: die kan externe OSM/NDW-feeds aanspreken
+    # en maakt de CI-test afhankelijk van netwerk-latency. De seeded route
+    # controleert dezelfde echte alertketen deterministisch.
+    alert = None
     if seed_demo:
         try:
             status, _ = _post_json(
@@ -206,12 +198,11 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
                 {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
             )
             alert = data.get("alert") if isinstance(data, dict) else None
-            add("nearby_after_seed", status == 200, "alert aanwezig" if alert else "geen alert")
+            add("api_nearby_alert", status == 200, f"HTTP {status}")
+            add("nearby_after_seed", status == 200 and alert is not None, "alert aanwezig" if alert else "geen alert")
         except Exception as exc:
+            add("api_nearby_alert", False, str(exc))
             add("nearby_after_seed", False, str(exc))
-            alert = None
-    else:
-        alert = data.get("alert") if isinstance(data, dict) else None
 
     # --- Flitser + Flitsmeister (banner) ---
     sim.set_carplay_app("flitsmeister")
