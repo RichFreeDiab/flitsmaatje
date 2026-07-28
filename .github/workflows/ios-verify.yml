@@ -143,3 +143,5 @@ jobs:
         run: bundle exec fastlane beta
 
 # Release trigger: native CarPlay overlay cleanup.
+
+# Release trigger: verified contract restoration.
