@@ -28,6 +28,26 @@ class NavigationFeatureTests(unittest.TestCase):
         self.assertEqual(payload["fine"]["excess_kmh"], 9)
         self.assertEqual(payload["fine"]["bedrag"], 73)
 
+    def test_tomtom_speed_limit_uses_two_points_and_parses_route_segments(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "route": [{
+                "properties": {
+                    "speedLimits": {"value": 30, "unit": "kmph"}
+                }
+            }]
+        }
+        with (
+            patch.dict(os.environ, {"TOMTOM_API_KEY": "test-key"}),
+            patch.object(tomtom_traffic.requests, "get", return_value=response) as request,
+        ):
+            limit = tomtom_traffic.fetch_tomtom_speed_limit(52.3676, 4.9041)
+
+        self.assertEqual(limit, 30)
+        points = request.call_args.kwargs["params"]["points"]
+        self.assertEqual(len(points.split(";")), 2)
+
     def test_reports_preserve_fixed_camera_heading(self):
         camera = {
             "id": "osm-speed-camera-node-99",

@@ -110,11 +110,15 @@ def fetch_tomtom_speed_limit(lat, lng):
         return cached
     fields = "{route{properties{speedLimits{value,unit}}}}"
     try:
+        # Snap to Roads vereist minimaal twee GPS-punten. Een tweede punt op
+        # circa één meter noordwaarts is voldoende om de huidige weg te
+        # matchen zonder een verzonnen langere route te construeren.
+        points = f"{lng},{lat};{lng},{lat + 0.00001}"
         response = requests.get(
             TOMTOM_SNAP_URL,
             params={
                 "key": api_key,
-                "points": f"{lng},{lat}",
+                "points": points,
                 "fields": fields,
                 "vehicleType": "PassengerCar",
                 "measurementSystem": "metric",
@@ -124,15 +128,20 @@ def fetch_tomtom_speed_limit(lat, lng):
             timeout=5,
         )
         response.raise_for_status()
-        route = response.json().get("route") or {}
-        properties = route.get("properties") or {}
-        limits = properties.get("speedLimits") or []
-        for item in limits:
-            value = item.get("value") if isinstance(item, dict) else None
-            if value is not None:
-                result = int(round(float(value)))
-                _store(cache_key, result, 300)
-                return result
+        route = response.json().get("route") or []
+        if isinstance(route, dict):
+            route = [route]
+        for segment in route:
+            properties = segment.get("properties") or {}
+            limits = properties.get("speedLimits") or []
+            if isinstance(limits, dict):
+                limits = [limits]
+            for item in limits:
+                value = item.get("value") if isinstance(item, dict) else None
+                if value is not None:
+                    result = int(round(float(value)))
+                    _store(cache_key, result, 300)
+                    return result
     except (requests.RequestException, ValueError, TypeError, KeyError):
         _store(cache_key, None, 20)
         return None
