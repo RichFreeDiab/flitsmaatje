@@ -92,7 +92,7 @@ struct FineEstimate: Codable, Equatable {
 
     func carPlayNotificationTitle(speedKmh: Int?, limit: Int?) -> String? {
         guard displayText(speedKmh: speedKmh, limit: limit) != nil else { return nil }
-        return om_zaak ? "Te hard — controleer boete" : "Te hard — indicatief €\(bedrag ?? 0)"
+        return om_zaak ? "Te hard — controleer boete" : (bedrag.map { "Te hard — indicatief €\($0)" } ?? "Te hard — bedrag onbekend")
     }
 
     func carPlayNotificationSubtitle(speedKmh: Int?, limit: Int?) -> String? {
