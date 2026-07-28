@@ -141,3 +141,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FLITSMAATJE_CHANGELOG: "Build 95: 3D-kaart, leesbare boetemelding en flitserwaarschuwingen"
         run: bundle exec fastlane beta
+
+# Release trigger: native CarPlay overlay cleanup.
