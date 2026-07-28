@@ -3,10 +3,10 @@ FlitsMaatje - Crowdsourced verkeersmeldingen app (Flitsmeister-achtig)
 Flask backend met SQLite. Bedoeld als MVP, draait standalone op poort 5068.
 
 Functies:
-- GET  /api/v1/reports          -> actieve meldingen binnen straal van lat/lng
-- GET  /api/v1/nearby-alert     -> dichtstbijzijnde waarschuwing (iOS-widget/CarPlay)
-- POST /api/v1/reports          -> nieuwe melding aanmaken
-- POST /api/v1/reports/<id>/vote -> bevestigen ("nog aanwezig") of ontkennen ("weg")
+- GET  /api/reports          -> actieve meldingen binnen straal van lat/lng
+- GET  /api/nearby-alert     -> dichtstbijzijnde waarschuwing (iOS-widget/CarPlay)
+- POST /api/reports          -> nieuwe melding aanmaken
+- POST /api/reports/<id>/vote -> bevestigen ("nog aanwezig") of ontkennen ("weg")
 - Achtergrondtaak ruimt verlopen meldingen op (lazy, bij elke GET)
 """
 
@@ -155,7 +155,7 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-@app.route("/api/v1/reports", methods=["GET"])
+@app.route("/api/reports", methods=["GET"])
 def get_reports():
     """Alle actieve meldingen in buurt"""
     lat = request.args.get("lat", type=float)
@@ -192,10 +192,10 @@ def get_reports():
                 "created_at": row["created_at"],
             })
     
-    logger.info(f"GET /api/v1/reports: {len(reports)} meldingen in {radius_m}m")
+    logger.info(f"GET /api/reports: {len(reports)} meldingen in {radius_m}m")
     return jsonify({"reports": reports})
 
-@app.route("/api/v1/nearby-alert", methods=["GET"])
+@app.route("/api/nearby-alert", methods=["GET"])
 def nearby_alert():
     """Dichtstbijzijnde melding (voor iOS-widget)"""
     lat = request.args.get("lat", type=float)
@@ -235,7 +235,7 @@ def nearby_alert():
         }
     })
 
-@app.route("/api/v1/reports", methods=["POST"])
+@app.route("/api/reports", methods=["POST"])
 def create_report():
     """Nieuwe melding aanmaken"""
     data = request.get_json(silent=True) or {}
@@ -285,7 +285,7 @@ def create_report():
     logger.info(f"Created report: {report_id} ({report_type})")
     return jsonify({"status": "created", "id": report_id}), 201
 
-@app.route("/api/v1/reports/<report_id>/vote", methods=["POST"])
+@app.route("/api/reports/<report_id>/vote", methods=["POST"])
 def vote_report(report_id):
     """Bevestigen of ontkennen van melding"""
     data = request.get_json(silent=True) or {}
