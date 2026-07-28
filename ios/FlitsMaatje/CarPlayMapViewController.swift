@@ -75,13 +75,10 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         speedLabel.textColor = .white; speedLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .bold); speedLabel.text = "--"
         limitLabel.textColor = .white; limitLabel.font = .systemFont(ofSize: 15, weight: .bold)
         alertLabel.font = .systemFont(ofSize: 17, weight: .bold); alertLabel.numberOfLines = 2; alertLabel.textAlignment = .center
-        fineLabel.font = .systemFont(ofSize: 19, weight: .heavy); fineLabel.numberOfLines = 2; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.82
+        fineLabel.font = .systemFont(ofSize: 20, weight: .bold); fineLabel.numberOfLines = 1; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.75
         laneLabel.font = .systemFont(ofSize: 22, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
         lanePanel.isHidden = true
-        // De native CPMapTemplate toont de routekaart bovenop deze view.
-        // Geen tweede tekstkaart tekenen: dat veroorzaakte dubbele/overlappende instructies.
-        maneuverPanel.isHidden = true
-        maneuverLabel.font = .monospacedDigitSystemFont(ofSize: 24, weight: .bold); maneuverLabel.numberOfLines = 1; maneuverLabel.textAlignment = .center; maneuverLabel.textColor = .white
+        maneuverLabel.font = .systemFont(ofSize: 36, weight: .bold); maneuverLabel.numberOfLines = 1; maneuverLabel.textColor = .white; maneuverLabel.textAlignment = .center
 
         let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
         speedStack.translatesAutoresizingMaskIntoConstraints = false; statusPanel.contentView.addSubview(speedStack)
@@ -110,11 +107,13 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.text = alert ?? "Geen flitser in de buurt"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
-        fineLabel.text = fineText.map { "⚠️ BOETE  \($0)" } ?? ""
-        fineLabel.textColor = .systemYellow
+        fineLabel.text = fineText ?? "Boete --"
+        let noFine = fineText == "Boete —"
+        fineLabel.textColor = noFine ? .white : .black
+        finePanel.contentView.backgroundColor = (noFine ? UIColor.systemGray : UIColor.systemOrange).withAlphaComponent(0.88)
         finePanel.layer.zPosition = 50
-        finePanel.isHidden = fineText == nil
-        if fineText != nil { view.bringSubviewToFront(finePanel) }
+        finePanel.isHidden = false
+        view.bringSubviewToFront(finePanel)
     }
 
     func updateLaneSections(_ sections: [LaneSection]) {
@@ -125,15 +124,28 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             lanePanel.isHidden = false
             return
         }
-        laneLabel.text = section.lanes.map { lane in
+        let laneText = NSMutableAttributedString()
+        for (index, lane) in section.lanes.enumerated() {
             let direction = lane.follow ?? lane.directions.first ?? "STRAIGHT"
+            let arrow: String
             switch direction {
-            case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": return "↖"
-            case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": return "↗"
-            case "LEFT_U_TURN", "RIGHT_U_TURN": return "↩"
-            default: return "↑"
+            case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": arrow = "↖"
+            case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": arrow = "↗"
+            case "LEFT_U_TURN", "RIGHT_U_TURN": arrow = "↩"
+            default: arrow = "↑"
             }
-        }.joined(separator: "   ")
+            if index > 0 {
+                laneText.append(NSAttributedString(string: "   "))
+            }
+            laneText.append(NSAttributedString(
+                string: arrow,
+                attributes: [
+                    .foregroundColor: lane.follow == nil ? UIColor.systemGray : UIColor.systemGreen,
+                    .font: UIFont.systemFont(ofSize: 24, weight: lane.follow == nil ? .regular : .bold),
+                ]
+            ))
+        }
+        laneLabel.attributedText = laneText
         lanePanel.isHidden = false
     }
 
@@ -143,12 +155,19 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             lanePanel.isHidden = true
             return
         }
-
-        // Flitsmeister-achtige compacte routekaart: afstand boven de
-        // rijstrookpijlen. De lange rode native tekstkaart wordt niet gebruikt.
-        maneuverLabel.text = distanceText ?? " "
+        let arrow = maneuverArrow(for: instruction)
+        maneuverLabel.text = distanceText.map { "\(arrow)   \($0)" } ?? arrow
         maneuverPanel.isHidden = false
         updateLaneSections(laneSections)
+    }
+
+    private func maneuverArrow(for instruction: String) -> String {
+        let text = instruction.lowercased()
+        if text.contains("rotonde") || text.contains("roundabout") { return "↻" }
+        if text.contains("keer") || text.contains("u-turn") { return "↩" }
+        if text.contains("links") || text.contains("left") { return "←" }
+        if text.contains("rechts") || text.contains("right") { return "→" }
+        return "↑"
     }
 
     func updateFromSnapshot(_ snapshot: WidgetSnapshot) {

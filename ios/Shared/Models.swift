@@ -73,6 +73,13 @@ struct FineEstimate: Codable, Equatable {
         displayText(speedKmh: nil, limit: nil)
     }
 
+    var compactAmountText: String {
+        guard excess_kmh >= 4 else { return "Boete —" }
+        if om_zaak { return "Boete OM" }
+        if let bedrag { return "Boete €\(bedrag)" }
+        return "Boete --"
+    }
+
     func displayText(speedKmh: Int?, limit: Int?) -> String? {
         guard excess_kmh >= 4 else { return nil }
         if om_zaak {

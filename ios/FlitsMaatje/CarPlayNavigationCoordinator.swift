@@ -223,16 +223,6 @@ final class CarPlayNavigationCoordinator: NSObject {
     private func updateManeuvers(for route: MKRoute) {
         guard let session = navigationSession else { return }
         let startIndex = navigationService?.currentStepIndex ?? 0
-        let lane = navigationService?.laneSections.first?.lanes.first
-        let symbolName: String = {
-            let direction = lane?.follow ?? lane?.directions.first ?? ""
-            switch direction {
-            case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": return "arrow.up.left"
-            case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": return "arrow.up.right"
-            case "LEFT_U_TURN", "RIGHT_U_TURN": return "arrow.uturn.left"
-            default: return "arrow.up"
-            }
-        }()
 
         let maneuvers: [CPManeuver] = route.steps
             .dropFirst(startIndex)
@@ -241,13 +231,11 @@ final class CarPlayNavigationCoordinator: NSObject {
                 let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !instruction.isEmpty else { return nil }
                 let maneuver = CPManeuver()
-                // Gebruik de echte korte manoeuvretekst zodat CarPlay zijn normale
-                // donkere navigatiekaart rendert in plaats van de rode fallback.
-                let image = UIImage(systemName: symbolName)
-                maneuver.symbolImage = image
-                maneuver.instructionVariants = [instruction]
-                maneuver.dashboardInstructionVariants = [instruction]
-                maneuver.notificationInstructionVariants = [instruction]
+                let arrow = maneuverArrow(for: instruction)
+                maneuver.symbolImage = UIImage(systemName: maneuverSymbolName(for: instruction))
+                maneuver.instructionVariants = [arrow]
+                maneuver.dashboardInstructionVariants = [arrow]
+                maneuver.notificationInstructionVariants = [arrow]
                 maneuver.initialTravelEstimates = CPTravelEstimates(
                     distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
                     timeRemaining: max(1, step.distance / 13.9)
@@ -255,6 +243,24 @@ final class CarPlayNavigationCoordinator: NSObject {
                 return maneuver
             }
         session.upcomingManeuvers = maneuvers
+    }
+
+    private func maneuverSymbolName(for instruction: String) -> String {
+        let text = instruction.lowercased()
+        if text.contains("rotonde") || text.contains("roundabout") { return "arrow.clockwise" }
+        if text.contains("keer") || text.contains("u-turn") { return "arrow.uturn.left" }
+        if text.contains("links") || text.contains("left") { return "arrow.turn.up.left" }
+        if text.contains("rechts") || text.contains("right") { return "arrow.turn.up.right" }
+        return "arrow.up"
+    }
+
+    private func maneuverArrow(for instruction: String) -> String {
+        let text = instruction.lowercased()
+        if text.contains("rotonde") || text.contains("roundabout") { return "↻" }
+        if text.contains("keer") || text.contains("u-turn") { return "↩" }
+        if text.contains("links") || text.contains("left") { return "←" }
+        if text.contains("rechts") || text.contains("right") { return "→" }
+        return "↑"
     }
 
     func handleSpeedingFine(fine: FineEstimate?, speedKmh: Int?, limit: Int?) {
@@ -355,6 +361,7 @@ final class CarPlayNavigationCoordinator: NSObject {
             navigationService?.destinationName = mapItem.name ?? "Bestemming"
             navigationService?.distanceRemainingM = Int(route.distance)
             navigationService?.eta = Date().addingTimeInterval(route.expectedTravelTime)
+            navigationService?.markRouteCalculatedNow()
             presentTripPreview(
                 route: route,
                 destinationName: mapItem.name ?? "Bestemming",

@@ -28,6 +28,7 @@ final class NavigationService: ObservableObject {
     private var lastSpokenStep = -1
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var lastRerouteAt = Date.distantPast
+    private var lastRouteCalculationAt = Date.distantPast
     private var isRerouting = false
     private var consecutiveOffRouteUpdates = 0
 
@@ -37,6 +38,10 @@ final class NavigationService: ObservableObject {
 
     func setDestinationCoordinate(_ coordinate: CLLocationCoordinate2D) {
         destinationCoordinate = coordinate
+    }
+
+    func markRouteCalculatedNow() {
+        lastRouteCalculationAt = Date()
     }
 
     var currentInstruction: String {
@@ -103,6 +108,7 @@ final class NavigationService: ObservableObject {
             destinationName = destination.name ?? destination.placemark.title ?? "Bestemming"
             distanceRemainingM = Int(best.distance)
             eta = Date().addingTimeInterval(best.expectedTravelTime)
+            lastRouteCalculationAt = Date()
             searchResults = []
             searchQuery = destinationName ?? ""
             statusMessage = "Navigatie gestart"
@@ -129,6 +135,8 @@ final class NavigationService: ObservableObject {
         trafficReports = []
         destinationCoordinate = nil
         consecutiveOffRouteUpdates = 0
+        lastRouteCalculationAt = .distantPast
+        isRerouting = false
         statusMessage = "Navigatie gestopt"
         synthesizer.stopSpeaking(at: .immediate)
     }
@@ -139,7 +147,7 @@ final class NavigationService: ObservableObject {
         updateUpcomingLaneSections(from: location)
 
         let accuracyIsUsable = location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 50
-        let deviationThreshold = max(35, location.horizontalAccuracy * 1.5)
+        let deviationThreshold = max(30, location.horizontalAccuracy * 1.3)
         let routeDeviation = accuracyIsUsable ? distanceFromRoute(location, route: route) : 0
         if accuracyIsUsable && routeDeviation > deviationThreshold {
             consecutiveOffRouteUpdates += 1
@@ -147,10 +155,11 @@ final class NavigationService: ObservableObject {
             consecutiveOffRouteUpdates = 0
         }
 
+        let requiredOffRouteUpdates = location.horizontalAccuracy <= 20 ? 1 : 2
         if reroutingEnabled,
            let destinationCoordinate,
-           consecutiveOffRouteUpdates >= 2,
-           Date().timeIntervalSince(lastRerouteAt) > 5,
+           consecutiveOffRouteUpdates >= requiredOffRouteUpdates,
+           Date().timeIntervalSince(lastRerouteAt) > 3,
            !isRerouting {
             isRerouting = true
             consecutiveOffRouteUpdates = 0
@@ -165,6 +174,7 @@ final class NavigationService: ObservableObject {
 
         if reroutingEnabled,
            Date().timeIntervalSince(lastRerouteAt) > 60,
+           !isRerouting,
            routeHasMeaningfulNDWDelay(route: route) {
             isRerouting = true
             lastRerouteAt = Date()
@@ -174,15 +184,22 @@ final class NavigationService: ObservableObject {
             }
         }
 
-        advanceStepsIfNeeded(location: location, route: route)
-
-        var remaining: CLLocationDistance = 0
-        if currentStepIndex < route.steps.count {
-            for index in currentStepIndex..<route.steps.count {
-                remaining += route.steps[index].distance
+        if reroutingEnabled,
+           let destinationCoordinate,
+           Date().timeIntervalSince(lastRouteCalculationAt) > 120,
+           !isRerouting {
+            isRerouting = true
+            lastRerouteAt = Date()
+            Task { @MainActor in
+                await self.reroute(from: location, to: destinationCoordinate)
+                self.isRerouting = false
             }
         }
-        distanceRemainingM = max(0, Int(remaining))
+
+        advanceStepsIfNeeded(location: location, route: route)
+
+        let remaining = remainingDistance(on: route, from: location)
+        distanceRemainingM = max(0, Int(remaining.rounded()))
         if remaining > 0, route.distance > 0, route.expectedTravelTime > 0 {
             let routeFraction = min(1, max(0, remaining / route.distance))
             eta = Date().addingTimeInterval(route.expectedTravelTime * routeFraction)
@@ -220,6 +237,42 @@ final class NavigationService: ObservableObject {
             minimum = min(minimum, userPoint.distance(to: projected))
         }
         return minimum
+    }
+
+    private func remainingDistance(on route: MKRoute, from location: CLLocation) -> CLLocationDistance {
+        let points = route.polyline.coordinates.map { MKMapPoint($0) }
+        guard points.count >= 2 else { return route.distance }
+
+        let userPoint = MKMapPoint(location.coordinate)
+        var nearestSegment = 0
+        var nearestFraction = 0.0
+        var nearestDistance = CLLocationDistance.greatestFiniteMagnitude
+
+        for index in 0..<(points.count - 1) {
+            let start = points[index]
+            let end = points[index + 1]
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let lengthSquared = dx * dx + dy * dy
+            let fraction = lengthSquared == 0
+                ? 0
+                : min(1, max(0, ((userPoint.x - start.x) * dx + (userPoint.y - start.y) * dy) / lengthSquared))
+            let projected = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+            let distance = userPoint.distance(to: projected)
+            if distance < nearestDistance {
+                nearestDistance = distance
+                nearestSegment = index
+                nearestFraction = fraction
+            }
+        }
+
+        var remaining = points[nearestSegment].distance(to: points[nearestSegment + 1]) * (1 - nearestFraction)
+        if nearestSegment + 1 < points.count - 1 {
+            for index in (nearestSegment + 1)..<(points.count - 1) {
+                remaining += points[index].distance(to: points[index + 1])
+            }
+        }
+        return remaining
     }
 
     private func reroute(from location: CLLocation, to destination: CLLocationCoordinate2D) async {

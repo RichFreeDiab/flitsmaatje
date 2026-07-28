@@ -22,7 +22,6 @@ struct NavigationMapView: View {
                     maneuverBanner
                 }
                 favoriteButtons
-                if navigation.isNavigating { turnBanner }
                 Spacer()
                 bottomHUD
             }
@@ -202,35 +201,22 @@ struct NavigationMapView: View {
         }
     }
 
-    private var turnBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill").font(.title2).foregroundStyle(.blue)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(navigation.currentInstruction).font(.headline).lineLimit(2)
-                HStack(spacing: 12) {
-                    if navigation.distanceRemainingM > 0 { Text(formatDistance(navigation.distanceRemainingM)).font(.caption.monospacedDigit()) }
-                    if let eta = navigation.eta { Text("ETA \(eta.formatted(date: .omitted, time: .shortened))").font(.caption) }
-                }.foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }.padding(14).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-
     private var maneuverBanner: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 14) {
             Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
-                .font(.system(size: 25, weight: .bold))
-                .frame(width: 34, height: 34)
+                .font(.system(size: 38, weight: .bold))
+                .frame(width: 58, height: 58)
                 .foregroundStyle(.white)
-                .background(Color.blue, in: RoundedRectangle(cornerRadius: 9))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Volgende afslag")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(navigation.currentInstruction)
-                    .font(.headline.weight(.bold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
+                .background(Color.blue, in: RoundedRectangle(cornerRadius: 13))
+            VStack(alignment: .leading, spacing: 3) {
+                if navigation.distanceRemainingM > 0 {
+                    Text(formatDistance(navigation.distanceRemainingM))
+                        .font(.headline.bold().monospacedDigit())
+                }
+                if let eta = navigation.eta {
+                    Text(eta.formatted(date: .omitted, time: .shortened))
+                        .font(.title3.bold().monospacedDigit())
+                }
             }
             if let section = navigation.laneSections.first, !section.lanes.isEmpty {
                 HStack(spacing: 4) {
@@ -248,7 +234,7 @@ struct NavigationMapView: View {
         .onChange(of: location.mapReports) { _, reports in
             navigation.updateTrafficReports(reports)
         }
-        .padding(10)
+        .padding(11)
         .frame(maxWidth: 330, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
@@ -291,21 +277,17 @@ struct NavigationMapView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "eurosign.circle.fill")
                         .font(.headline)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Boete-indicatie")
-                            .font(.caption.weight(.bold))
-                        Text(fineText)
-                            .font(.subheadline.weight(.bold))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
-                    }
+                    Text(fineText)
+                        .font(.headline.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(.black)
+                .foregroundStyle(fineText == "Boete —" ? Color.white : Color.black)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .frame(maxWidth: 290, alignment: .leading)
-                .background(Color.orange, in: RoundedRectangle(cornerRadius: 13))
+                .background(fineText == "Boete —" ? Color.gray : Color.orange, in: RoundedRectangle(cornerRadius: 13))
                 .shadow(color: .black.opacity(0.22), radius: 5, y: 2)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .accessibilityLabel("Boete-indicatie: \(fineText)")

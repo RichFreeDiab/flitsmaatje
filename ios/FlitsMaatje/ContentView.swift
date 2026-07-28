@@ -86,16 +86,18 @@ struct ContentView: View {
 
     private func fineBanner(_ text: String) -> some View {
         HStack(spacing: 10) {
-            Text("🚨").font(.title2)
+            Image(systemName: "eurosign.circle.fill")
+                .font(.title2)
             Text(text)
-                .font(.subheadline.weight(.semibold))
-                .multilineTextAlignment(.leading)
+                .font(.headline.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(text.hasPrefix("Geen") ? Color.secondary : Color.white)
+        .foregroundStyle(text == "Boete —" ? Color.white : Color.black)
         .padding()
         .frame(maxWidth: .infinity)
-        .background(text.hasPrefix("Geen") ? Color(.secondarySystemBackground) : Color.red.opacity(0.88), in: RoundedRectangle(cornerRadius: 14))
+        .background(text == "Boete —" ? Color.gray : Color.orange, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func flitserCard(_ alert: NearbyAlert) -> some View {

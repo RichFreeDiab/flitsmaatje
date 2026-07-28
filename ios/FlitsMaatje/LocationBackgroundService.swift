@@ -24,8 +24,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     var fineStatusText: String? {
-        fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit)
-            ?? speedingWarningText
+        guard let speed = currentSpeedKmh, let limit = speedLimit else { return "Boete --" }
+        let corrected = speed <= 100 ? speed - 3 : Int(Double(speed) * 0.97)
+        guard corrected - limit >= 4 else { return "Boete —" }
+        return fineEstimate?.compactAmountText ?? "Boete --"
     }
 
     var managerAuthorizationIsAlways: Bool {
@@ -383,8 +385,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     private func shouldRunSpeedCheck(now: Date, location: CLLocation) -> Bool {
         let isSpeeding = isCurrentlySpeeding()
-        let minInterval: TimeInterval = isSpeeding ? 1.5 : 2.5
-        let minDistance: CLLocationDistance = isSpeeding ? 10 : 20
+        let minInterval: TimeInterval = isSpeeding ? 0.75 : 2.0
+        let minDistance: CLLocationDistance = isSpeeding ? 5 : 15
 
         guard now.timeIntervalSince(lastSpeedCheckAt) >= minInterval else { return false }
         guard let last = lastSpeedCheckLocation else { return true }
