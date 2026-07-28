@@ -27,6 +27,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             locationService.activateWhenReady()
             locationService.start()
 
+            // CPMapTemplate renders the visible map UI. Set a neutral app tint before
+            // creating the template so native maneuver cards do not inherit the
+            // warning-red accent used by the speeding alerts.
+            window.tintColor = .systemBlue
+
             let mapViewController = CarPlayMapViewController()
             self.mapViewController = mapViewController
             window.rootViewController = mapViewController
