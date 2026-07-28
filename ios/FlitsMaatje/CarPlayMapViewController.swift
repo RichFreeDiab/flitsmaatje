@@ -81,7 +81,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         // De native CPMapTemplate toont de routekaart bovenop deze view.
         // Geen tweede tekstkaart tekenen: dat veroorzaakte dubbele/overlappende instructies.
         maneuverPanel.isHidden = true
-        maneuverLabel.font = .systemFont(ofSize: 18, weight: .bold); maneuverLabel.numberOfLines = 2; maneuverLabel.textColor = .white
+        maneuverLabel.font = .monospacedDigitSystemFont(ofSize: 24, weight: .bold); maneuverLabel.numberOfLines = 1; maneuverLabel.textAlignment = .center; maneuverLabel.textColor = .white
 
         let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
         speedStack.translatesAutoresizingMaskIntoConstraints = false; statusPanel.contentView.addSubview(speedStack)
@@ -117,7 +117,10 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
 
     func updateLaneSections(_ sections: [LaneSection]) {
         guard let section = sections.first, !section.lanes.isEmpty else {
-            lanePanel.isHidden = true
+            // Houd een duidelijke rechtdoorpijl zichtbaar wanneer de
+            // routeprovider nog geen lane-metadata heeft.
+            laneLabel.text = "↑"
+            lanePanel.isHidden = false
             return
         }
         laneLabel.text = section.lanes.map { lane in
@@ -138,9 +141,11 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             lanePanel.isHidden = true
             return
         }
-        // De native CarPlay-manoeuvrekaart toont instruction + afstand.
-        // FlitsMaatje tekent alleen aanvullende rijstrookpijlen en meldingen.
-        maneuverPanel.isHidden = true
+
+        // Flitsmeister-achtige compacte routekaart: afstand boven de
+        // rijstrookpijlen. De lange rode native tekstkaart wordt niet gebruikt.
+        maneuverLabel.text = distanceText ?? " "
+        maneuverPanel.isHidden = false
         updateLaneSections(laneSections)
     }
 
