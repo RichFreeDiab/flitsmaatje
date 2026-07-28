@@ -28,6 +28,31 @@ class NavigationFeatureTests(unittest.TestCase):
         self.assertEqual(payload["fine"]["excess_kmh"], 9)
         self.assertEqual(payload["fine"]["bedrag"], 73)
 
+    def test_reports_preserve_fixed_camera_heading(self):
+        camera = {
+            "id": "osm-speed-camera-node-99",
+            "type": "flitser_vast",
+            "lat": 52.001,
+            "lng": 5.001,
+            "heading": 180,
+            "confirms": 0,
+        }
+        with (
+            patch.object(app, "sync_ndw_reports"),
+            patch.object(app, "fetch_osm_speed_cameras", return_value=[camera]),
+            patch.object(app, "fetch_incidents", return_value=[]),
+        ):
+            response = app.app.test_client().get(
+                "/api/reports?lat=52.0&lng=5.0&radius_km=5"
+            )
+
+        fixed = next(
+            report for report in response.get_json()["reports"]
+            if report["id"] == camera["id"]
+        )
+        self.assertEqual(fixed["heading"], 180)
+
+
     def test_lane_guidance_contains_coordinates_for_display_ordering(self):
         response = Mock()
         response.raise_for_status.return_value = None

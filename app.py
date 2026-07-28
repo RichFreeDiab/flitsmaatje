@@ -586,7 +586,7 @@ def get_reports():
             results.append({
                 "id": camera["id"], "type": camera["type"],
                 "lat": camera["lat"], "lng": camera["lng"],
-                "heading": None, "created_at": None, "expires_at": None,
+                "heading": camera.get("heading"), "created_at": None, "expires_at": None,
                 "confirms": 1, "denies": 0, "distance_km": round(dist, 3),
             })
 
