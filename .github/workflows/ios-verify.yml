@@ -7,6 +7,9 @@ name: iOS Verify
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
   workflow_dispatch: {}
 
 # Voorkom dat oude macOS/TestFlight-runs de nieuwste release blokkeren.
