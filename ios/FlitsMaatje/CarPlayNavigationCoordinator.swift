@@ -240,8 +240,6 @@ final class CarPlayNavigationCoordinator: NSObject {
                 // tekstkaart met volledige routezin.
                 let image = UIImage(systemName: symbolName)
                 maneuver.symbolImage = image
-                maneuver.dashboardSymbolImage = image
-                maneuver.notificationSymbolImage = image
                 maneuver.instructionVariants = [" "]
                 maneuver.dashboardInstructionVariants = [" "]
                 maneuver.notificationInstructionVariants = [" "]
