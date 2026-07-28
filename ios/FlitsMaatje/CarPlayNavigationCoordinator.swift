@@ -289,7 +289,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         let buttonTitle = fineButtonTitle(from: title)
         let button = CPBarButton(title: buttonTitle) { [weak self] _ in
             let detail = CPAlertTemplate(
-                titleVariants: [title],
+                titleVariants: ["\(title)\n\(subtitle)"],
                 actions: [CPAlertAction(title: "OK", style: .default) { _ in }]
             )
             self?.interfaceController?.presentTemplate(detail, animated: true)
