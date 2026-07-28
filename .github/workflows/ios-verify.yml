@@ -28,7 +28,7 @@ jobs:
         run: python3 -m pip install --break-system-packages flask gunicorn -q
 
       - name: Navigation regression tests
-        run: echo "Skipping unit tests (backend ready for deployment)"
+        run: python3 -m unittest discover -s tests -v
 
       - name: Start Flask
         run: |
