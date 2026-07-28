@@ -109,57 +109,18 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.text = alert ?? "Geen flitser in de buurt"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
-        fineLabel.text = fineText ?? "Boete --"
-        let noFine = fineText == "Boete —"
-        fineLabel.textColor = noFine ? .white : .black
-        finePanel.contentView.backgroundColor = (noFine ? UIColor.systemGray : UIColor.systemOrange).withAlphaComponent(0.88)
-        finePanel.layer.zPosition = 50
-        finePanel.isHidden = false
-        view.bringSubviewToFront(finePanel)
-    }
-
-    func updateLaneSections(_ sections: [LaneSection]) {
-        guard let section = sections.first, !section.lanes.isEmpty else {
-            lanePanel.isHidden = true
-            return
-        }
-        let laneText = NSMutableAttributedString()
-        for (index, lane) in section.lanes.enumerated() {
-            let direction = lane.follow ?? lane.directions.first ?? "STRAIGHT"
-            let arrow: String
-            switch direction {
-            case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": arrow = "↖"
-            case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": arrow = "↗"
-            case "LEFT_U_TURN", "RIGHT_U_TURN": arrow = "↩"
-            default: arrow = "↑"
-            }
-            if index > 0 {
-                laneText.append(NSAttributedString(string: "   "))
-            }
-            laneText.append(NSAttributedString(
-                string: arrow,
-                attributes: [
-                    .foregroundColor: lane.follow == nil ? UIColor.white.withAlphaComponent(0.32) : UIColor.white,
-                    .font: UIFont.systemFont(ofSize: 44, weight: lane.follow == nil ? .regular : .bold),
-                ]
-            ))
-        }
-        laneLabel.attributedText = laneText
-        lanePanel.isHidden = false
+        // CPMapTemplate/CPManeuver is de enige zichtbare navigatielaag.
+        // De custom kaartlaag veroorzaakte dubbele blauwe/rode kaarten.
+        fineLabel.text = ""
+        finePanel.isHidden = true
+        maneuverPanel.isHidden = true
+        lanePanel.isHidden = true
     }
 
     func updateManeuver(instruction: String?, distanceText: String?, laneSections: [LaneSection]) {
-        guard let instruction, !instruction.isEmpty else {
-            maneuverPanel.isHidden = true
-            lanePanel.isHidden = true
-            return
-        }
-        let arrow = maneuverArrow(for: instruction)
-        maneuverLabel.text = laneSections.first?.lanes.isEmpty == false
-            ? (distanceText ?? " ")
-            : (distanceText.map { "\(arrow)   \($0)" } ?? arrow)
-        maneuverPanel.isHidden = false
-        updateLaneSections(laneSections)
+        // Laat de native CarPlay-manoeuvrekaart de enige route-instructie renderen.
+        maneuverPanel.isHidden = true
+        lanePanel.isHidden = true
     }
 
     private func maneuverArrow(for instruction: String) -> String {
