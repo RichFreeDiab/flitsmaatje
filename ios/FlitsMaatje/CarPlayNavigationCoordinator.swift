@@ -236,13 +236,13 @@ final class CarPlayNavigationCoordinator: NSObject {
                 let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !instruction.isEmpty else { return nil }
                 let maneuver = CPManeuver()
-                // Alleen het visuele symbool en de afstand: geen rode
-                // tekstkaart met volledige routezin.
+                // Gebruik de echte korte manoeuvretekst zodat CarPlay zijn normale
+                // donkere navigatiekaart rendert in plaats van de rode fallback.
                 let image = UIImage(systemName: symbolName)
                 maneuver.symbolImage = image
-                maneuver.instructionVariants = [" "]
-                maneuver.dashboardInstructionVariants = [" "]
-                maneuver.notificationInstructionVariants = [" "]
+                maneuver.instructionVariants = [instruction]
+                maneuver.dashboardInstructionVariants = [instruction]
+                maneuver.notificationInstructionVariants = [instruction]
                 maneuver.initialTravelEstimates = CPTravelEstimates(
                     distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
                     timeRemaining: max(1, step.distance / 13.9)
