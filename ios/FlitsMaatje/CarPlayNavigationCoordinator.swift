@@ -263,12 +263,14 @@ final class CarPlayNavigationCoordinator: NSObject {
               let title = fine.carPlayNotificationTitle(speedKmh: speedKmh, limit: limit)
         else {
             lastFineAlertText = nil
+            clearFineButton()
             return
         }
         let subtitle = fine.carPlayNotificationSubtitle(speedKmh: speedKmh, limit: limit) ?? ""
         let signature = "\(title)|\(subtitle)"
         guard signature != lastFineAlertText else { return }
         lastFineAlertText = signature
+        showFineButton(title: title, subtitle: subtitle)
 
         let warning = CPNavigationAlert(
             titleVariants: ["⚠️ \(title)"],
@@ -280,6 +282,35 @@ final class CarPlayNavigationCoordinator: NSObject {
         )
         mapTemplate.present(navigationAlert: warning, animated: true)
         AppLogger.log("CarPlay boetemelding: \(title) — \(subtitle)")
+    }
+
+    private func showFineButton(title: String, subtitle: String) {
+        guard let mapTemplate else { return }
+        let buttonTitle = fineButtonTitle(from: title)
+        let button = CPBarButton(title: buttonTitle) { [weak self] _ in
+            let detail = CPAlertTemplate(
+                titleVariants: [title],
+                actions: [CPAlertAction(title: "OK", style: .default) { _ in }]
+            )
+            self?.interfaceController?.presentTemplate(detail, animated: true)
+        }
+        // De stopknop blijft links; de boete-indicatie blijft rechts permanent
+        // zichtbaar zolang deze snelheidsovertreding actief is.
+        mapTemplate.trailingNavigationBarButtons = [button]
+        AppLogger.log("CarPlay boeteknop zichtbaar: \(buttonTitle)")
+    }
+
+    private func clearFineButton() {
+        guard let mapTemplate, navigationSession != nil else { return }
+        mapTemplate.trailingNavigationBarButtons = []
+    }
+
+    private func fineButtonTitle(from title: String) -> String {
+        if let euroStart = title.range(of: "€") {
+            let amount = title[euroStart.lowerBound...]
+            return String(amount.prefix(8))
+        }
+        return "Boete"
     }
 
     private func endGuidance() {
