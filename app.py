@@ -332,3 +332,51 @@ if __name__ == "__main__":
     debug = os.environ.get("FLITSMAATJE_DEBUG", "0").lower() in {"1", "true", "yes"}
     logger.info(f"Starting FlitsMaatje on port {port} (debug={debug})")
     app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=debug)
+
+@app.route("/carplay", methods=["GET"])
+def carplay_page():
+    """CarPlay demo pagina"""
+    return send_from_directory("templates", "carplay.html")
+
+@app.route("/api/speed-check", methods=["GET"])
+def speed_check():
+    """Check snelheid en bereken boete"""
+    lat = request.args.get("lat", type=float)
+    lng = request.args.get("lng", type=float)
+    speed_kmh = request.args.get("speed_kmh", type=float)
+    
+    if lat is None or lng is None or speed_kmh is None:
+        return jsonify({"error": "lat, lng, speed_kmh verplicht"}), 400
+    
+    db = get_db()
+    
+    # Haal snelheidslimiet op via Overpass API
+    try:
+        response = requests.get(
+            f"https://overpass-api.de/api/interpreter?data=[bbox:{lng-0.01},{lat-0.01},{lng+0.01},{lat+0.01}];way[maxspeed];out geom;",
+            timeout=3
+        )
+        max_speed = 50  # Default
+        if response.status_code == 200:
+            # Parse maxspeed from response (simplified)
+            pass
+    except:
+        max_speed = 50
+    
+    overage = speed_kmh - max_speed
+    fine = 0
+    zone = "bebouwd_kom"
+    
+    if overage > 0:
+        # Berekening boete (simplified)
+        fine = int(45 + overage * 10)  # Lineaire schatting
+    
+    logger.info(f"Speed check: {speed_kmh} km/u vs limit {max_speed} → fine €{fine}")
+    
+    return jsonify({
+        "speed_kmh": speed_kmh,
+        "limit": {"maxspeed": max_speed},
+        "overage_kmh": max(0, overage),
+        "zone": zone,
+        "fine": fine
+    })
