@@ -17,6 +17,7 @@ final class CarPlayNavigationCoordinator: NSObject {
     private var activeTrip: CPTrip?
     private var activeRoute: MKRoute?
     private var lastFlitserAlertId: String?
+    private var lastFineAlertText: String?
     private var searchTemplate: CPSearchTemplate?
 
     func attach(
@@ -42,6 +43,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         interfaceController = nil
         searchTemplate = nil
         lastFlitserAlertId = nil
+        lastFineAlertText = nil
     }
 
     func syncFromPhoneNavigation() {
@@ -215,11 +217,66 @@ final class CarPlayNavigationCoordinator: NSObject {
 
     private func updateManeuvers(for route: MKRoute) {
         guard let session = navigationSession else { return }
+        let startIndex = navigationService?.currentStepIndex ?? 0
+        let lane = navigationService?.laneSections.first?.lanes.first
+        let symbolName: String = {
+            let direction = lane?.follow ?? lane?.directions.first ?? ""
+            switch direction {
+            case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": return "arrow.up.left"
+            case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": return "arrow.up.right"
+            case "LEFT_U_TURN", "RIGHT_U_TURN": return "arrow.uturn.left"
+            default: return "arrow.up"
+            }
+        }()
 
-        // Geen native tekstkaart: die wordt door CarPlay rood weergegeven en
-        // overlapt de kaart. De compacte zwarte lane-kaart in
-        // CarPlayMapViewController is de enige visuele route-instructie.
-        session.upcomingManeuvers = []
+        let maneuvers: [CPManeuver] = route.steps
+            .dropFirst(startIndex)
+            .prefix(3)
+            .compactMap { step in
+                let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !instruction.isEmpty else { return nil }
+                let maneuver = CPManeuver()
+                // Alleen het visuele symbool en de afstand: geen rode
+                // tekstkaart met volledige routezin.
+                let image = UIImage(systemName: symbolName)
+                maneuver.symbolImage = image
+                maneuver.dashboardSymbolImage = image
+                maneuver.notificationSymbolImage = image
+                maneuver.instructionVariants = [" "]
+                maneuver.dashboardInstructionVariants = [" "]
+                maneuver.notificationInstructionVariants = [" "]
+                maneuver.initialTravelEstimates = CPTravelEstimates(
+                    distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
+                    timeRemaining: max(1, step.distance / 13.9)
+                )
+                return maneuver
+            }
+        session.upcomingManeuvers = maneuvers
+    }
+
+    func handleSpeedingFine(fine: FineEstimate?, speedKmh: Int?, limit: Int?) {
+        guard let mapTemplate, navigationSession != nil,
+              let fine,
+              let title = fine.carPlayNotificationTitle(speedKmh: speedKmh, limit: limit)
+        else {
+            lastFineAlertText = nil
+            return
+        }
+        let subtitle = fine.carPlayNotificationSubtitle(speedKmh: speedKmh, limit: limit) ?? ""
+        let signature = "\(title)|\(subtitle)"
+        guard signature != lastFineAlertText else { return }
+        lastFineAlertText = signature
+
+        let warning = CPNavigationAlert(
+            titleVariants: ["⚠️ \(title)"],
+            subtitleVariants: [subtitle],
+            imageSet: nil,
+            primaryAction: CPAlertAction(title: "OK", style: .default) { _ in },
+            secondaryAction: nil,
+            duration: 8
+        )
+        mapTemplate.present(navigationAlert: warning, animated: true)
+        AppLogger.log("CarPlay boetemelding: \(title) — \(subtitle)")
     }
 
     private func endGuidance() {
