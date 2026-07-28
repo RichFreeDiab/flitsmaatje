@@ -300,7 +300,10 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     private func showFineButton(title: String, subtitle: String) {
-        guard let mapTemplate else { return }
+        guard let mapTemplate, title.contains("€") else {
+            clearFineButton()
+            return
+        }
         let buttonTitle = fineButtonTitle(from: title)
         let button = CPBarButton(title: buttonTitle) { [weak self] _ in
             let detail = CPAlertTemplate(
