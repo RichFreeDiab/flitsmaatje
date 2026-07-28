@@ -92,10 +92,12 @@ final class CarPlayNavigationCoordinator: NSObject {
         }
 
         updateManeuvers(for: route)
+        let laneDistanceText = navigationService.laneGuidanceDistanceM.map(guidanceDistanceText)
+        let visibleLaneSections = laneDistanceText == nil ? [] : navigationService.laneSections
         mapViewController?.updateManeuver(
             instruction: navigationService.currentInstruction,
-            distanceText: navigationService.distanceRemainingM > 0 ? String(format: "%.1f km", Double(navigationService.distanceRemainingM) / 1000) : nil,
-            laneSections: navigationService.laneSections
+            distanceText: laneDistanceText,
+            laneSections: visibleLaneSections
         )
         if let trip = activeTrip {
             let estimates = CPTravelEstimates(
@@ -183,7 +185,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         activeRoute = route
         activeTrip = trip
         mapViewController?.showRoute(route)
-        mapViewController?.updateManeuver(instruction: navigationService?.currentInstruction, distanceText: nil, laneSections: navigationService?.laneSections ?? [])
+        mapViewController?.updateManeuver(instruction: navigationService?.currentInstruction, distanceText: nil, laneSections: [])
 
         let config = CPTripPreviewTextConfiguration(
             startButtonTitle: "Start",
@@ -243,6 +245,13 @@ final class CarPlayNavigationCoordinator: NSObject {
                 return maneuver
             }
         session.upcomingManeuvers = maneuvers
+    }
+
+    private func guidanceDistanceText(_ meters: Int) -> String {
+        if meters < 1_000 {
+            return "\(max(10, Int((Double(meters) / 10).rounded()) * 10)) m"
+        }
+        return String(format: "%.1f km", Double(meters) / 1_000)
     }
 
     private func maneuverSymbolName(for instruction: String) -> String {
@@ -355,6 +364,7 @@ final class CarPlayNavigationCoordinator: NSObject {
             )) ?? []
             navigationService?.route = route
             navigationService?.laneSections = laneSections
+            navigationService?.laneGuidanceDistanceM = nil
             navigationService?.setDestinationCoordinate(mapItem.placemark.coordinate)
             navigationService?.currentStepIndex = 0
             navigationService?.isNavigating = false
@@ -370,7 +380,7 @@ final class CarPlayNavigationCoordinator: NSObject {
             mapViewController?.updateManeuver(
                 instruction: navigationService?.currentInstruction,
                 distanceText: String(format: "%.1f km", route.distance / 1000),
-                laneSections: laneSections
+                laneSections: []
             )
             try? await interfaceController?.popTemplate(animated: true)
         } catch {

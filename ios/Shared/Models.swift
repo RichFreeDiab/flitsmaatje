@@ -131,6 +131,11 @@ struct LaneSection: Codable, Equatable {
         guard let start_lat, let start_lng else { return nil }
         return CLLocationCoordinate2D(latitude: start_lat, longitude: start_lng)
     }
+
+    var endCoordinate: CLLocationCoordinate2D? {
+        guard let end_lat, let end_lng else { return nil }
+        return CLLocationCoordinate2D(latitude: end_lat, longitude: end_lng)
+    }
 }
 
 struct Lane: Codable, Equatable {

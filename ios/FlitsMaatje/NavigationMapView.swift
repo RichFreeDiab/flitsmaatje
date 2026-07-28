@@ -202,41 +202,46 @@ struct NavigationMapView: View {
     }
 
     private var maneuverBanner: some View {
-        HStack(spacing: 14) {
-            Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
-                .font(.system(size: 38, weight: .bold))
-                .frame(width: 58, height: 58)
-                .foregroundStyle(.white)
-                .background(Color.blue, in: RoundedRectangle(cornerRadius: 13))
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 8) {
+            if navigation.laneGuidanceDistanceM != nil,
+               let section = navigation.laneSections.first,
+               !section.lanes.isEmpty {
+                HStack(spacing: 12) {
+                    ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
+                        Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
+                            .font(.system(size: 38, weight: lane.follow != nil ? .bold : .regular))
+                            .foregroundStyle(Color.white.opacity(lane.follow != nil ? 1 : 0.3))
+                            .frame(width: 45, height: 56)
+                    }
+                }
+                if let meters = navigation.laneGuidanceDistanceM {
+                    Text(formatGuidanceDistance(meters))
+                        .font(.title.bold().monospacedDigit())
+                        .foregroundStyle(.white)
+                }
+            } else {
+                Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
+                    .font(.system(size: 42, weight: .bold))
+                    .frame(width: 62, height: 62)
+                    .foregroundStyle(.white)
+            }
+            HStack(spacing: 14) {
                 if navigation.distanceRemainingM > 0 {
                     Text(formatDistance(navigation.distanceRemainingM))
-                        .font(.headline.bold().monospacedDigit())
                 }
                 if let eta = navigation.eta {
                     Text(eta.formatted(date: .omitted, time: .shortened))
-                        .font(.title3.bold().monospacedDigit())
                 }
             }
-            if let section = navigation.laneSections.first, !section.lanes.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
-                        Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
-                            .font(.system(size: 16, weight: lane.follow != nil ? .bold : .regular))
-                            .foregroundStyle(lane.follow != nil ? .blue : .secondary)
-                            .frame(width: 22, height: 27)
-                            .background(lane.follow != nil ? Color.blue.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
-                    }
-                }
-            }
-            Spacer(minLength: 0)
+            .font(.caption.bold().monospacedDigit())
+            .foregroundStyle(.white.opacity(0.82))
         }
         .onChange(of: location.mapReports) { _, reports in
             navigation.updateTrafficReports(reports)
         }
-        .padding(11)
+        .padding(14)
         .frame(maxWidth: 330, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.blue.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -323,6 +328,11 @@ struct NavigationMapView: View {
 
     private func runSearch() async { guard let user = location.lastLocation else { return }; await navigation.search(near: user.coordinate) }
     private func formatDistance(_ meters: Int) -> String { String(format: "%.1f km", Double(meters) / 1000) }
+    private func formatGuidanceDistance(_ meters: Int) -> String {
+        meters < 1_000
+            ? "\(max(10, Int((Double(meters) / 10).rounded()) * 10)) m"
+            : String(format: "%.1f km", Double(meters) / 1_000)
+    }
 
     private func markerColor(for type: String) -> Color {
         switch type {

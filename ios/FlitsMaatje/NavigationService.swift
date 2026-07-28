@@ -16,6 +16,7 @@ final class NavigationService: ObservableObject {
     @Published var eta: Date?
     @Published var destinationName: String?
     @Published var laneSections: [LaneSection] = []
+    @Published var laneGuidanceDistanceM: Int?
     @Published private(set) var trafficReports: [MapReport] = []
     @Published var voiceEnabled = false {
         didSet { AlertNotifier.setSpeechEnabled(voiceEnabled) }
@@ -98,6 +99,7 @@ final class NavigationService: ObservableObject {
             }
 
             route = best
+            laneGuidanceDistanceM = nil
             laneSections = (try? await FlitsMaatjeAPI.fetchLaneGuidance(
                 origin: location.coordinate,
                 destination: destination.placemark.coordinate
@@ -132,6 +134,7 @@ final class NavigationService: ObservableObject {
         eta = nil
         destinationName = nil
         laneSections = []
+        laneGuidanceDistanceM = nil
         trafficReports = []
         destinationCoordinate = nil
         consecutiveOffRouteUpdates = 0
@@ -290,10 +293,22 @@ final class NavigationService: ObservableObject {
     }
 
     private func updateUpcomingLaneSections(from location: CLLocation) {
-        guard laneSections.count > 1 else { return }
+        laneSections.removeAll { section in
+            guard let coordinate = section.endCoordinate else { return false }
+            let end = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            return location.distance(from: end) <= 60
+        }
         laneSections.sort { left, right in
             laneDistance(left, from: location) < laneDistance(right, from: location)
         }
+        guard let section = laneSections.first else {
+            laneGuidanceDistanceM = nil
+            return
+        }
+        let distance = laneDistance(section, from: location)
+        laneGuidanceDistanceM = distance.isFinite && distance <= 2_000
+            ? max(0, Int(distance.rounded()))
+            : nil
     }
 
     private func laneDistance(_ section: LaneSection, from location: CLLocation) -> CLLocationDistance {

@@ -76,24 +76,26 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         limitLabel.textColor = .white; limitLabel.font = .systemFont(ofSize: 15, weight: .bold)
         alertLabel.font = .systemFont(ofSize: 17, weight: .bold); alertLabel.numberOfLines = 2; alertLabel.textAlignment = .center
         fineLabel.font = .systemFont(ofSize: 20, weight: .bold); fineLabel.numberOfLines = 1; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.75
-        laneLabel.font = .systemFont(ofSize: 22, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
+        laneLabel.font = .systemFont(ofSize: 44, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
         lanePanel.isHidden = true
-        maneuverLabel.font = .systemFont(ofSize: 36, weight: .bold); maneuverLabel.numberOfLines = 1; maneuverLabel.textColor = .white; maneuverLabel.textAlignment = .center
+        maneuverLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .bold); maneuverLabel.numberOfLines = 1; maneuverLabel.textColor = .white; maneuverLabel.textAlignment = .left
 
         let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
         speedStack.translatesAutoresizingMaskIntoConstraints = false; statusPanel.contentView.addSubview(speedStack)
 
         [alertPanel, finePanel, lanePanel, maneuverPanel].forEach { panel in panel.translatesAutoresizingMaskIntoConstraints = false; panel.layer.cornerRadius = 12; panel.clipsToBounds = true; view.addSubview(panel) }
+        lanePanel.contentView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.92)
+        maneuverPanel.contentView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.92)
         alertLabel.translatesAutoresizingMaskIntoConstraints = false; fineLabel.translatesAutoresizingMaskIntoConstraints = false; laneLabel.translatesAutoresizingMaskIntoConstraints = false; maneuverLabel.translatesAutoresizingMaskIntoConstraints = false
         alertPanel.contentView.addSubview(alertLabel); finePanel.contentView.addSubview(fineLabel); lanePanel.contentView.addSubview(laneLabel); maneuverPanel.contentView.addSubview(maneuverLabel)
 
         NSLayoutConstraint.activate([
             statusPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), statusPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
             speedStack.topAnchor.constraint(equalTo: statusPanel.contentView.topAnchor, constant: 9), speedStack.bottomAnchor.constraint(equalTo: statusPanel.contentView.bottomAnchor, constant: -9), speedStack.leadingAnchor.constraint(equalTo: statusPanel.contentView.leadingAnchor, constant: 11), speedStack.trailingAnchor.constraint(equalTo: statusPanel.contentView.trailingAnchor, constant: -11),
-            maneuverPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), maneuverPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14), maneuverPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 330),
+            lanePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), lanePanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14), lanePanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 190), lanePanel.widthAnchor.constraint(lessThanOrEqualToConstant: 330),
+            maneuverPanel.leadingAnchor.constraint(equalTo: lanePanel.leadingAnchor), maneuverPanel.trailingAnchor.constraint(equalTo: lanePanel.trailingAnchor), maneuverPanel.topAnchor.constraint(equalTo: lanePanel.bottomAnchor, constant: -1),
             maneuverLabel.topAnchor.constraint(equalTo: maneuverPanel.contentView.topAnchor, constant: 8), maneuverLabel.bottomAnchor.constraint(equalTo: maneuverPanel.contentView.bottomAnchor, constant: -8), maneuverLabel.leadingAnchor.constraint(equalTo: maneuverPanel.contentView.leadingAnchor, constant: 12), maneuverLabel.trailingAnchor.constraint(equalTo: maneuverPanel.contentView.trailingAnchor, constant: -12),
-            lanePanel.leadingAnchor.constraint(equalTo: maneuverPanel.leadingAnchor), lanePanel.trailingAnchor.constraint(equalTo: maneuverPanel.trailingAnchor), lanePanel.topAnchor.constraint(equalTo: maneuverPanel.bottomAnchor, constant: 6),
-            laneLabel.topAnchor.constraint(equalTo: lanePanel.contentView.topAnchor, constant: 6), laneLabel.bottomAnchor.constraint(equalTo: lanePanel.contentView.bottomAnchor, constant: -6), laneLabel.leadingAnchor.constraint(equalTo: lanePanel.contentView.leadingAnchor, constant: 12), laneLabel.trailingAnchor.constraint(equalTo: lanePanel.contentView.trailingAnchor, constant: -12),
+            laneLabel.topAnchor.constraint(equalTo: lanePanel.contentView.topAnchor, constant: 12), laneLabel.bottomAnchor.constraint(equalTo: lanePanel.contentView.bottomAnchor, constant: -6), laneLabel.leadingAnchor.constraint(equalTo: lanePanel.contentView.leadingAnchor, constant: 12), laneLabel.trailingAnchor.constraint(equalTo: lanePanel.contentView.trailingAnchor, constant: -12),
             alertPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), alertPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), alertPanel.bottomAnchor.constraint(equalTo: finePanel.topAnchor, constant: -8),
             alertLabel.topAnchor.constraint(equalTo: alertPanel.contentView.topAnchor, constant: 10), alertLabel.bottomAnchor.constraint(equalTo: alertPanel.contentView.bottomAnchor, constant: -10), alertLabel.leadingAnchor.constraint(equalTo: alertPanel.contentView.leadingAnchor, constant: 12), alertLabel.trailingAnchor.constraint(equalTo: alertPanel.contentView.trailingAnchor, constant: -12),
             finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14), finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16), finePanel.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
@@ -118,10 +120,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
 
     func updateLaneSections(_ sections: [LaneSection]) {
         guard let section = sections.first, !section.lanes.isEmpty else {
-            // Houd een duidelijke rechtdoorpijl zichtbaar wanneer de
-            // routeprovider nog geen lane-metadata heeft.
-            laneLabel.text = "↑"
-            lanePanel.isHidden = false
+            lanePanel.isHidden = true
             return
         }
         let laneText = NSMutableAttributedString()
@@ -140,8 +139,8 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             laneText.append(NSAttributedString(
                 string: arrow,
                 attributes: [
-                    .foregroundColor: lane.follow == nil ? UIColor.systemGray : UIColor.systemGreen,
-                    .font: UIFont.systemFont(ofSize: 24, weight: lane.follow == nil ? .regular : .bold),
+                    .foregroundColor: lane.follow == nil ? UIColor.white.withAlphaComponent(0.32) : UIColor.white,
+                    .font: UIFont.systemFont(ofSize: 44, weight: lane.follow == nil ? .regular : .bold),
                 ]
             ))
         }
@@ -156,7 +155,9 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             return
         }
         let arrow = maneuverArrow(for: instruction)
-        maneuverLabel.text = distanceText.map { "\(arrow)   \($0)" } ?? arrow
+        maneuverLabel.text = laneSections.first?.lanes.isEmpty == false
+            ? (distanceText ?? " ")
+            : (distanceText.map { "\(arrow)   \($0)" } ?? arrow)
         maneuverPanel.isHidden = false
         updateLaneSections(laneSections)
     }
