@@ -50,7 +50,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         guard let route = navigationService?.route,
               let name = navigationService?.destinationName,
               let user = locationService?.lastLocation else { return }
-        presentTripPreview(route: route, destinationName: name, from: user)
+        presentTripPreview(route: route, destinationName: name, from: user, autoStart: true)
     }
 
     func handleFlitserAlert(_ alert: NearbyAlert?) {
@@ -162,7 +162,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         interfaceController?.presentTemplate(template, animated: true)
     }
 
-    private func presentTripPreview(route: MKRoute, destinationName: String, from location: CLLocation) {
+    private func presentTripPreview(route: MKRoute, destinationName: String, from location: CLLocation, autoStart: Bool = false) {
         guard let mapTemplate else { return }
 
         let origin = MKMapItem(placemark: MKPlacemark(coordinate: location.coordinate))
@@ -191,6 +191,11 @@ final class CarPlayNavigationCoordinator: NSObject {
             overviewButtonTitle: "Overzicht"
         )
         mapTemplate.showTripPreviews([trip], textConfiguration: config)
+        if autoStart {
+            // Een bestaande telefoonroute is al door de gebruiker gekozen;
+            // start CarPlay direct zodat er geen tweede keuze ontstaat.
+            startGuidance(for: trip)
+        }
     }
 
     private func startGuidance(for trip: CPTrip) {
