@@ -179,7 +179,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
     try:
         status, data = _get(
             base_url,
-            "/api/v1/nearby-alert",
+            "/api/nearby-alert",
             {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
         )
         add("api_nearby_alert", status == 200 and isinstance(data, dict), f"HTTP {status}")
@@ -192,7 +192,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         try:
             status, _ = _post_json(
                 base_url,
-                "/api/v1/reports",
+                "/api/reports",
                 {"type": "flitser_vast", "lat": FLITSER_LAT, "lng": FLITSER_LNG},
             )
             add("seed_demo_flitser", status in (200, 201), f"HTTP {status}")
@@ -202,7 +202,7 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
         try:
             status, data = _get(
                 base_url,
-                "/api/v1/nearby-alert",
+                "/api/nearby-alert",
                 {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "radius_km": 15},
             )
             alert = data.get("alert") if isinstance(data, dict) else None
@@ -246,8 +246,19 @@ def run_selftest(base_url: str = DEFAULT_BASE, seed_demo: bool = True) -> SelfTe
             "/api/speed-check",
             {"lat": AMSTERDAM_LAT, "lng": AMSTERDAM_LNG, "speed_kmh": 112},
         )
-        fine = speed_data.get("fine") if isinstance(speed_data, dict) else None
-        limit = (speed_data.get("limit") or {}).get("maxspeed", 100) if isinstance(speed_data, dict) else 100
+        if isinstance(speed_data, dict):
+            fine_raw = speed_data.get("fine")
+            overage_kmh = speed_data.get("overage_kmh", 0)
+            if isinstance(fine_raw, (int, float)) and fine_raw > 0:
+                fine = {"excess_kmh": int(overage_kmh), "bedrag": int(fine_raw)}
+            elif isinstance(fine_raw, dict):
+                fine = fine_raw
+            else:
+                fine = None
+            limit = (speed_data.get("limit") or {}).get("maxspeed", 100)
+        else:
+            fine = None
+            limit = 100
         add("api_speed_check", status == 200, f"HTTP {status}")
     except Exception as exc:
         add("api_speed_check", False, str(exc))
