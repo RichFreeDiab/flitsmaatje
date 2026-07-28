@@ -90,7 +90,7 @@ jobs:
     needs: [carplay-selftest, ios-simulator-build]
     runs-on: macos-15
     timeout-minutes: 45
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    if: ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/testflight-'))
     permissions:
       contents: write
     env:
