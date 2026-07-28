@@ -412,6 +412,11 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             AlertNotifier.updateSpeedingPopup(speedKmh: currentSpeedKmh, limit: speedLimit, fine: fine)
         }
         refreshCarPlaySpeeding()
+        CarPlayNavigationCoordinator.shared.handleSpeedingFine(
+            fine: fineEstimate,
+            speedKmh: currentSpeedKmh,
+            limit: speedLimit
+        )
 
         if currentAlert == nil {
             statusText = body
@@ -423,6 +428,11 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastSpeedingSignature = nil
         AlertNotifier.clearSpeedingPopup()
         refreshCarPlaySpeeding()
+        CarPlayNavigationCoordinator.shared.handleSpeedingFine(
+            fine: nil,
+            speedKmh: nil,
+            limit: nil
+        )
     }
 
     private func refreshCarPlay(alert: NearbyAlert?) {
