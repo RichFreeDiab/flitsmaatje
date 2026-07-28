@@ -53,6 +53,31 @@ class NavigationFeatureTests(unittest.TestCase):
         self.assertEqual(fixed["heading"], 180)
 
 
+    def test_fine_estimate_requires_a_known_limit(self):
+        self.assertIsNone(app.estimate_fine("snelweg", 113, None))
+
+    def test_nearby_alert_excludes_opposite_direction_fixed_camera(self):
+        camera = {
+            "id": "osm-speed-camera-node-opposite",
+            "type": "flitser_vast",
+            "lat": 52.0005,
+            "lng": 5.0005,
+            "heading": 180,
+            "confirms": 0,
+        }
+        with (
+            patch.object(app, "sync_ndw_reports"),
+            patch.object(app, "fetch_osm_speed_cameras", return_value=[camera]),
+            patch.object(app, "fetch_incidents", return_value=[]),
+        ):
+            response = app.app.test_client().get(
+                "/api/nearby-alert?lat=52.0&lng=5.0&heading=0"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.get_json()["alert"])
+
+
     def test_lane_guidance_contains_coordinates_for_display_ordering(self):
         response = Mock()
         response.raise_for_status.return_value = None
