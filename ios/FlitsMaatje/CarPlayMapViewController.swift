@@ -75,7 +75,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         speedLabel.textColor = .white; speedLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .bold); speedLabel.text = "--"
         limitLabel.textColor = .white; limitLabel.font = .systemFont(ofSize: 15, weight: .bold)
         alertLabel.font = .systemFont(ofSize: 17, weight: .bold); alertLabel.numberOfLines = 2; alertLabel.textAlignment = .center
-        fineLabel.font = .systemFont(ofSize: 16, weight: .bold); fineLabel.numberOfLines = 3; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.82
+        fineLabel.font = .systemFont(ofSize: 19, weight: .heavy); fineLabel.numberOfLines = 2; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.82
         laneLabel.font = .systemFont(ofSize: 22, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
         lanePanel.isHidden = true
         // De native CPMapTemplate toont de routekaart bovenop deze view.
@@ -99,7 +99,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             laneLabel.topAnchor.constraint(equalTo: lanePanel.contentView.topAnchor, constant: 6), laneLabel.bottomAnchor.constraint(equalTo: lanePanel.contentView.bottomAnchor, constant: -6), laneLabel.leadingAnchor.constraint(equalTo: lanePanel.contentView.leadingAnchor, constant: 12), laneLabel.trailingAnchor.constraint(equalTo: lanePanel.contentView.trailingAnchor, constant: -12),
             alertPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), alertPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), alertPanel.bottomAnchor.constraint(equalTo: finePanel.topAnchor, constant: -8),
             alertLabel.topAnchor.constraint(equalTo: alertPanel.contentView.topAnchor, constant: 10), alertLabel.bottomAnchor.constraint(equalTo: alertPanel.contentView.bottomAnchor, constant: -10), alertLabel.leadingAnchor.constraint(equalTo: alertPanel.contentView.leadingAnchor, constant: 12), alertLabel.trailingAnchor.constraint(equalTo: alertPanel.contentView.trailingAnchor, constant: -12),
-            finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14), finePanel.topAnchor.constraint(equalTo: statusPanel.bottomAnchor, constant: 8), finePanel.widthAnchor.constraint(lessThanOrEqualToConstant: 240),
+            finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14), finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16), finePanel.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
             fineLabel.topAnchor.constraint(equalTo: finePanel.contentView.topAnchor, constant: 10), fineLabel.bottomAnchor.constraint(equalTo: finePanel.contentView.bottomAnchor, constant: -10), fineLabel.leadingAnchor.constraint(equalTo: finePanel.contentView.leadingAnchor, constant: 12), fineLabel.trailingAnchor.constraint(equalTo: finePanel.contentView.trailingAnchor, constant: -12)
         ])
     }
@@ -110,9 +110,11 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         alertLabel.text = alert ?? "Geen flitser in de buurt"
         alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
         alertPanel.isHidden = alert == nil
-        fineLabel.text = fineText ?? ""
-        fineLabel.textColor = .systemOrange
+        fineLabel.text = fineText.map { "⚠️ BOETE  \($0)" } ?? ""
+        fineLabel.textColor = .systemYellow
+        finePanel.layer.zPosition = 50
         finePanel.isHidden = fineText == nil
+        if fineText != nil { view.bringSubviewToFront(finePanel) }
     }
 
     func updateLaneSections(_ sections: [LaneSection]) {

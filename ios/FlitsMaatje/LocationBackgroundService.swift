@@ -330,6 +330,13 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 alert: currentAlert,
                 message: statusText
             )
+            // Boeteweergave ververs direct; deze update mag niet worden
+            // overgeslagen door de flitser-refresh rate-limit.
+            CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
+                speedKmh: currentSpeedKmh,
+                limit: speedLimit,
+                fine: fineEstimate
+            )
         } catch {
             if !Task.isCancelled {
                 AppLogger.error("API speed-check mislukt: \(error.localizedDescription)")
