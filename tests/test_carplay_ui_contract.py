@@ -15,11 +15,12 @@ NAVIGATION = (
 
 
 class CarPlayUIContractTests(unittest.TestCase):
-    def test_maneuver_card_uses_real_instruction_and_neutral_background(self):
-        self.assertIn("let variants = instructionVariants(for: instruction)", COORDINATOR)
+    def test_maneuver_card_uses_only_native_arrow_and_neutral_background(self):
+        self.assertIn("let variants = instructionVariants()", COORDINATOR)
         self.assertIn("maneuver.instructionVariants = variants", COORDINATOR)
         self.assertIn("maneuver.cardBackgroundColor = .black", COORDINATOR)
-        self.assertNotIn("maneuver.instructionVariants = [arrow]", COORDINATOR)
+        self.assertIn(r'["\u{00A0}"]', COORDINATOR)
+        self.assertNotIn("var variants = [instruction]", COORDINATOR)
 
     def test_lane_guidance_uses_official_carplay_metadata(self):
         self.assertIn("session.currentLaneGuidance = guidance", COORDINATOR)
@@ -43,6 +44,21 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertIn("@Published var voiceEnabled = true", NAVIGATION)
         self.assertIn("updateCurrentManeuverDistance(location: location", NAVIGATION)
         self.assertIn("speakCurrentStepIfNeeded()", NAVIGATION)
+
+    def test_speed_limit_ignores_out_of_order_responses_and_refreshes_stale_data(self):
+        location_service = (
+            ROOT / "ios" / "FlitsMaatje" / "LocationBackgroundService.swift"
+        ).read_text(encoding="utf-8")
+        self.assertIn("generation == speedCheckGeneration", location_service)
+        self.assertIn("!isSpeedCheckInFlight, shouldRunSpeedCheck", location_service)
+        self.assertIn("now.timeIntervalSince(lastSpeedLimitUpdatedAt) >= 5", location_service)
+
+    def test_zero_gps_speed_uses_coordinate_fallback_and_fine_stays_visible_while_loading(self):
+        location_service = (
+            ROOT / "ios" / "FlitsMaatje" / "LocationBackgroundService.swift"
+        ).read_text(encoding="utf-8")
+        self.assertIn("location.speed <= 0.5, coordinateSpeed >= 1.5", location_service)
+        self.assertIn('return "Boete wordt berekend…"', location_service)
 
 
 if __name__ == "__main__":

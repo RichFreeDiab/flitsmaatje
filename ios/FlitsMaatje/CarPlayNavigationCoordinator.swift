@@ -233,7 +233,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                 let maneuver = CPManeuver()
                 let image = UIImage(systemName: maneuverSymbolName(for: instruction))?
                     .withTintColor(.white, renderingMode: .alwaysOriginal)
-                let variants = instructionVariants(for: instruction)
+                let variants = instructionVariants()
                 maneuver.symbolImage = image
                 maneuver.dashboardSymbolImage = image
                 maneuver.notificationSymbolImage = image
@@ -266,20 +266,11 @@ final class CarPlayNavigationCoordinator: NSObject {
         return "arrow.up"
     }
 
-    private func instructionVariants(for instruction: String) -> [String] {
-        var variants = [instruction]
-        let compact = instruction
-            .replacingOccurrences(of: "Bij de rotonde, ", with: "")
-            .replacingOccurrences(of: "Bij de rotonde ", with: "")
-            .replacingOccurrences(of: "Neem op de rotonde ", with: "")
-        if compact != instruction {
-            variants.append(compact)
-        }
-        if let destination = instruction.components(separatedBy: " naar ").last,
-           destination != instruction {
-            variants.append(destination)
-        }
-        return variants
+    private func instructionVariants() -> [String] {
+        // De richting staat al in symbolImage. Een non-breaking space houdt
+        // de native CarPlay-manoeuvrekaart geldig zonder de lange
+        // routebeschrijving naast de pijl te herhalen.
+        ["\u{00A0}"]
     }
 
     @available(iOS 17.4, *)
