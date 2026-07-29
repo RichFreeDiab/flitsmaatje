@@ -20,6 +20,8 @@ class TestFlightReleaseContractTests(unittest.TestCase):
 
     def test_existing_build_can_be_distributed_without_uploading_again(self):
         self.assertIn("lane :distribute_existing do", FASTFILE)
+        self.assertIn("app_identifier: APP_BUNDLE_ID", FASTFILE)
+        self.assertIn('app_platform: "ios"', FASTFILE)
         self.assertIn("distribute_only: true", FASTFILE)
         self.assertIn('ENV.fetch("TESTFLIGHT_BUILD_NUMBER")', FASTFILE)
         self.assertIn("bundle exec fastlane distribute_existing", EXISTING_BUILD_WORKFLOW)
