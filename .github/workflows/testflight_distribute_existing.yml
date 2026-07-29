@@ -1,0 +1,39 @@
+name: TestFlight distribute existing
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: App-versie van de bestaande TestFlight-build
+        required: true
+        default: "1.1"
+        type: string
+      build_number:
+        description: Bestaand TestFlight-buildnummer
+        required: true
+        type: string
+
+jobs:
+  distribute:
+    name: Distribute existing build
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Distribute existing TestFlight build
+        working-directory: ios
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          TESTFLIGHT_APP_VERSION: ${{ inputs.app_version }}
+          TESTFLIGHT_BUILD_NUMBER: ${{ inputs.build_number }}
+          TESTFLIGHT_DISTRIBUTION_TIMEOUT: "7200"
+        run: bundle exec fastlane distribute_existing
