@@ -13,12 +13,13 @@ final class NavigationService: ObservableObject {
     @Published var currentStepIndex = 0
     @Published var statusMessage: String?
     @Published var distanceRemainingM = 0
+    @Published var currentManeuverDistanceM = 0
     @Published var eta: Date?
     @Published var destinationName: String?
     @Published var laneSections: [LaneSection] = []
     @Published var laneGuidanceDistanceM: Int?
     @Published private(set) var trafficReports: [MapReport] = []
-    @Published var voiceEnabled = false {
+    @Published var voiceEnabled = true {
         didSet { AlertNotifier.setSpeechEnabled(voiceEnabled) }
     }
     @Published var reroutingEnabled = true
@@ -27,6 +28,7 @@ final class NavigationService: ObservableObject {
 
     private let synthesizer = AVSpeechSynthesizer()
     private var lastSpokenStep = -1
+    private var lastSpokenDistanceBand = Int.max
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var lastRerouteAt = Date.distantPast
     private var lastRouteCalculationAt = Date.distantPast
@@ -106,9 +108,15 @@ final class NavigationService: ObservableObject {
             )) ?? []
             currentStepIndex = 0
             lastSpokenStep = -1
+            lastSpokenDistanceBand = Int.max
             isNavigating = true
             destinationName = destination.name ?? destination.placemark.title ?? "Bestemming"
             distanceRemainingM = Int(best.distance)
+            currentManeuverDistanceM = Int(
+                best.steps.first(where: {
+                    !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                })?.distance ?? best.distance
+            )
             eta = Date().addingTimeInterval(best.expectedTravelTime)
             lastRouteCalculationAt = Date()
             searchResults = []
@@ -130,7 +138,9 @@ final class NavigationService: ObservableObject {
         isNavigating = false
         currentStepIndex = 0
         lastSpokenStep = -1
+        lastSpokenDistanceBand = Int.max
         distanceRemainingM = 0
+        currentManeuverDistanceM = 0
         eta = nil
         destinationName = nil
         laneSections = []
@@ -200,6 +210,8 @@ final class NavigationService: ObservableObject {
         }
 
         advanceStepsIfNeeded(location: location, route: route)
+        updateCurrentManeuverDistance(location: location, route: route)
+        speakCurrentStepIfNeeded()
 
         let remaining = remainingDistance(on: route, from: location)
         distanceRemainingM = max(0, Int(remaining.rounded()))
@@ -243,8 +255,16 @@ final class NavigationService: ObservableObject {
     }
 
     private func remainingDistance(on route: MKRoute, from location: CLLocation) -> CLLocationDistance {
-        let points = route.polyline.coordinates.map { MKMapPoint($0) }
-        guard points.count >= 2 else { return route.distance }
+        remainingDistance(on: route.polyline, from: location, fallback: route.distance)
+    }
+
+    private func remainingDistance(
+        on polyline: MKPolyline,
+        from location: CLLocation,
+        fallback: CLLocationDistance
+    ) -> CLLocationDistance {
+        let points = polyline.coordinates.map { MKMapPoint($0) }
+        guard points.count >= 2 else { return fallback }
 
         let userPoint = MKMapPoint(location.coordinate)
         var nearestSegment = 0
@@ -276,6 +296,20 @@ final class NavigationService: ObservableObject {
             }
         }
         return remaining
+    }
+
+    private func updateCurrentManeuverDistance(location: CLLocation, route: MKRoute) {
+        guard currentStepIndex < route.steps.count else {
+            currentManeuverDistanceM = 0
+            return
+        }
+        let step = route.steps[currentStepIndex]
+        let remaining = remainingDistance(
+            on: step.polyline,
+            from: location,
+            fallback: step.distance
+        )
+        currentManeuverDistanceM = max(0, Int(remaining.rounded()))
     }
 
     private func reroute(from location: CLLocation, to destination: CLLocationCoordinate2D) async {
@@ -344,6 +378,10 @@ final class NavigationService: ObservableObject {
     private func advanceStepsIfNeeded(location: CLLocation, route: MKRoute) {
         while currentStepIndex < route.steps.count {
             let step = route.steps[currentStepIndex]
+            if step.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                currentStepIndex += 1
+                continue
+            }
             guard let end = stepEndCoordinate(for: step) else {
                 currentStepIndex += 1
                 continue
@@ -362,9 +400,24 @@ final class NavigationService: ObservableObject {
     }
 
     private func speakCurrentStepIfNeeded() {
-        guard voiceEnabled, currentStepIndex != lastSpokenStep else { return }
+        guard voiceEnabled else { return }
         guard currentStepIndex < route?.steps.count ?? 0 else { return }
-        lastSpokenStep = currentStepIndex
+        let distanceBand: Int
+        if currentManeuverDistanceM <= 80 {
+            distanceBand = 0
+        } else if currentManeuverDistanceM <= 300 {
+            distanceBand = 1
+        } else if currentManeuverDistanceM <= 800 {
+            distanceBand = 2
+        } else {
+            distanceBand = 3
+        }
+        if currentStepIndex != lastSpokenStep {
+            lastSpokenStep = currentStepIndex
+            lastSpokenDistanceBand = 3
+        }
+        guard distanceBand < lastSpokenDistanceBand else { return }
+        lastSpokenDistanceBand = distanceBand
         let text = currentInstruction
         guard !text.isEmpty, text != "Volg de route" else { return }
 

@@ -19,6 +19,8 @@ final class CarPlayNavigationCoordinator: NSObject {
     private var lastFlitserAlertId: String?
     private var lastFineAlertText: String?
     private var searchTemplate: CPSearchTemplate?
+    private var laneGuidanceSignature: String?
+    private var activeLaneGuidance: AnyObject?
 
     func attach(
         template: CPMapTemplate,
@@ -44,6 +46,8 @@ final class CarPlayNavigationCoordinator: NSObject {
         searchTemplate = nil
         lastFlitserAlertId = nil
         lastFineAlertText = nil
+        laneGuidanceSignature = nil
+        activeLaneGuidance = nil
     }
 
     func syncFromPhoneNavigation() {
@@ -54,24 +58,16 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     func handleFlitserAlert(_ alert: NearbyAlert?) {
-        guard let alert, let mapTemplate, navigationSession != nil else {
+        guard let alert, navigationSession != nil else {
             lastFlitserAlertId = nil
             return
         }
         guard lastFlitserAlertId != alert.id else { return }
         lastFlitserAlertId = alert.id
 
-        // Alleen in de eigen actieve navigatiesessie: zo krijgt de bestuurder
-        // een tijdige CarPlay-waarschuwing zonder Apple Kaarten te overlappen.
-        let warning = CPNavigationAlert(
-            titleVariants: ["\(alert.icon) \(alert.label)"],
-            subtitleVariants: ["Over \(alert.distance_m) meter"],
-            imageSet: nil,
-            primaryAction: CPAlertAction(title: "OK", style: .default) { _ in },
-            secondaryAction: nil,
-            duration: 8
-        )
-        mapTemplate.present(navigationAlert: warning, animated: true)
+        // Geen CPNavigationAlert: die gebruikt dezelfde bovenste ruimte als
+        // de manoeuvrekaart. De compacte flitserkaart staat rechtsonder.
+        refreshDrivingOverlay()
         AppLogger.log("CarPlay flitserwaarschuwing: \(alert.label) op \(alert.distance_m)m")
     }
 
@@ -92,12 +88,10 @@ final class CarPlayNavigationCoordinator: NSObject {
         }
 
         updateManeuvers(for: route)
-        let laneDistanceText = navigationService.laneGuidanceDistanceM.map(guidanceDistanceText)
-        let visibleLaneSections = laneDistanceText == nil ? [] : navigationService.laneSections
         mapViewController?.updateManeuver(
             instruction: navigationService.currentInstruction,
-            distanceText: laneDistanceText,
-            laneSections: visibleLaneSections
+            distanceText: nil,
+            laneSections: []
         )
         if let trip = activeTrip {
             let estimates = CPTravelEstimates(
@@ -228,30 +222,39 @@ final class CarPlayNavigationCoordinator: NSObject {
 
         let maneuvers: [CPManeuver] = route.steps
             .dropFirst(startIndex)
+            .filter {
+                !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
             .prefix(3)
-            .compactMap { step in
+            .enumerated()
+            .compactMap { offset, step in
                 let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !instruction.isEmpty else { return nil }
                 let maneuver = CPManeuver()
-                let arrow = maneuverArrow(for: instruction)
-                maneuver.symbolImage = UIImage(systemName: maneuverSymbolName(for: instruction))
-                maneuver.instructionVariants = [arrow]
-                maneuver.dashboardInstructionVariants = [arrow]
-                maneuver.notificationInstructionVariants = [arrow]
+                let image = UIImage(systemName: maneuverSymbolName(for: instruction))?
+                    .withTintColor(.white, renderingMode: .alwaysOriginal)
+                let variants = instructionVariants(for: instruction)
+                maneuver.symbolImage = image
+                maneuver.dashboardSymbolImage = image
+                maneuver.notificationSymbolImage = image
+                maneuver.instructionVariants = variants
+                maneuver.dashboardInstructionVariants = variants
+                maneuver.notificationInstructionVariants = variants
+                maneuver.cardBackgroundColor = .black
+                let distance = offset == 0
+                    ? Double(navigationService?.currentManeuverDistanceM ?? Int(step.distance))
+                    : step.distance
                 maneuver.initialTravelEstimates = CPTravelEstimates(
-                    distanceRemaining: Measurement(value: step.distance, unit: UnitLength.meters),
-                    timeRemaining: max(1, step.distance / 13.9)
+                    distanceRemaining: Measurement(value: max(0, distance), unit: UnitLength.meters),
+                    timeRemaining: max(1, distance / 13.9)
                 )
                 return maneuver
             }
-        session.upcomingManeuvers = maneuvers
-    }
 
-    private func guidanceDistanceText(_ meters: Int) -> String {
-        if meters < 1_000 {
-            return "\(max(10, Int((Double(meters) / 10).rounded()) * 10)) m"
+        if #available(iOS 17.4, *) {
+            updateModernNavigationMetadata(session: session, maneuvers: maneuvers)
         }
-        return String(format: "%.1f km", Double(meters) / 1_000)
+        session.upcomingManeuvers = maneuvers
     }
 
     private func maneuverSymbolName(for instruction: String) -> String {
@@ -263,72 +266,144 @@ final class CarPlayNavigationCoordinator: NSObject {
         return "arrow.up"
     }
 
-    private func maneuverArrow(for instruction: String) -> String {
-        let text = instruction.lowercased()
-        if text.contains("rotonde") || text.contains("roundabout") { return "↻" }
-        if text.contains("keer") || text.contains("u-turn") { return "↩" }
-        if text.contains("links") || text.contains("left") { return "←" }
-        if text.contains("rechts") || text.contains("right") { return "→" }
-        return "↑"
+    private func instructionVariants(for instruction: String) -> [String] {
+        var variants = [instruction]
+        let compact = instruction
+            .replacingOccurrences(of: "Bij de rotonde, ", with: "")
+            .replacingOccurrences(of: "Bij de rotonde ", with: "")
+            .replacingOccurrences(of: "Neem op de rotonde ", with: "")
+        if compact != instruction {
+            variants.append(compact)
+        }
+        if let destination = instruction.components(separatedBy: " naar ").last,
+           destination != instruction {
+            variants.append(destination)
+        }
+        return variants
+    }
+
+    @available(iOS 17.4, *)
+    private func updateModernNavigationMetadata(
+        session: CPNavigationSession,
+        maneuvers: [CPManeuver]
+    ) {
+        let distance = navigationService?.currentManeuverDistanceM ?? 0
+        if distance <= 80 {
+            session.maneuverState = .execute
+        } else if distance <= 800 {
+            session.maneuverState = .prepare
+        } else {
+            session.maneuverState = .initial
+        }
+
+        if let roadName = locationService?.roadName, !roadName.isEmpty {
+            session.currentRoadNameVariants = [roadName]
+        } else {
+            session.currentRoadNameVariants = []
+        }
+
+        guard navigationService?.laneGuidanceDistanceM != nil,
+              let section = navigationService?.laneSections.first,
+              !section.lanes.isEmpty else {
+            session.currentLaneGuidance = nil
+            laneGuidanceSignature = nil
+            activeLaneGuidance = nil
+            return
+        }
+
+        let signature = section.lanes
+            .map { "\($0.directions.joined(separator: ",")):\($0.follow ?? "-")" }
+            .joined(separator: "|")
+        let guidance: CPLaneGuidance
+        if signature == laneGuidanceSignature,
+           let cached = activeLaneGuidance as? CPLaneGuidance {
+            guidance = cached
+        } else {
+            let newGuidance = CPLaneGuidance()
+            newGuidance.instructionVariants = [
+                "Kies de gemarkeerde rijstrook",
+                "Rijstrook"
+            ]
+            newGuidance.lanes = section.lanes.compactMap(makeCarPlayLane)
+            guard !newGuidance.lanes.isEmpty else {
+                session.currentLaneGuidance = nil
+                return
+            }
+            session.add([newGuidance])
+            laneGuidanceSignature = signature
+            activeLaneGuidance = newGuidance
+            guidance = newGuidance
+        }
+
+        session.currentLaneGuidance = guidance
+        maneuvers.first?.linkedLaneGuidance = guidance
+    }
+
+    @available(iOS 17.4, *)
+    private func makeCarPlayLane(_ lane: Lane) -> CPLane? {
+        var directions = lane.directions
+        if let follow = lane.follow, !directions.contains(follow) {
+            directions.append(follow)
+        }
+        let angles = directions.compactMap(laneAngle)
+        guard !angles.isEmpty else { return nil }
+        if let follow = lane.follow, let highlighted = laneAngle(follow) {
+            return CPLane(
+                angles: angles,
+                highlightedAngle: highlighted,
+                isPreferred: true
+            )
+        }
+        return CPLane(angles: angles)
+    }
+
+    private func laneAngle(_ direction: String) -> Measurement<UnitAngle>? {
+        let degrees: Double
+        switch direction.uppercased() {
+        case "SHARP_LEFT": degrees = -135
+        case "LEFT": degrees = -90
+        case "SLIGHT_LEFT": degrees = -45
+        case "STRAIGHT": degrees = 0
+        case "SLIGHT_RIGHT": degrees = 45
+        case "RIGHT": degrees = 90
+        case "SHARP_RIGHT": degrees = 135
+        case "LEFT_U_TURN": degrees = -180
+        case "RIGHT_U_TURN": degrees = 180
+        default: return nil
+        }
+        return Measurement(value: degrees, unit: UnitAngle.degrees)
     }
 
     func handleSpeedingFine(fine: FineEstimate?, speedKmh: Int?, limit: Int?) {
-        guard let mapTemplate, navigationSession != nil,
+        guard navigationSession != nil,
               let fine,
               let title = fine.carPlayNotificationTitle(speedKmh: speedKmh, limit: limit)
         else {
             lastFineAlertText = nil
-            clearFineButton()
+            refreshDrivingOverlay()
             return
         }
         let subtitle = fine.carPlayNotificationSubtitle(speedKmh: speedKmh, limit: limit) ?? ""
         let signature = "\(title)|\(subtitle)"
         guard signature != lastFineAlertText else { return }
         lastFineAlertText = signature
-        showFineButton(title: title, subtitle: subtitle)
-
-        let warning = CPNavigationAlert(
-            titleVariants: ["⚠️ \(title)"],
-            subtitleVariants: [subtitle],
-            imageSet: nil,
-            primaryAction: CPAlertAction(title: "OK", style: .default) { _ in },
-            secondaryAction: nil,
-            duration: 8
-        )
-        mapTemplate.present(navigationAlert: warning, animated: true)
+        // De persistente compacte boetekaart wordt rechtsonder getoond.
+        // Vermijd een modal alert en navigatiebalkknop die de route bedekken.
+        refreshDrivingOverlay()
         AppLogger.log("CarPlay boetemelding: \(title) — \(subtitle)")
     }
 
-    private func showFineButton(title: String, subtitle: String) {
-        guard let mapTemplate, title.contains("€") else {
-            clearFineButton()
-            return
+    private func refreshDrivingOverlay() {
+        guard let locationService else { return }
+        let alertText = locationService.currentAlert.map {
+            "\($0.icon) \($0.label) • over \($0.distance_m) m"
         }
-        let buttonTitle = fineButtonTitle(from: title)
-        let button = CPBarButton(title: buttonTitle) { [weak self] _ in
-            let detail = CPAlertTemplate(
-                titleVariants: ["\(title)\n\(subtitle)"],
-                actions: [CPAlertAction(title: "OK", style: .default) { _ in }]
-            )
-            self?.interfaceController?.presentTemplate(detail, animated: true)
-        }
-        // De stopknop blijft links; de boete-indicatie blijft rechts permanent
-        // zichtbaar zolang deze snelheidsovertreding actief is.
-        mapTemplate.trailingNavigationBarButtons = [button]
-        AppLogger.log("CarPlay boeteknop zichtbaar: \(buttonTitle)")
-    }
-
-    private func clearFineButton() {
-        guard let mapTemplate, navigationSession != nil else { return }
-        mapTemplate.trailingNavigationBarButtons = []
-    }
-
-    private func fineButtonTitle(from title: String) -> String {
-        if let euroStart = title.range(of: "€") {
-            let amount = title[euroStart.lowerBound...]
-            return String(amount.prefix(8))
-        }
-        return "Boete"
+        mapViewController?.update(
+            speedKmh: locationService.currentSpeedKmh,
+            limit: locationService.speedLimit,
+            alert: alertText,
+            fineText: locationService.fineStatusText
+        )
     }
 
     private func endGuidance() {
@@ -336,6 +411,8 @@ final class CarPlayNavigationCoordinator: NSObject {
         navigationSession = nil
         activeTrip = nil
         activeRoute = nil
+        laneGuidanceSignature = nil
+        activeLaneGuidance = nil
         navigationService?.stopNavigation()
         mapViewController?.clearRoute()
         mapTemplate?.hideTripPreviews()
@@ -373,6 +450,11 @@ final class CarPlayNavigationCoordinator: NSObject {
             navigationService?.isNavigating = false
             navigationService?.destinationName = mapItem.name ?? "Bestemming"
             navigationService?.distanceRemainingM = Int(route.distance)
+            navigationService?.currentManeuverDistanceM = Int(
+                route.steps.first(where: {
+                    !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                })?.distance ?? route.distance
+            )
             navigationService?.eta = Date().addingTimeInterval(route.expectedTravelTime)
             navigationService?.markRouteCalculatedNow()
             presentTripPreview(
