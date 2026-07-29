@@ -18,6 +18,7 @@ private final class ReportMapAnnotation: NSObject, MKAnnotation {
 final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     let mapView = MKMapView()
     private let speedLabel = UILabel()
+    private let speedUnitLabel = UILabel()
     private let limitLabel = UILabel()
     private let alertLabel = UILabel()
     private let fineLabel = UILabel()
@@ -29,6 +30,9 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private let maneuverPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private var refreshTimer: Timer?
     private var reportSignature = ""
+    private var alertBottomToFineConstraint: NSLayoutConstraint?
+    private var alertBottomToSafeAreaConstraint: NSLayoutConstraint?
+    private var lastCameraUpdateAt = Date.distantPast
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -40,6 +44,10 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         mapView.pointOfInterestFilter = .excludingAll
         mapView.showsTraffic = true
         mapView.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .realistic, emphasisStyle: .muted)
+        mapView.cameraZoomRange = MKMapView.CameraZoomRange(
+            minCenterCoordinateDistance: 180,
+            maxCenterCoordinateDistance: 900
+        )
         view.addSubview(mapView)
         NSLayoutConstraint.activate([
             mapView.topAnchor.constraint(equalTo: view.topAnchor), mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -71,74 +79,119 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
     private func configureOverlay() {
         let statusPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
         statusPanel.translatesAutoresizingMaskIntoConstraints = false; statusPanel.layer.cornerRadius = 12; statusPanel.clipsToBounds = true
+        statusPanel.contentView.backgroundColor = UIColor.black.withAlphaComponent(0.72)
         view.addSubview(statusPanel)
-        speedLabel.textColor = .white; speedLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .bold); speedLabel.text = "--"
-        limitLabel.textColor = .white; limitLabel.font = .systemFont(ofSize: 15, weight: .bold)
-        alertLabel.font = .systemFont(ofSize: 17, weight: .bold); alertLabel.numberOfLines = 2; alertLabel.textAlignment = .center
-        fineLabel.font = .systemFont(ofSize: 20, weight: .bold); fineLabel.numberOfLines = 1; fineLabel.textAlignment = .center; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.75
+        speedLabel.textColor = .white; speedLabel.font = .monospacedDigitSystemFont(ofSize: 31, weight: .bold); speedLabel.text = "--"; speedLabel.textAlignment = .center
+        speedUnitLabel.textColor = UIColor.white.withAlphaComponent(0.78); speedUnitLabel.font = .systemFont(ofSize: 13, weight: .semibold); speedUnitLabel.text = "km/u"; speedUnitLabel.textAlignment = .center
+        limitLabel.textColor = .black; limitLabel.backgroundColor = .white; limitLabel.font = .monospacedDigitSystemFont(ofSize: 25, weight: .bold); limitLabel.textAlignment = .center
+        limitLabel.layer.cornerRadius = 29; limitLabel.layer.borderWidth = 4; limitLabel.layer.borderColor = UIColor.systemRed.cgColor; limitLabel.clipsToBounds = true
+        alertLabel.font = .systemFont(ofSize: 18, weight: .bold); alertLabel.numberOfLines = 2; alertLabel.textAlignment = .left
+        fineLabel.font = .monospacedDigitSystemFont(ofSize: 19, weight: .bold); fineLabel.numberOfLines = 2; fineLabel.textAlignment = .left; fineLabel.adjustsFontSizeToFitWidth = true; fineLabel.minimumScaleFactor = 0.72
         laneLabel.font = .systemFont(ofSize: 44, weight: .bold); laneLabel.textAlignment = .center; laneLabel.textColor = .white
         lanePanel.isHidden = true
         maneuverLabel.font = .monospacedDigitSystemFont(ofSize: 28, weight: .bold); maneuverLabel.numberOfLines = 1; maneuverLabel.textColor = .white; maneuverLabel.textAlignment = .left
 
-        let speedStack = UIStackView(arrangedSubviews: [speedLabel, limitLabel]); speedStack.axis = .horizontal; speedStack.spacing = 8; speedStack.alignment = .firstBaseline
+        let currentSpeedStack = UIStackView(arrangedSubviews: [speedLabel, speedUnitLabel])
+        currentSpeedStack.axis = .vertical
+        currentSpeedStack.spacing = -3
+        currentSpeedStack.alignment = .center
+        let speedStack = UIStackView(arrangedSubviews: [limitLabel, currentSpeedStack]); speedStack.axis = .horizontal; speedStack.spacing = 10; speedStack.alignment = .center
         speedStack.translatesAutoresizingMaskIntoConstraints = false; statusPanel.contentView.addSubview(speedStack)
 
         [alertPanel, finePanel, lanePanel, maneuverPanel].forEach { panel in panel.translatesAutoresizingMaskIntoConstraints = false; panel.layer.cornerRadius = 12; panel.clipsToBounds = true; view.addSubview(panel) }
-        lanePanel.contentView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.92)
-        maneuverPanel.contentView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.92)
+        lanePanel.contentView.backgroundColor = UIColor.black.withAlphaComponent(0.94)
+        maneuverPanel.contentView.backgroundColor = UIColor.black.withAlphaComponent(0.94)
+        alertPanel.contentView.backgroundColor = UIColor(red: 0.24, green: 0.13, blue: 0.02, alpha: 0.94)
+        finePanel.contentView.backgroundColor = UIColor(red: 0.32, green: 0.05, blue: 0.04, alpha: 0.96)
         alertLabel.translatesAutoresizingMaskIntoConstraints = false; fineLabel.translatesAutoresizingMaskIntoConstraints = false; laneLabel.translatesAutoresizingMaskIntoConstraints = false; maneuverLabel.translatesAutoresizingMaskIntoConstraints = false
         alertPanel.contentView.addSubview(alertLabel); finePanel.contentView.addSubview(fineLabel); lanePanel.contentView.addSubview(laneLabel); maneuverPanel.contentView.addSubview(maneuverLabel)
+
+        alertBottomToFineConstraint = alertPanel.bottomAnchor.constraint(equalTo: finePanel.topAnchor, constant: -1)
+        alertBottomToSafeAreaConstraint = alertPanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
 
         NSLayoutConstraint.activate([
             statusPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), statusPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
             speedStack.topAnchor.constraint(equalTo: statusPanel.contentView.topAnchor, constant: 9), speedStack.bottomAnchor.constraint(equalTo: statusPanel.contentView.bottomAnchor, constant: -9), speedStack.leadingAnchor.constraint(equalTo: statusPanel.contentView.leadingAnchor, constant: 11), speedStack.trailingAnchor.constraint(equalTo: statusPanel.contentView.trailingAnchor, constant: -11),
+            limitLabel.widthAnchor.constraint(equalToConstant: 58), limitLabel.heightAnchor.constraint(equalToConstant: 58),
             lanePanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), lanePanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14), lanePanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 190), lanePanel.widthAnchor.constraint(lessThanOrEqualToConstant: 330),
             maneuverPanel.leadingAnchor.constraint(equalTo: lanePanel.leadingAnchor), maneuverPanel.trailingAnchor.constraint(equalTo: lanePanel.trailingAnchor), maneuverPanel.topAnchor.constraint(equalTo: lanePanel.bottomAnchor, constant: -1),
             maneuverLabel.topAnchor.constraint(equalTo: maneuverPanel.contentView.topAnchor, constant: 8), maneuverLabel.bottomAnchor.constraint(equalTo: maneuverPanel.contentView.bottomAnchor, constant: -8), maneuverLabel.leadingAnchor.constraint(equalTo: maneuverPanel.contentView.leadingAnchor, constant: 12), maneuverLabel.trailingAnchor.constraint(equalTo: maneuverPanel.contentView.trailingAnchor, constant: -12),
             laneLabel.topAnchor.constraint(equalTo: lanePanel.contentView.topAnchor, constant: 12), laneLabel.bottomAnchor.constraint(equalTo: lanePanel.contentView.bottomAnchor, constant: -6), laneLabel.leadingAnchor.constraint(equalTo: lanePanel.contentView.leadingAnchor, constant: 12), laneLabel.trailingAnchor.constraint(equalTo: lanePanel.contentView.trailingAnchor, constant: -12),
-            alertPanel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18), alertPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18), alertPanel.bottomAnchor.constraint(equalTo: finePanel.topAnchor, constant: -8),
+            alertPanel.leadingAnchor.constraint(greaterThanOrEqualTo: view.centerXAnchor, constant: 12), alertPanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14), alertPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
             alertLabel.topAnchor.constraint(equalTo: alertPanel.contentView.topAnchor, constant: 10), alertLabel.bottomAnchor.constraint(equalTo: alertPanel.contentView.bottomAnchor, constant: -10), alertLabel.leadingAnchor.constraint(equalTo: alertPanel.contentView.leadingAnchor, constant: 12), alertLabel.trailingAnchor.constraint(equalTo: alertPanel.contentView.trailingAnchor, constant: -12),
-            finePanel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14), finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16), finePanel.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
+            finePanel.leadingAnchor.constraint(equalTo: alertPanel.leadingAnchor), finePanel.trailingAnchor.constraint(equalTo: alertPanel.trailingAnchor), finePanel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
             fineLabel.topAnchor.constraint(equalTo: finePanel.contentView.topAnchor, constant: 10), fineLabel.bottomAnchor.constraint(equalTo: finePanel.contentView.bottomAnchor, constant: -10), fineLabel.leadingAnchor.constraint(equalTo: finePanel.contentView.leadingAnchor, constant: 12), fineLabel.trailingAnchor.constraint(equalTo: finePanel.contentView.trailingAnchor, constant: -12)
         ])
+        alertBottomToSafeAreaConstraint?.isActive = true
     }
 
     func update(speedKmh: Int?, limit: Int?, alert: String?, fineText: String?) {
-        speedLabel.text = speedKmh.map { "\($0) km/u" } ?? "-- km/u"
-        limitLabel.text = limit.map { "limiet \($0)" } ?? "limiet --"
-        alertLabel.text = alert ?? "Geen flitser in de buurt"
-        alertLabel.textColor = alert == nil ? .systemGreen : .systemRed
+        speedLabel.text = speedKmh.map(String.init) ?? "--"
+        limitLabel.text = limit.map(String.init) ?? "--"
+        limitLabel.isHidden = limit == nil
+        alertLabel.text = alert
+        alertLabel.textColor = .systemOrange
         alertPanel.isHidden = alert == nil
+
         // De native CPMapTemplate blijft de enige route-/lane-laag.
-        // Toon alleen een echte boete; placeholders zoals “Boete —” nooit.
+        // Toon alleen een echte boete; placeholders zoals "Boete —" nooit.
         let hasFine = fineText.map { text in
-            let normalized = text.replacingOccurrences(of: "—", with: "")
+            let normalized = text.replacingOccurrences(of: "Boete", with: "")
+                .replacingOccurrences(of: "—", with: "")
                 .replacingOccurrences(of: "-", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return !normalized.isEmpty && normalized.lowercased() != "boete"
+            return !normalized.isEmpty
         } ?? false
-        fineLabel.text = hasFine ? fineText : nil
+        if hasFine, let fineText {
+            fineLabel.text = compactFineText(fineText, speedKmh: speedKmh)
+        } else {
+            fineLabel.text = nil
+        }
         fineLabel.textColor = .white
-        finePanel.contentView.backgroundColor = UIColor(red: 0.32, green: 0.10, blue: 0.04, alpha: 0.96)
         finePanel.isHidden = !hasFine
         maneuverPanel.isHidden = true
         lanePanel.isHidden = true
-        if hasFine { view.bringSubviewToFront(finePanel) }
+
+        // Eerst beide uitzetten om tijdelijke conflicterende Auto Layout-
+        // constraints tijdens een live waarschuwing te voorkomen.
+        alertBottomToFineConstraint?.isActive = false
+        alertBottomToSafeAreaConstraint?.isActive = false
+        if alert != nil {
+            if hasFine {
+                alertBottomToFineConstraint?.isActive = true
+            } else {
+                alertBottomToSafeAreaConstraint?.isActive = true
+            }
+        }
+        if hasFine {
+            view.bringSubviewToFront(finePanel)
+        }
+        if alert != nil {
+            view.bringSubviewToFront(alertPanel)
+        }
+    }
+
+    private func compactFineText(_ text: String, speedKmh: Int?) -> String {
+        let prefix = speedKmh.map { "Boete bij \($0) km/u: " } ?? "Boete: "
+        if let euroIndex = text.firstIndex(of: "€") {
+            let afterEuro = text[text.index(after: euroIndex)...]
+            let amount = afterEuro
+                .drop(while: { $0.isWhitespace })
+                .prefix { $0.isNumber || $0 == "." || $0 == "," }
+            if !amount.isEmpty {
+                return "\(prefix)€ \(amount)"
+            }
+        }
+        if text.localizedCaseInsensitiveContains("OM") {
+            return "\(prefix)OM-tarief"
+        }
+        return text
     }
 
     func updateManeuver(instruction: String?, distanceText: String?, laneSections: [LaneSection]) {
         // Laat de native CarPlay-manoeuvrekaart de enige route-instructie renderen.
         maneuverPanel.isHidden = true
         lanePanel.isHidden = true
-    }
-
-    private func maneuverArrow(for instruction: String) -> String {
-        let text = instruction.lowercased()
-        if text.contains("rotonde") || text.contains("roundabout") { return "↻" }
-        if text.contains("keer") || text.contains("u-turn") { return "↩" }
-        if text.contains("links") || text.contains("left") { return "←" }
-        if text.contains("rechts") || text.contains("right") { return "→" }
-        return "↑"
     }
 
     func updateFromSnapshot(_ snapshot: WidgetSnapshot) {
@@ -163,9 +216,42 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
 
     func follow(location: CLLocation) {
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 80 else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastCameraUpdateAt) >= 0.35 else { return }
+        lastCameraUpdateAt = now
         let heading = location.course >= 0 ? location.course : mapView.camera.heading
-        let camera = MKMapCamera(lookingAtCenter: location.coordinate, fromDistance: 650, pitch: 58, heading: heading)
-        mapView.setCamera(camera, animated: true)
+        let speedKmh = max(0, location.speed * 3.6)
+        let cameraDistance: CLLocationDistance = speedKmh >= 80 ? 560 : (speedKmh >= 40 ? 440 : 340)
+        let lookAhead = max(45, min(180, max(0, location.speed) * 6))
+        let center = coordinate(from: location.coordinate, distance: lookAhead, bearing: heading)
+        let camera = MKMapCamera(lookingAtCenter: center, fromDistance: cameraDistance, pitch: 64, heading: heading)
+        // Geen overlappende camera-animaties bij snelle GPS-updates: dat was
+        // de belangrijkste oorzaak van haperen tijdens het rijden.
+        mapView.setCamera(camera, animated: false)
+    }
+
+    private func coordinate(
+        from coordinate: CLLocationCoordinate2D,
+        distance: CLLocationDistance,
+        bearing: CLLocationDirection
+    ) -> CLLocationCoordinate2D {
+        let earthRadius = 6_371_000.0
+        let angularDistance = distance / earthRadius
+        let bearingRadians = bearing * .pi / 180
+        let latitude = coordinate.latitude * .pi / 180
+        let longitude = coordinate.longitude * .pi / 180
+        let nextLatitude = asin(
+            sin(latitude) * cos(angularDistance)
+                + cos(latitude) * sin(angularDistance) * cos(bearingRadians)
+        )
+        let nextLongitude = longitude + atan2(
+            sin(bearingRadians) * sin(angularDistance) * cos(latitude),
+            cos(angularDistance) - sin(latitude) * sin(nextLatitude)
+        )
+        return CLLocationCoordinate2D(
+            latitude: nextLatitude * 180 / .pi,
+            longitude: nextLongitude * 180 / .pi
+        )
     }
 
     func clearRoute() { mapView.removeOverlays(mapView.overlays) }
