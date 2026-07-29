@@ -290,7 +290,9 @@ platform :ios do
         skip_waiting_for_build_processing: false,
         distribute_external: false,
         wait_processing_interval: 30,
-        wait_processing_timeout_duration: 1800,
+        # Apple processing can legitimately take longer than 30 minutes.
+        # Keep the release job alive long enough to reach real distribution.
+        wait_processing_timeout_duration: 7200,
         changelog: ENV["FLITSMAATJE_CHANGELOG"] || "CarPlay Dashboard-widget + achtergrondwaarschuwingen"
       )
     rescue StandardError => error
@@ -302,6 +304,49 @@ platform :ios do
       sleep(wait_seconds)
       retry
     end
+  end
+
+  desc "Distribueer een al geuploade TestFlight-build zonder een nieuwe IPA te uploaden"
+  lane :distribute_existing do
+    api_key = asc_api_key
+    app_version = ENV.fetch("TESTFLIGHT_APP_VERSION")
+    build_number = ENV.fetch("TESTFLIGHT_BUILD_NUMBER")
+    deadline = Time.now + ENV.fetch("TESTFLIGHT_DISTRIBUTION_TIMEOUT", "7200").to_i
+    attempt = 0
+
+    begin
+      attempt += 1
+      UI.message(
+        "[release] bestaande TestFlight-build #{app_version} (#{build_number}) " \
+        "distribueren; poging #{attempt}"
+      )
+      upload_to_testflight(
+        api_key: api_key,
+        distribute_only: true,
+        app_version: app_version,
+        build_number: build_number,
+        distribute_external: false,
+        skip_waiting_for_build_processing: false,
+        wait_processing_interval: 30,
+        wait_processing_timeout_duration: 600
+      )
+    rescue StandardError => error
+      retryable_processing_error = error.message.match?(
+        /processing|buildwatcher|could not find|not found|no builds|exceeded/i
+      )
+      raise unless retryable_processing_error && Time.now < deadline
+
+      UI.important(
+        "Build #{build_number} is nog niet klaar bij Apple; " \
+        "nieuwe distributiepoging over 60 seconden"
+      )
+      sleep(60)
+      retry
+    end
+
+    UI.success(
+      "TestFlight-build #{app_version} (#{build_number}) is aan interne testers gedistribueerd"
+    )
   end
 
   private_lane :match_git_auth do
