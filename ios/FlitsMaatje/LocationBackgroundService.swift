@@ -24,10 +24,16 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     var fineStatusText: String? {
-        guard let speed = currentSpeedKmh, let limit = speedLimit else { return "Boete --" }
+        guard let speed = currentSpeedKmh, let limit = speedLimit else { return nil }
         let corrected = speed <= 100 ? speed - 3 : Int(Double(speed) * 0.97)
-        guard corrected - limit >= 4 else { return "Boete —" }
-        return fineEstimate?.compactAmountText ?? "Boete --"
+        let excess = corrected - limit
+        guard excess >= 4 else { return nil }
+        guard let fineEstimate,
+              fineEstimate.excess_kmh >= 4,
+              abs(fineEstimate.excess_kmh - excess) <= 1 else {
+            return "Boete wordt berekend…"
+        }
+        return fineEstimate.compactAmountText
     }
 
     var managerAuthorizationIsAlways: Bool {
@@ -64,6 +70,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var recentSpeedSamples: [Int] = []
     private var lastAcceptedSpeedAt: Date = .distantPast
     private var previousLocation: CLLocation?
+    private var speedCheckGeneration = 0
+    private var lastSpeedLimitUpdatedAt: Date = .distantPast
+    private var isSpeedCheckInFlight = false
 
     /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update
     /// direct als routevoortgang te verwerken.
@@ -143,6 +152,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         roadName = nil
         lastLocation = nil
         previousLocation = nil
+        speedCheckGeneration += 1
+        lastSpeedLimitUpdatedAt = .distantPast
+        isSpeedCheckInFlight = false
         resetAlarmState()
         clearSpeedingState()
         persistSnapshot(lat: nil, lng: nil, alert: nil, message: "Tracking gestopt")
@@ -263,11 +275,19 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         let now = Date()
         let speed = currentSpeedKmh
 
-        if shouldRunSpeedCheck(now: now, location: location) {
+        if !isSpeedCheckInFlight, shouldRunSpeedCheck(now: now, location: location) {
             lastSpeedCheckAt = now
             lastSpeedCheckLocation = location
+            speedCheckGeneration += 1
+            let generation = speedCheckGeneration
+            isSpeedCheckInFlight = true
             speedCheckTask = Task { @MainActor in
-                await self.fetchSpeedCheckOffMain(lat: lat, lng: lng, speedKmh: speed)
+                await self.fetchSpeedCheckOffMain(
+                    lat: lat,
+                    lng: lng,
+                    speedKmh: speed,
+                    generation: generation
+                )
             }
         }
 
@@ -308,18 +328,32 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
     }
 
-    private func fetchSpeedCheckOffMain(lat: Double, lng: Double, speedKmh: Int?) async {
+    private func fetchSpeedCheckOffMain(
+        lat: Double,
+        lng: Double,
+        speedKmh: Int?,
+        generation: Int
+    ) async {
+        defer {
+            if generation == speedCheckGeneration {
+                isSpeedCheckInFlight = false
+            }
+        }
         let speed = speedKmh.map(Double.init)
         do {
             let response = try await Task.detached(priority: .utility) {
                 try await FlitsMaatjeAPI.fetchSpeedCheck(lat: lat, lng: lng, speedKmh: speed)
             }.value
-            if Task.isCancelled { return }
+            guard !Task.isCancelled, generation == speedCheckGeneration else {
+                AppLogger.log("Verouderde speed-check genegeerd")
+                return
+            }
 
             speedLimit = response.limit.maxspeed
             roadName = response.limit.road_name
             fineEstimate = response.fine
             trafficInfo = response.traffic
+            lastSpeedLimitUpdatedAt = Date()
 
             if currentAlert == nil,
                let fineText = response.fine?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) {
@@ -352,7 +386,17 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             return
         }
 
-        let measuredSpeed = location.speed >= 0 ? location.speed : calculatedSpeed(from: location)
+        let coordinateSpeed = calculatedSpeed(from: location)
+        let measuredSpeed: CLLocationSpeed
+        if location.speed < 0 {
+            measuredSpeed = coordinateSpeed
+        } else if location.speed <= 0.5, coordinateSpeed >= 1.5 {
+            // Sommige CarPlay/GPS-updates melden tijdelijk exact 0 terwijl
+            // opeenvolgende coördinaten duidelijk verplaatsen.
+            measuredSpeed = coordinateSpeed
+        } else {
+            measuredSpeed = location.speed
+        }
         guard measuredSpeed >= 0 else { return }
         let candidate = Int((measuredSpeed * 3.6).rounded())
         guard candidate <= 220 else {
@@ -389,6 +433,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         let minDistance: CLLocationDistance = isSpeeding ? 5 : 15
 
         guard now.timeIntervalSince(lastSpeedCheckAt) >= minInterval else { return false }
+        if speedLimit == nil || now.timeIntervalSince(lastSpeedLimitUpdatedAt) >= 5 {
+            return true
+        }
         guard let last = lastSpeedCheckLocation else { return true }
         return location.distance(from: last) >= minDistance
     }
