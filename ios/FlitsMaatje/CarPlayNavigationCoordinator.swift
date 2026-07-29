@@ -347,14 +347,28 @@ final class CarPlayNavigationCoordinator: NSObject {
         }
         let angles = directions.compactMap(laneAngle)
         guard !angles.isEmpty else { return nil }
-        if let follow = lane.follow, let highlighted = laneAngle(follow) {
-            return CPLane(
-                angles: angles,
-                highlightedAngle: highlighted,
-                isPreferred: true
-            )
+        let highlighted = lane.follow.flatMap(laneAngle)
+
+        if #available(iOS 18.0, *) {
+            if let highlighted {
+                return CPLane(
+                    angles: angles,
+                    highlightedAngle: highlighted,
+                    isPreferred: true
+                )
+            }
+            return CPLane(angles: angles)
         }
-        return CPLane(angles: angles)
+
+        // De nieuwe immutable CPLane-initializers zijn pas vanaf iOS 18
+        // beschikbaar. iOS 17.4 gebruikt de oudere, nog ondersteunde
+        // properties zodat lane guidance ook daar zichtbaar blijft.
+        let compatibleLane = CPLane()
+        let primary = highlighted ?? angles[0]
+        compatibleLane.primaryAngle = primary
+        compatibleLane.secondaryAngles = angles.filter { $0 != primary }
+        compatibleLane.status = highlighted == nil ? .notGood : .preferred
+        return compatibleLane
     }
 
     private func laneAngle(_ direction: String) -> Measurement<UnitAngle>? {
