@@ -12,6 +12,9 @@ MAP_VIEW = (
 NAVIGATION = (
     ROOT / "ios" / "FlitsMaatje" / "NavigationService.swift"
 ).read_text(encoding="utf-8")
+NAVIGATION_MAP = (
+    ROOT / "ios" / "FlitsMaatje" / "NavigationMapView.swift"
+).read_text(encoding="utf-8")
 
 
 class CarPlayUIContractTests(unittest.TestCase):
@@ -41,7 +44,9 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertIn('return "\\(prefix)€ \\(amount)"', MAP_VIEW)
 
     def test_spoken_guidance_and_live_maneuver_distance_are_updated(self):
-        self.assertIn("@Published var voiceEnabled = true", NAVIGATION)
+        self.assertIn("@Published var voiceEnabled: Bool", NAVIGATION)
+        self.assertIn('speechPreferenceKey = "spoken-guidance-enabled"', NAVIGATION)
+        self.assertIn('Toggle("Gesproken waarschuwingen"', NAVIGATION_MAP)
         self.assertIn("updateCurrentManeuverDistance(location: location", NAVIGATION)
         self.assertIn("speakCurrentStepIfNeeded()", NAVIGATION)
 

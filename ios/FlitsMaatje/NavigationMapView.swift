@@ -353,6 +353,12 @@ struct NavigationMapView: View {
                 Section("Meldingen") {
                     Toggle("Boete-indicatie tonen", isOn: $navigation.finesEnabled)
                     Toggle("Verkeersmeldingen tonen", isOn: $navigation.alertsEnabled)
+                    Toggle("Gesproken waarschuwingen", isOn: $navigation.voiceEnabled)
+                }
+                Section {
+                    Text("Uit: alleen alarmtoon en trilling. Aan: ook gesproken route- en flitserwaarschuwingen.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Instellingen")

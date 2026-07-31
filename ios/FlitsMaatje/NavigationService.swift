@@ -19,8 +19,11 @@ final class NavigationService: ObservableObject {
     @Published var laneSections: [LaneSection] = []
     @Published var laneGuidanceDistanceM: Int?
     @Published private(set) var trafficReports: [MapReport] = []
-    @Published var voiceEnabled = true {
-        didSet { AlertNotifier.setSpeechEnabled(voiceEnabled) }
+    @Published var voiceEnabled: Bool {
+        didSet {
+            speechDefaults.set(voiceEnabled, forKey: Self.speechPreferenceKey)
+            AlertNotifier.setSpeechEnabled(voiceEnabled)
+        }
     }
     @Published var reroutingEnabled = true
     @Published var finesEnabled = true
@@ -34,6 +37,18 @@ final class NavigationService: ObservableObject {
     private var lastRouteCalculationAt = Date.distantPast
     private var isRerouting = false
     private var consecutiveOffRouteUpdates = 0
+
+    private static let speechPreferenceKey = "spoken-guidance-enabled"
+    private var speechDefaults: UserDefaults {
+        UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
+    }
+
+    init() {
+        let defaults = UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
+        let enabled = defaults.object(forKey: Self.speechPreferenceKey) as? Bool ?? false
+        voiceEnabled = enabled
+        AlertNotifier.setSpeechEnabled(enabled)
+    }
 
     func updateTrafficReports(_ reports: [MapReport]) {
         trafficReports = reports.filter { $0.type == "file" || $0.type == "ongeval" || $0.type == "wegwerkzaamheden" }
