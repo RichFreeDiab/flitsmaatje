@@ -19,6 +19,7 @@ from pathlib import Path
 import requests
 from flask import Flask, request, jsonify, g, send_from_directory
 from ndw_feeds import sync_ndw_reports
+from anwb_radars import fetch_anwb_mobile_radars
 from tomtom_traffic import fetch_flow_segment, fetch_incidents, fetch_tomtom_speed_limit, fetch_lane_guidance
 
 # Nightscout configuratie
@@ -626,6 +627,21 @@ def get_reports():
                 "confirms": 1, "denies": 0, "distance_km": round(dist, 3),
             })
 
+    # Actuele mobiele snelheidscontroles. De ANWB-module cachet de landelijke
+    # feed twee minuten, zodat GPS-polls geen externe request per update doen.
+    for radar in fetch_anwb_mobile_radars():
+        dist = haversine_km(lat, lng, radar["lat"], radar["lng"])
+        if dist <= radius_km:
+            results.append({
+                "id": radar["id"], "type": radar["type"],
+                "lat": radar["lat"], "lng": radar["lng"],
+                "heading": radar.get("heading"),
+                "created_at": radar.get("created_at"),
+                "expires_at": radar.get("expires_at"),
+                "confirms": radar.get("confirms", 1), "denies": 0,
+                "distance_km": round(dist, 3),
+            })
+
     # TomTom levert actuele files, ongevallen en wegwerkzaamheden naast de
     # eigen vaste flitsers en NDW-meldingen. Deze meldingen worden niet in de
     # database opgeslagen, zodat ze vanzelf vers blijven.
@@ -704,6 +720,10 @@ def nearby_alert():
             camera for camera in fetch_osm_speed_cameras(lat, lng)
             if heading_matches(heading, camera.get("heading"))
         )
+    candidates.extend(
+        radar for radar in fetch_anwb_mobile_radars()
+        if heading_matches(heading, radar.get("heading"))
+    )
     candidates.extend(fetch_incidents(lat, lng, radius_km))
 
     closest = None

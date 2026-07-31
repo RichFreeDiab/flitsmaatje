@@ -10,6 +10,9 @@ class NavigationFeatureTests(unittest.TestCase):
     def setUp(self):
         app._speed_limit_cache.clear()
         app._camera_cache.clear()
+        self.anwb_patch = patch.object(app, "fetch_anwb_mobile_radars", return_value=[])
+        self.anwb_patch.start()
+        self.addCleanup(self.anwb_patch.stop)
 
     def test_speed_check_uses_tomtom_when_overpass_finds_no_road(self):
         with (
@@ -191,6 +194,33 @@ class NavigationFeatureTests(unittest.TestCase):
             )
             db.execute("DELETE FROM reports WHERE id = ?", (camera_id,))
             db.commit()
+
+    def test_anwb_mobile_radar_is_visible_and_triggers_nearby_alert(self):
+        radar = {
+            "id": "anwb-radar-123",
+            "type": "flitser_mobiel",
+            "lat": 52.0005,
+            "lng": 5.0005,
+            "heading": 0.0,
+            "confirms": 1,
+            "created_at": 100.0,
+            "expires_at": 1000.0,
+        }
+        with (
+            patch.object(app, "sync_ndw_reports"),
+            patch.object(app, "fetch_anwb_mobile_radars", return_value=[radar]),
+            patch.object(app, "fetch_incidents", return_value=[]),
+        ):
+            reports_response = app.app.test_client().get(
+                "/api/reports?lat=52.0&lng=5.0&radius_km=2"
+            )
+            alert_response = app.app.test_client().get(
+                "/api/nearby-alert?lat=52.0&lng=5.0&heading=0&radius_km=2"
+            )
+
+        reports = reports_response.get_json()["reports"]
+        self.assertTrue(any(item["id"] == radar["id"] for item in reports))
+        self.assertEqual(alert_response.get_json()["alert"]["id"], radar["id"])
 
 
 if __name__ == "__main__":
