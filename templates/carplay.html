@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0c">
-  <title>FlitsMaatje — CarPlay Demo</title>
+  <title>FlitsMaatje - CarPlay Demo</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="/static/css/carplay.css">
 </head>
@@ -12,40 +12,37 @@
 
   <div class="toolbar">
     <div>
-      <h1>CarPlay Demo — FlitsMaatje + Flitsmeister</h1>
-      <p>Banner, boete-popup (stil) en flitsers terwijl Flitsmeister navigeert</p>
+      <h1>CarPlay Demo - FlitsMaatje + Flitsmeister</h1>
+      <p>Banner, boete-popup en flitsers terwijl Flitsmeister navigeert</p>
     </div>
     <div class="toolbar-actions">
-      <button id="btn-selftest" type="button" title="Zelfde checks als CI vóór TestFlight">✓ Selftest</button>
-      <button id="btn-boot-sim" type="button">📱 Simuleer opstart</button>
-      <button id="btn-full-demo" class="primary" type="button">▶ Volledige demo</button>
-      <button id="btn-demo-speed" type="button">🚨 Demo te hard</button>
-      <button id="btn-drive" type="button">🚗 Demo-rit</button>
+      <button id="btn-selftest" type="button" title="Zelfde checks als CI voor TestFlight">Selftest</button>
+      <button id="btn-boot-sim" type="button">Simuleer opstart</button>
+      <button id="btn-full-demo" class="primary" type="button">Volledige demo</button>
+      <button id="btn-demo-speed" type="button">Demo te hard</button>
+      <button id="btn-drive" type="button">Demo-rit</button>
       <button id="btn-demo-alert" type="button">Demo flitser</button>
       <button id="btn-demo-clear" type="button">Leeg</button>
-      <label class="toggle-label">
-        <input id="toggle-speech" type="checkbox" checked>
-        Spraak
-      </label>
+      <button id="btn-menu" type="button">Menu</button>
     </div>
-    <div id="status-pill" class="status-pill">Klaar — start de volledige demo</div>
+    <div id="status-pill" class="status-pill">Klaar - start de volledige demo</div>
   </div>
 
   <div class="mode-bar">
     <span class="mode-label">Actieve CarPlay-app:</span>
-    <button type="button" class="mode-btn active" data-mode="flitsmeister">🚗 Flitsmeister (navigatie)</button>
-    <button type="button" class="mode-btn" data-mode="flitsmaatje">🛡️ FlitsMaatje (Driving Task)</button>
+    <button type="button" class="mode-btn active" data-mode="flitsmeister">Flitsmeister (navigatie)</button>
+    <button type="button" class="mode-btn" data-mode="flitsmaatje">FlitsMaatje (Driving Task)</button>
   </div>
 
   <div class="carplay-frame" aria-label="CarPlay simulatie">
     <div class="carplay-statusbar">
       <span id="clock">--:--</span>
       <span>4G</span>
-      <span>🔋</span>
+      <span>Accu</span>
     </div>
 
     <div id="carplay-notif" class="carplay-notif hidden" aria-live="assertive">
-      <span id="notif-icon" class="carplay-notif-icon">📷</span>
+      <span id="notif-icon" class="carplay-notif-icon">!</span>
       <div class="carplay-notif-text">
         <div id="notif-title" class="carplay-notif-title">Vaste flitser</div>
         <div id="notif-sub" class="carplay-notif-sub">Over 200 meter</div>
@@ -55,7 +52,7 @@
 
     <div id="carplay-alert-modal" class="carplay-alert-modal hidden" role="alertdialog" aria-modal="true">
       <div class="carplay-alert-box">
-        <div id="alert-modal-title" class="carplay-alert-title">📷 Vaste flitser — over 200 m</div>
+        <div id="alert-modal-title" class="carplay-alert-title">Vaste flitser - over 200 m</div>
         <button id="alert-modal-ok" type="button" class="carplay-alert-ok">OK</button>
       </div>
     </div>
@@ -64,7 +61,7 @@
       <h2>Widgets</h2>
       <div id="flits-widget" class="flits-widget clear" aria-live="polite">
         <div class="flits-widget-header">
-          <span class="flits-widget-icon shield">🛡️</span>
+          <span class="flits-widget-icon shield">FM</span>
           <span class="flits-widget-brand">FlitsMaatje</span>
         </div>
         <div class="flits-widget-label">Geen meldingen</div>
@@ -73,23 +70,72 @@
     </aside>
 
     <main class="dashboard-main">
-      <div class="app-row" aria-hidden="true">
-        <div class="app-tile" data-app="maps" title="Kaarten">🗺️</div>
-        <div class="app-tile active" data-app="flitsmeister" title="Flitsmeister">🚗</div>
-        <div class="app-tile" data-app="flitsmaatje" title="FlitsMaatje">🛡️</div>
-        <div class="app-tile" title="Muziek">🎵</div>
+      <div class="carplay-sidebar" aria-hidden="true">
+        <div class="sidebar-time">
+          <span id="clock-sidebar">--:--</span>
+          <span class="sidebar-signal">5G</span>
+        </div>
+        <div class="app-tile" data-app="maps" title="Kaarten">Map</div>
+        <div class="app-tile active" data-app="flitsmeister" title="Flitsmeister">FM</div>
+        <div class="app-tile" data-app="flitsmaatje" title="FlitsMaatje">FL</div>
+        <div class="app-tile" title="Muziek">MU</div>
+        <div class="app-grid-button">Menu</div>
       </div>
 
       <section id="panel-nav" class="maps-panel">
-        <div id="nav-hint" class="maps-overlay">
-          <strong>Flitsmeister</strong>
-          Route actief — FlitsMaatje waarschuwt op de achtergrond
+        <div id="nav-card" class="nav-card">
+          <div class="nav-card-top">
+            <div id="nav-card-icon" class="nav-card-icon">R</div>
+            <div class="nav-card-copy">
+              <div id="nav-card-distance" class="nav-card-distance">250 m</div>
+              <div id="nav-card-instruction" class="nav-card-instruction">Ga rechtsaf naar Meesterstraat</div>
+            </div>
+          </div>
+          <div class="lane-strip">
+            <span class="lane muted">L</span>
+            <span class="lane">S</span>
+            <span class="lane active">R</span>
+            <span class="lane">S</span>
+          </div>
         </div>
+
+        <div id="route-summary" class="route-summary">
+          <div class="summary-cell">
+            <span id="summary-arrival" class="summary-value">09:57</span>
+            <span class="summary-label">aankomst</span>
+          </div>
+          <div class="summary-cell">
+            <span id="summary-duration" class="summary-value">16</span>
+            <span class="summary-label">min.</span>
+          </div>
+          <div class="summary-cell">
+            <span id="summary-distance" class="summary-value">12</span>
+            <span class="summary-label">km</span>
+          </div>
+        </div>
+
         <div id="speed-hud" class="speed-hud hidden">
-          <span id="speed-hud-value">--</span>
-          <span class="speed-hud-unit">km/u</span>
-          <span id="speed-hud-limit" class="speed-hud-limit">limiet --</span>
+          <div class="speed-limit-sign">
+            <span id="speed-hud-limit-sign">50</span>
+          </div>
+          <div class="speed-hud-readout">
+            <span id="speed-hud-value">--</span>
+            <span class="speed-hud-unit">km/u</span>
+          </div>
         </div>
+
+        <div id="fine-card" class="fine-card hidden">
+          <div class="fine-card-header">
+            <span class="fine-card-icon">CAM</span>
+            <span id="fine-card-title">Flitser over 350 m</span>
+          </div>
+          <div class="fine-card-divider"></div>
+          <div class="fine-card-body">
+            <span id="fine-card-text">Boete bij 57 km/u:</span>
+            <strong id="fine-card-price">EUR 89</strong>
+          </div>
+        </div>
+
         <div id="map"></div>
       </section>
 
@@ -116,26 +162,42 @@
     <pre id="selftest-output" class="selftest-output"></pre>
   </div>
 
+  <div id="settings-menu" class="settings-menu hidden" aria-live="polite">
+    <div class="settings-menu-header">
+      <h3>CarPlay menu</h3>
+      <button id="settings-close" type="button" class="settings-close">Sluit</button>
+    </div>
+    <label class="settings-toggle">
+      <span>
+        <strong>Gesproken aanwijzingen</strong>
+        <small>Schakel route- en flitser-spraak in of uit</small>
+      </span>
+      <input id="toggle-speech" type="checkbox" checked>
+    </label>
+  </div>
+
   <div class="legend">
-    <div class="legend-item"><span class="dot dot-speed"></span> Stille boete-banner bij te hard (geen spraak)</div>
-    <div class="legend-item"><span class="dot dot-banner"></span> Flitser-banner + spraak (iOS 18.4+)</div>
-    <div class="legend-item"><span class="dot dot-modal"></span> CPAlert-popup (FlitsMaatje open op CarPlay)</div>
+    <div class="legend-item"><span class="dot dot-speed"></span> Stille boete-banner bij te hard</div>
+    <div class="legend-item"><span class="dot dot-banner"></span> Flitser-banner plus spraak</div>
+    <div class="legend-item"><span class="dot dot-modal"></span> CPAlert-popup</div>
   </div>
 
   <p class="hint">
-    <strong>Lokaal testen vóór TestFlight:</strong> <code>./scripts/verify_before_testflight.sh</code> of open
+    <strong>Lokaal testen voor TestFlight:</strong> <code>./scripts/verify_before_testflight.sh</code> of open
     <a href="/api/carplay-selftest">/api/carplay-selftest</a>.
     Webpreview op <a href="https://flitsmaatje.readvanes.nl/carplay">flitsmaatje.readvanes.nl/carplay</a>.
-    Positie: <span id="coords" class="coords">—</span>
+    Positie: <span id="coords" class="coords">-</span>
   </p>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/js/carplay.js"></script>
   <script>
     function tickClock() {
-      const el = document.getElementById("clock");
-      if (!el) return;
-      el.textContent = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+      const value = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+      const topEl = document.getElementById("clock");
+      const sidebarEl = document.getElementById("clock-sidebar");
+      if (topEl) topEl.textContent = value;
+      if (sidebarEl) sidebarEl.textContent = value;
     }
     tickClock();
     setInterval(tickClock, 30000);
