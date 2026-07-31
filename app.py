@@ -153,6 +153,31 @@ CAMERA_CACHE_TTL = 300  # seconden
 CAMERA_FAILURE_CACHE_TTL = 20
 CAMERA_OVERPASS_TIMEOUT = 6
 
+# De vaste SCDB-database dekt dit gebied. Binnen dit gebied mag een live
+# Overpass-call de kaart- en alarm-API nooit vertragen: de iOS-app pollt om de
+# twee seconden en heeft de lokale database juist nodig als betrouwbare bron.
+CAMERA_DATABASE_BOUNDS = {
+    "min_lng": -5.5,
+    "max_lng": 15.5,
+    "min_lat": 42.0,
+    "max_lat": 55.5,
+}
+
+
+def should_fetch_osm_speed_cameras(lat, lng):
+    """Gebruik OSM alleen buiten het geïmporteerde databasegebied.
+
+    FLITSMAATJE_ENABLE_OSM_CAMERAS=1 blijft beschikbaar voor onderhoud/tests,
+    maar staat bewust niet standaard aan op de rijdende productie-API.
+    """
+    if os.environ.get("FLITSMAATJE_ENABLE_OSM_CAMERAS") == "1":
+        return True
+    bounds = CAMERA_DATABASE_BOUNDS
+    return not (
+        bounds["min_lat"] <= lat <= bounds["max_lat"]
+        and bounds["min_lng"] <= lng <= bounds["max_lng"]
+    )
+
 # Als een weg geen expliciete maxspeed-tag heeft, vallen we terug op een
 # vuistregel per wegtype (Nederlandse standaardlimieten). Dit is een
 # benadering: de officiële, geldende limiet wordt altijd bepaald door de
@@ -398,7 +423,13 @@ def estimate_fine(zone, measured_kmh, limit_kmh):
     }
 
 def cleanup_expired(db):
-    db.execute("DELETE FROM reports WHERE expires_at < ?", (time.time(),))
+    # Een vaste paal is brondata, geen tijdelijke gebruikersmelding. Laat die
+    # nooit stil verdwijnen door een oude importdatum.
+    db.execute(
+        "DELETE FROM reports WHERE expires_at < ? "
+        "AND type NOT IN ('flitser_vast', 'trajectcontrole')",
+        (time.time(),),
+    )
     db.commit()
 
 
@@ -580,7 +611,12 @@ def get_reports():
     # Vaste flitscamera's horen ook op de kaart te staan, niet alleen in de
     # dichtstbijzijnde-waarschuwing.
     camera_radius_m = min(5000, max(2000, int(radius_km * 1000)))
-    for camera in fetch_osm_speed_cameras(lat, lng, radius_m=camera_radius_m):
+    osm_cameras = (
+        fetch_osm_speed_cameras(lat, lng, radius_m=camera_radius_m)
+        if should_fetch_osm_speed_cameras(lat, lng)
+        else []
+    )
+    for camera in osm_cameras:
         dist = haversine_km(lat, lng, camera["lat"], camera["lng"])
         if dist <= radius_km:
             results.append({
@@ -663,10 +699,11 @@ def nearby_alert():
         for row in rows
         if heading_matches(heading, row["heading"])
     ]
-    candidates.extend(
-        camera for camera in fetch_osm_speed_cameras(lat, lng)
-        if heading_matches(heading, camera.get("heading"))
-    )
+    if should_fetch_osm_speed_cameras(lat, lng):
+        candidates.extend(
+            camera for camera in fetch_osm_speed_cameras(lat, lng)
+            if heading_matches(heading, camera.get("heading"))
+        )
     candidates.extend(fetch_incidents(lat, lng, radius_km))
 
     closest = None

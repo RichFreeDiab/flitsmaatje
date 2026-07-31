@@ -58,6 +58,7 @@ class NavigationFeatureTests(unittest.TestCase):
             "confirms": 0,
         }
         with (
+            patch.dict(os.environ, {"FLITSMAATJE_ENABLE_OSM_CAMERAS": "1"}),
             patch.object(app, "sync_ndw_reports"),
             patch.object(app, "fetch_osm_speed_cameras", return_value=[camera]),
             patch.object(app, "fetch_incidents", return_value=[]),
@@ -86,6 +87,7 @@ class NavigationFeatureTests(unittest.TestCase):
             "confirms": 0,
         }
         with (
+            patch.dict(os.environ, {"FLITSMAATJE_ENABLE_OSM_CAMERAS": "1"}),
             patch.object(app, "sync_ndw_reports"),
             patch.object(app, "fetch_osm_speed_cameras", return_value=[camera]),
             patch.object(app, "fetch_incidents", return_value=[]),
@@ -142,6 +144,7 @@ class NavigationFeatureTests(unittest.TestCase):
             "confirms": 0,
         }
         with (
+            patch.dict(os.environ, {"FLITSMAATJE_ENABLE_OSM_CAMERAS": "1"}),
             patch.object(app, "sync_ndw_reports"),
             patch.object(app, "fetch_osm_speed_cameras", return_value=[camera]),
             patch.object(app, "fetch_incidents", return_value=[]),
@@ -155,6 +158,39 @@ class NavigationFeatureTests(unittest.TestCase):
             if report["type"] == "flitser_vast"
         ]
         self.assertTrue(any(report["id"] == camera["id"] for report in fixed))
+
+    def test_database_region_does_not_wait_for_live_osm(self):
+        with (
+            patch.object(app, "sync_ndw_reports"),
+            patch.object(app, "fetch_osm_speed_cameras") as osm,
+            patch.object(app, "fetch_incidents", return_value=[]),
+        ):
+            response = app.app.test_client().get(
+                "/api/reports?lat=52.3676&lng=4.9041&radius_km=2"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        osm.assert_not_called()
+
+    def test_cleanup_keeps_fixed_camera_source_data(self):
+        with app.app.app_context():
+            db = app.get_db()
+            camera_id = "test-expired-fixed-camera"
+            db.execute(
+                "INSERT OR REPLACE INTO reports "
+                "(id, type, lat, lng, heading, created_at, expires_at, confirms, denies) "
+                "VALUES (?, 'flitser_vast', 52.0, 5.0, NULL, 0, 0, 1, 0)",
+                (camera_id,),
+            )
+            db.commit()
+
+            app.cleanup_expired(db)
+
+            self.assertIsNotNone(
+                db.execute("SELECT id FROM reports WHERE id = ?", (camera_id,)).fetchone()
+            )
+            db.execute("DELETE FROM reports WHERE id = ?", (camera_id,))
+            db.commit()
 
 
 if __name__ == "__main__":
