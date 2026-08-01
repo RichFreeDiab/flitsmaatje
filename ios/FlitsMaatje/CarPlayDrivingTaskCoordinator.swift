@@ -82,7 +82,7 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
 
         if let speed = locationService?.currentSpeedKmh,
            let limit = locationService?.speedLimit,
-           let fine = locationService?.fineEstimate,
+           let fine = locationService?.effectiveFineEstimate,
            let detail = fine.displayText(speedKmh: speed, limit: limit) {
             let item = CPListItem(text: "Snelheidswaarschuwing", detailText: detail)
             item.isEnabled = false

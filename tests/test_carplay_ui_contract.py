@@ -63,7 +63,14 @@ class CarPlayUIContractTests(unittest.TestCase):
             ROOT / "ios" / "FlitsMaatje" / "LocationBackgroundService.swift"
         ).read_text(encoding="utf-8")
         self.assertIn("location.speed <= 0.5, coordinateSpeed >= 1.5", location_service)
-        self.assertIn('return "Boete wordt berekend…"', location_service)
+        self.assertIn("FineCalculator.estimate(", location_service)
+        self.assertNotIn('return "Boete wordt berekend…"', location_service)
+
+    def test_native_maneuver_objects_are_stable_between_gps_updates(self):
+        self.assertIn("private var stableManeuvers: [CPManeuver]", COORDINATOR)
+        self.assertIn("let mustRebuild =", COORDINATOR)
+        self.assertIn("session.updateTravelEstimates(estimates, for: current)", COORDINATOR)
+        self.assertEqual(COORDINATOR.count("session.upcomingManeuvers ="), 1)
 
 
 if __name__ == "__main__":

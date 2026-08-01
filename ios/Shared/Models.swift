@@ -108,6 +108,70 @@ struct FineEstimate: Codable, Equatable {
     }
 }
 
+enum FineCalculator {
+    private static let administrationCost = 9
+    private static let tables: [String: [Int: Int]] = [
+        "bebouwde_kom": [
+            4: 37, 5: 46, 6: 56, 7: 65, 8: 73, 9: 84, 10: 95,
+            11: 129, 12: 140, 13: 155, 14: 166, 15: 179, 16: 192,
+            17: 207, 18: 223, 19: 237, 20: 255, 21: 272, 22: 289,
+            23: 308, 24: 324, 25: 345, 26: 363, 27: 387, 28: 405,
+            29: 426, 30: 446,
+        ],
+        "buiten_bebouwde_kom": [
+            4: 33, 5: 42, 6: 50, 7: 59, 8: 68, 9: 79, 10: 89,
+            11: 121, 12: 134, 13: 147, 14: 159, 15: 172, 16: 184,
+            17: 197, 18: 210, 19: 227, 20: 243, 21: 258, 22: 273,
+            23: 289, 24: 308, 25: 326, 26: 345, 27: 362, 28: 381,
+            29: 404, 30: 424,
+        ],
+        "snelweg": [
+            4: 28, 5: 34, 6: 41, 7: 49, 8: 56, 9: 64, 10: 84,
+            11: 115, 12: 126, 13: 136, 14: 147, 15: 159, 16: 171,
+            17: 185, 18: 200, 19: 213, 20: 229, 21: 244, 22: 258,
+            23: 273, 24: 289, 25: 304, 26: 321, 27: 337, 28: 350,
+            29: 369, 30: 389, 31: 408, 32: 427, 33: 446, 34: 468,
+            35: 488, 36: 508, 37: 524, 38: 524, 39: 524, 40: 541,
+        ],
+    ]
+
+    static func estimate(zone: String?, measuredKmh: Int, limitKmh: Int) -> FineEstimate? {
+        let resolvedZone: String
+        if let zone, tables[zone] != nil {
+            resolvedZone = zone
+        } else if limitKmh >= 90 {
+            resolvedZone = "snelweg"
+        } else if limitKmh <= 50 {
+            resolvedZone = "bebouwde_kom"
+        } else {
+            resolvedZone = "buiten_bebouwde_kom"
+        }
+
+        let corrected = measuredKmh <= 100
+            ? Double(measuredKmh - 3)
+            : Double(measuredKmh) * 0.97
+        let excess = Int(floor(corrected - Double(limitKmh)))
+        guard excess >= 4 else { return nil }
+
+        guard let baseAmount = tables[resolvedZone]?[excess] else {
+            return FineEstimate(
+                excess_kmh: excess,
+                bedrag: nil,
+                bedrag_excl_administratiekosten: nil,
+                om_zaak: true,
+                indicatief: true
+            )
+        }
+        return FineEstimate(
+            excess_kmh: excess,
+            bedrag: baseAmount + administrationCost,
+            bedrag_excl_administratiekosten: baseAmount,
+            om_zaak: false,
+            indicatief: true
+        )
+    }
+}
+
 struct SpeedCheckResponse: Codable {
     let limit: SpeedLimitInfo
     let fine: FineEstimate?

@@ -11,6 +11,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     @Published var mapReports: [MapReport] = []
     @Published var currentSpeedKmh: Int?
     @Published var speedLimit: Int?
+    @Published var speedZone: String?
     @Published var fineEstimate: FineEstimate?
     @Published var trafficInfo: TomTomTraffic?
     @Published var roadName: String?
@@ -24,16 +25,18 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     var fineStatusText: String? {
+        effectiveFineEstimate?.compactAmountText
+    }
+
+    var effectiveFineEstimate: FineEstimate? {
         guard let speed = currentSpeedKmh, let limit = speedLimit else { return nil }
-        let corrected = speed <= 100 ? speed - 3 : Int(Double(speed) * 0.97)
-        let excess = corrected - limit
-        guard excess >= 4 else { return nil }
-        guard let fineEstimate,
-              fineEstimate.excess_kmh >= 4,
-              abs(fineEstimate.excess_kmh - excess) <= 1 else {
-            return "Boete wordt berekend…"
-        }
-        return fineEstimate.compactAmountText
+        // Bereken bij iedere GPS-update direct lokaal. De server bepaalt nog
+        // steeds de limiet en zone, maar een netwerkrequest blokkeert het bedrag niet.
+        return FineCalculator.estimate(
+            zone: speedZone,
+            measuredKmh: speed,
+            limitKmh: limit
+        )
     }
 
     var managerAuthorizationIsAlways: Bool {
@@ -147,6 +150,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         recentSpeedSamples.removeAll()
         lastAcceptedSpeedAt = .distantPast
         speedLimit = nil
+        speedZone = nil
         fineEstimate = nil
         trafficInfo = nil
         roadName = nil
@@ -314,7 +318,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 CarPlayNavigationCoordinator.shared.handleFlitserAlert(alert)
                 refreshCarPlay(alert: alert)
             } else {
-                statusText = fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
+                statusText = effectiveFineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
                 persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
                 resetAlarmState()
                 CarPlayNavigationCoordinator.shared.handleFlitserAlert(nil)
@@ -350,13 +354,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             }
 
             speedLimit = response.limit.maxspeed
+            speedZone = response.limit.zone
             roadName = response.limit.road_name
             fineEstimate = response.fine
             trafficInfo = response.traffic
             lastSpeedLimitUpdatedAt = Date()
 
             if currentAlert == nil,
-               let fineText = response.fine?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) {
+               let fineText = effectiveFineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) {
                 statusText = fineText
             }
             handleSpeedingFine()
@@ -371,7 +376,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
                 speedKmh: currentSpeedKmh,
                 limit: speedLimit,
-                fine: fineEstimate
+                fine: effectiveFineEstimate
             )
         } catch {
             if !Task.isCancelled {
@@ -444,11 +449,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         if let speed = currentSpeedKmh, let limit = speedLimit, speed >= limit + 4 {
             return true
         }
-        return (fineEstimate?.excess_kmh ?? 0) >= 4
+        return (effectiveFineEstimate?.excess_kmh ?? 0) >= 4
     }
 
     private func handleSpeedingFine() {
-        guard let body = fineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? speedingWarningText else {
+        let activeFine = effectiveFineEstimate
+        guard let body = activeFine?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? speedingWarningText else {
             clearSpeedingState()
             return
         }
@@ -457,12 +463,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         guard signature != lastSpeedingSignature else { return }
         lastSpeedingSignature = signature
 
-        if let fine = fineEstimate {
+        if let fine = activeFine {
             AlertNotifier.updateSpeedingPopup(speedKmh: currentSpeedKmh, limit: speedLimit, fine: fine)
         }
         refreshCarPlaySpeeding()
         CarPlayNavigationCoordinator.shared.handleSpeedingFine(
-            fine: fineEstimate,
+            fine: activeFine,
             speedKmh: currentSpeedKmh,
             limit: speedLimit
         )
@@ -498,7 +504,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
             speedKmh: currentSpeedKmh,
             limit: speedLimit,
-            fine: fineEstimate
+            fine: effectiveFineEstimate
         )
     }
 

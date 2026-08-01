@@ -21,6 +21,9 @@ final class CarPlayNavigationCoordinator: NSObject {
     private var searchTemplate: CPSearchTemplate?
     private var laneGuidanceSignature: String?
     private var activeLaneGuidance: AnyObject?
+    private var maneuverRouteIdentifier: ObjectIdentifier?
+    private var maneuverStepIndex = -1
+    private var stableManeuvers: [CPManeuver] = []
 
     func attach(
         template: CPMapTemplate,
@@ -48,6 +51,9 @@ final class CarPlayNavigationCoordinator: NSObject {
         lastFineAlertText = nil
         laneGuidanceSignature = nil
         activeLaneGuidance = nil
+        maneuverRouteIdentifier = nil
+        maneuverStepIndex = -1
+        stableManeuvers = []
     }
 
     func syncFromPhoneNavigation() {
@@ -220,41 +226,58 @@ final class CarPlayNavigationCoordinator: NSObject {
         guard let session = navigationSession else { return }
         let startIndex = navigationService?.currentStepIndex ?? 0
 
-        let maneuvers: [CPManeuver] = route.steps
-            .dropFirst(startIndex)
-            .filter {
-                !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            }
-            .prefix(3)
-            .enumerated()
-            .compactMap { offset, step in
-                let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !instruction.isEmpty else { return nil }
-                let maneuver = CPManeuver()
-                let image = UIImage(systemName: maneuverSymbolName(for: instruction))?
-                    .withTintColor(.white, renderingMode: .alwaysOriginal)
-                let variants = instructionVariants()
-                maneuver.symbolImage = image
-                maneuver.dashboardSymbolImage = image
-                maneuver.notificationSymbolImage = image
-                maneuver.instructionVariants = variants
-                maneuver.dashboardInstructionVariants = variants
-                maneuver.notificationInstructionVariants = variants
-                maneuver.cardBackgroundColor = .black
-                let distance = offset == 0
-                    ? Double(navigationService?.currentManeuverDistanceM ?? Int(step.distance))
-                    : step.distance
-                maneuver.initialTravelEstimates = CPTravelEstimates(
-                    distanceRemaining: Measurement(value: max(0, distance), unit: UnitLength.meters),
-                    timeRemaining: max(1, distance / 13.9)
-                )
-                return maneuver
-            }
+        let routeIdentifier = ObjectIdentifier(route)
+        let mustRebuild = routeIdentifier != maneuverRouteIdentifier || startIndex != maneuverStepIndex
+        if mustRebuild {
+            stableManeuvers = route.steps
+                .dropFirst(startIndex)
+                .filter {
+                    !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+                .prefix(3)
+                .enumerated()
+                .compactMap { offset, step in
+                    let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !instruction.isEmpty else { return nil }
+                    let maneuver = CPManeuver()
+                    let image = UIImage(systemName: maneuverSymbolName(for: instruction))?
+                        .withTintColor(.white, renderingMode: .alwaysOriginal)
+                    let variants = instructionVariants()
+                    maneuver.symbolImage = image
+                    maneuver.dashboardSymbolImage = image
+                    maneuver.notificationSymbolImage = image
+                    maneuver.instructionVariants = variants
+                    maneuver.dashboardInstructionVariants = variants
+                    maneuver.notificationInstructionVariants = variants
+                    maneuver.cardBackgroundColor = .black
+                    let distance = offset == 0
+                        ? Double(navigationService?.currentManeuverDistanceM ?? Int(step.distance))
+                        : step.distance
+                    maneuver.initialTravelEstimates = CPTravelEstimates(
+                        distanceRemaining: Measurement(value: max(0, distance), unit: UnitLength.meters),
+                        timeRemaining: max(1, distance / 13.9)
+                    )
+                    return maneuver
+                }
+            maneuverRouteIdentifier = routeIdentifier
+            maneuverStepIndex = startIndex
+            // Alleen een nieuwe route of afslag vervangt de kaart. Bij gewone
+            // GPS-updates blijft hetzelfde CPManeuver-object op zijn plek.
+            session.upcomingManeuvers = stableManeuvers
+        }
+
+        if let current = stableManeuvers.first {
+            let distance = Double(max(0, navigationService?.currentManeuverDistanceM ?? 0))
+            let estimates = CPTravelEstimates(
+                distanceRemaining: Measurement(value: distance, unit: UnitLength.meters),
+                timeRemaining: max(1, distance / 13.9)
+            )
+            session.updateTravelEstimates(estimates, for: current)
+        }
 
         if #available(iOS 17.4, *) {
-            updateModernNavigationMetadata(session: session, maneuvers: maneuvers)
+            updateModernNavigationMetadata(session: session, maneuvers: stableManeuvers)
         }
-        session.upcomingManeuvers = maneuvers
     }
 
     private func maneuverSymbolName(for instruction: String) -> String {
@@ -418,6 +441,9 @@ final class CarPlayNavigationCoordinator: NSObject {
         activeRoute = nil
         laneGuidanceSignature = nil
         activeLaneGuidance = nil
+        maneuverRouteIdentifier = nil
+        maneuverStepIndex = -1
+        stableManeuvers = []
         navigationService?.stopNavigation()
         mapViewController?.clearRoute()
         mapTemplate?.hideTripPreviews()

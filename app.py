@@ -235,11 +235,24 @@ def classify_zone(highway_type, maxspeed):
 
 
 def fetch_speed_limit(lat, lng):
-    """Vraag de dichtstbijzijnde weg met snelheidslimiet op via Overpass."""
+    """Vraag de limiet snel via TomTom op, met OSM als aanvullende fallback."""
     cache_key = (round(lat, 4), round(lng, 4))
     cached = _speed_limit_cache.get(cache_key)
     if cached and (time.time() - cached[1]) < SPEED_LIMIT_CACHE_TTL:
         return cached[0]
+
+    # TomTom reageert op productie doorgaans binnen 100 ms. Overpass kon twee
+    # time-outs veroorzaken en hield de boetekaart daardoor secondenlang vast.
+    tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
+    if tomtom_limit is not None:
+        result = {
+            "maxspeed": tomtom_limit,
+            "zone": classify_zone(None, tomtom_limit),
+            "road_name": None,
+            "source": "tomtom_snap_to_roads",
+        }
+        _speed_limit_cache[cache_key] = (result, time.time())
+        return result
 
     query = f"""
         [out:json][timeout:{OVERPASS_TIMEOUT}];
@@ -254,19 +267,22 @@ def fetch_speed_limit(lat, lng):
         # fallback, zodat de boeteberekening niet stilvalt zonder limiet.
         tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
         if tomtom_limit is not None:
-            return {
+            result = {
                 "maxspeed": tomtom_limit,
                 "zone": classify_zone(None, tomtom_limit),
                 "road_name": None,
                 "source": "tomtom_snap_to_roads",
             }
-        return {
-            "maxspeed": None,
-            "zone": None,
-            "road_name": None,
-            "source": "unavailable",
-            "error": str(error),
-        }
+        else:
+            result = {
+                "maxspeed": None,
+                "zone": None,
+                "road_name": None,
+                "source": "unavailable",
+                "error": str(error),
+            }
+        _speed_limit_cache[cache_key] = (result, time.time())
+        return result
 
     elements = data.get("elements", [])
     if not elements:

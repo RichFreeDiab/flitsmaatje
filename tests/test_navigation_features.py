@@ -14,9 +14,9 @@ class NavigationFeatureTests(unittest.TestCase):
         self.anwb_patch.start()
         self.addCleanup(self.anwb_patch.stop)
 
-    def test_speed_check_uses_tomtom_when_overpass_finds_no_road(self):
+    def test_speed_check_uses_fast_tomtom_path_without_waiting_for_overpass(self):
         with (
-            patch.object(app, "run_overpass_query", return_value={"elements": []}),
+            patch.object(app, "run_overpass_query", return_value={"elements": []}) as overpass,
             patch.object(app, "fetch_tomtom_speed_limit", return_value=100),
             patch.object(app, "fetch_flow_segment", return_value=None),
         ):
@@ -30,6 +30,7 @@ class NavigationFeatureTests(unittest.TestCase):
         self.assertEqual(payload["limit"]["source"], "tomtom_snap_to_roads")
         self.assertEqual(payload["fine"]["excess_kmh"], 9)
         self.assertEqual(payload["fine"]["bedrag"], 73)
+        overpass.assert_not_called()
 
     def test_tomtom_speed_limit_uses_two_points_and_parses_route_segments(self):
         response = Mock()
