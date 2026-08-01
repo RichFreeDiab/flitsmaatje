@@ -30,6 +30,13 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertIn("maneuvers.first?.linkedLaneGuidance = guidance", COORDINATOR)
         self.assertIn("CPLane(", COORDINATOR)
 
+    def test_lane_guidance_is_stable_and_kept_at_the_junction(self):
+        self.assertIn("laneGuidanceLastSeenAt", COORDINATOR)
+        self.assertIn("createdNewGuidance || session.currentLaneGuidance == nil", COORDINATOR)
+        self.assertIn("Date().timeIntervalSince(laneGuidanceLastSeenAt) > 2.5", COORDINATOR)
+        self.assertNotIn("return location.distance(from: end) <= 60", NAVIGATION)
+        self.assertIn("isBehindVehicle(coordinate, from: location)", NAVIGATION)
+
     def test_alerts_do_not_replace_the_native_maneuver_card(self):
         self.assertNotIn("present(navigationAlert:", COORDINATOR)
         self.assertIn("De compacte flitserkaart staat rechtsonder", COORDINATOR)

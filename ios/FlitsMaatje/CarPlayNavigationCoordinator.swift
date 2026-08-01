@@ -21,6 +21,7 @@ final class CarPlayNavigationCoordinator: NSObject {
     private var searchTemplate: CPSearchTemplate?
     private var laneGuidanceSignature: String?
     private var activeLaneGuidance: AnyObject?
+    private var laneGuidanceLastSeenAt = Date.distantPast
     private var maneuverRouteIdentifier: ObjectIdentifier?
     private var maneuverStepIndex = -1
     private var stableManeuvers: [CPManeuver] = []
@@ -51,6 +52,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         lastFineAlertText = nil
         laneGuidanceSignature = nil
         activeLaneGuidance = nil
+        laneGuidanceLastSeenAt = .distantPast
         maneuverRouteIdentifier = nil
         maneuverStepIndex = -1
         stableManeuvers = []
@@ -319,19 +321,27 @@ final class CarPlayNavigationCoordinator: NSObject {
         guard navigationService?.laneGuidanceDistanceM != nil,
               let section = navigationService?.laneSections.first,
               !section.lanes.isEmpty else {
-            session.currentLaneGuidance = nil
-            laneGuidanceSignature = nil
-            activeLaneGuidance = nil
+            // Een enkele onnauwkeurige GPS-update mag de rijstrookkaart niet
+            // laten knipperen. Houd de laatste geldige aanwijzing kort vast.
+            if Date().timeIntervalSince(laneGuidanceLastSeenAt) > 2.5 {
+                session.currentLaneGuidance = nil
+                laneGuidanceSignature = nil
+                activeLaneGuidance = nil
+            }
             return
         }
 
-        let signature = section.lanes
+        laneGuidanceLastSeenAt = Date()
+        let laneSignature = section.lanes
             .map { "\($0.directions.joined(separator: ",")):\($0.follow ?? "-")" }
             .joined(separator: "|")
+        let signature = "\(section.start_point_index)-\(section.end_point_index):\(laneSignature)"
         let guidance: CPLaneGuidance
+        let createdNewGuidance: Bool
         if signature == laneGuidanceSignature,
            let cached = activeLaneGuidance as? CPLaneGuidance {
             guidance = cached
+            createdNewGuidance = false
         } else {
             let newGuidance = CPLaneGuidance()
             newGuidance.instructionVariants = [
@@ -347,9 +357,13 @@ final class CarPlayNavigationCoordinator: NSObject {
             laneGuidanceSignature = signature
             activeLaneGuidance = newGuidance
             guidance = newGuidance
+            createdNewGuidance = true
         }
 
-        session.currentLaneGuidance = guidance
+        // Opnieuw toewijzen van hetzelfde object kan CarPlay animeren.
+        if createdNewGuidance || session.currentLaneGuidance == nil {
+            session.currentLaneGuidance = guidance
+        }
         maneuvers.first?.linkedLaneGuidance = guidance
     }
 
@@ -441,6 +455,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         activeRoute = nil
         laneGuidanceSignature = nil
         activeLaneGuidance = nil
+        laneGuidanceLastSeenAt = .distantPast
         maneuverRouteIdentifier = nil
         maneuverStepIndex = -1
         stableManeuvers = []

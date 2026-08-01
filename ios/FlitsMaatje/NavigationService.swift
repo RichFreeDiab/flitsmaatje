@@ -345,7 +345,10 @@ final class NavigationService: ObservableObject {
         laneSections.removeAll { section in
             guard let coordinate = section.endCoordinate else { return false }
             let end = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            return location.distance(from: end) <= 60
+            // Houd de pijlen zichtbaar tot de sectie daadwerkelijk achter de
+            // auto ligt. Alleen afstand liet ze 60 meter vóór de afslag wegvallen.
+            return location.distance(from: end) <= 90
+                && isBehindVehicle(coordinate, from: location)
         }
         laneSections.sort { left, right in
             laneDistance(left, from: location) < laneDistance(right, from: location)
@@ -362,7 +365,27 @@ final class NavigationService: ObservableObject {
 
     private func laneDistance(_ section: LaneSection, from location: CLLocation) -> CLLocationDistance {
         guard let coordinate = section.startCoordinate else { return .greatestFiniteMagnitude }
+        if isBehindVehicle(coordinate, from: location),
+           let end = section.endCoordinate,
+           !isBehindVehicle(end, from: location) {
+            return 0
+        }
         return location.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+    }
+
+    private func isBehindVehicle(
+        _ coordinate: CLLocationCoordinate2D,
+        from location: CLLocation
+    ) -> Bool {
+        guard location.course >= 0 else { return false }
+        let lat1 = location.coordinate.latitude * .pi / 180
+        let lat2 = coordinate.latitude * .pi / 180
+        let longitudeDelta = (coordinate.longitude - location.coordinate.longitude) * .pi / 180
+        let y = sin(longitudeDelta) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(longitudeDelta)
+        let bearing = (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+        let delta = abs((bearing - location.course + 540).truncatingRemainder(dividingBy: 360) - 180)
+        return delta > 105
     }
 
     private func routeScore(_ route: MKRoute) -> TimeInterval {
