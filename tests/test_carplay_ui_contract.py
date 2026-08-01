@@ -69,7 +69,7 @@ class CarPlayUIContractTests(unittest.TestCase):
     def test_native_maneuver_objects_are_stable_between_gps_updates(self):
         self.assertIn("private var stableManeuvers: [CPManeuver]", COORDINATOR)
         self.assertIn("let mustRebuild =", COORDINATOR)
-        self.assertIn("session.updateTravelEstimates(estimates, forManeuver: current)", COORDINATOR)
+        self.assertIn("session.updateEstimates(estimates, for: current)", COORDINATOR)
         self.assertEqual(COORDINATOR.count("session.upcomingManeuvers ="), 1)
 
 

@@ -272,7 +272,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                 distanceRemaining: Measurement(value: distance, unit: UnitLength.meters),
                 timeRemaining: max(1, distance / 13.9)
             )
-            session.updateTravelEstimates(estimates, forManeuver: current)
+            session.updateEstimates(estimates, for: current)
         }
 
         if #available(iOS 17.4, *) {
