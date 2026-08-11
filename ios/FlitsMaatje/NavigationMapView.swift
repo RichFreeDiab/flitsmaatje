@@ -18,6 +18,7 @@ struct NavigationMapView: View {
             mapLayer
             VStack(spacing: 10) {
                 searchBar
+                directionHUD
                 if navigation.isNavigating {
                     maneuverBanner
                 }
@@ -199,6 +200,98 @@ struct NavigationMapView: View {
             do { try await FavoriteDestinationStore.save(address: favoriteAddress, for: kind); favoriteToEdit = nil }
             catch { favoriteError = "Controleer het adres en probeer opnieuw." }
         }
+    }
+
+    private var directionHUD: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: directionArrowSymbol)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(.white)
+                .rotationEffect(.degrees(directionArrowRotation))
+                .frame(width: 52, height: 52)
+                .background(Color.black.opacity(0.82), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(directionTitle)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(directionSubtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(2)
+                if navigation.isNavigating,
+                   let section = navigation.laneSections.first,
+                   !section.lanes.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
+                            Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
+                                .font(.system(size: 18, weight: lane.follow != nil ? .bold : .regular))
+                                .foregroundStyle(Color.white.opacity(lane.follow != nil ? 1 : 0.35))
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 340, alignment: .leading)
+        .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Permanente richting en rijbaan")
+    }
+
+    private var courseDegrees: Double? {
+        guard let loc = location.lastLocation, loc.course >= 0 else { return nil }
+        return loc.course
+    }
+
+    private var directionArrowSymbol: String {
+        if navigation.isNavigating {
+            return maneuverSymbol(for: navigation.currentInstruction)
+        }
+        return "arrow.up"
+    }
+
+    private var directionArrowRotation: Double {
+        // Bij navigatie: maneuver-icoon rechtop; anders koerspijl draait mee.
+        if navigation.isNavigating { return 0 }
+        return courseDegrees ?? 0
+    }
+
+    private var directionTitle: String {
+        if navigation.isNavigating {
+            let text = navigation.currentInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? "Navigeren" : text
+        }
+        if let deg = courseDegrees {
+            return "Koers \(compassLabel(deg))"
+        }
+        return "Richting…"
+    }
+
+    private var directionSubtitle: String {
+        if let deg = courseDegrees {
+            let course = "\(Int(deg.rounded()))° \(compassLabel(deg))"
+            if navigation.isNavigating {
+                if let meters = navigation.laneGuidanceDistanceM {
+                    return "\(course) · rijbaan \(formatGuidanceDistance(meters))"
+                }
+                return "\(course) · pijl blijft zichtbaar"
+            }
+            return "\(course) · pijl blijft zichtbaar"
+        }
+        return "Wacht op GPS-koers"
+    }
+
+    private func compassLabel(_ deg: Double) -> String {
+        let names = ["N", "NO", "O", "ZO", "Z", "ZW", "W", "NW"]
+        let idx = Int(((deg.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360) / 45.0).rounded()) % 8
+        return names[idx]
     }
 
     private var maneuverBanner: some View {
