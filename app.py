@@ -254,87 +254,19 @@ def fetch_speed_limit(lat, lng):
         _speed_limit_cache[cache_key] = (result, time.time())
         return result
 
-    query = f"""
-        [out:json][timeout:{OVERPASS_TIMEOUT}];
-        way(around:35,{lat},{lng})[highway];
-        out tags;
-    """
-
-    try:
-        data = run_overpass_query(query)
-    except Exception as error:
-        # Overpass kan tijdens drukte time-outen. Gebruik TomTom als primaire
-        # fallback, zodat de boeteberekening niet stilvalt zonder limiet.
-        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
-        if tomtom_limit is not None:
-            result = {
-                "maxspeed": tomtom_limit,
-                "zone": classify_zone(None, tomtom_limit),
-                "road_name": None,
-                "source": "tomtom_snap_to_roads",
-            }
-        else:
-            result = {
-                "maxspeed": None,
-                "zone": None,
-                "road_name": None,
-                "source": "unavailable",
-                "error": str(error),
-            }
-        _speed_limit_cache[cache_key] = (result, time.time())
-        return result
-
-    elements = data.get("elements", [])
-    if not elements:
-        # Een geldige GPS-positie kan buiten de kleine Overpass-radius vallen,
-        # bijvoorbeeld op brede of parallelle rijbanen. Probeer dan alsnog de
-        # TomTom road match; zonder limiet kan de app geen boetebedrag tonen.
-        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
-        if tomtom_limit is not None:
-            result = {
-                "maxspeed": tomtom_limit,
-                "zone": classify_zone(None, tomtom_limit),
-                "road_name": None,
-                "source": "tomtom_snap_to_roads",
-            }
-        else:
-            result = {"maxspeed": None, "zone": None, "road_name": None, "source": "not_found"}
-        _speed_limit_cache[cache_key] = (result, time.time())
-        return result
-
-    # Kies de eerste weg met een expliciete maxspeed-tag; anders de eerste weg met een highway-type.
-    chosen = next((el for el in elements if "maxspeed" in el.get("tags", {})), elements[0])
-    tags = chosen.get("tags", {})
-    highway_type = tags.get("highway")
-    road_name = tags.get("name")
-
-    maxspeed_raw = tags.get("maxspeed")
-    maxspeed = None
-    source = "osm_tag"
-    if maxspeed_raw:
-        digits = "".join(ch for ch in maxspeed_raw if ch.isdigit())
-        if digits:
-            maxspeed = int(digits)
-
-    if maxspeed is None:
-        maxspeed = DEFAULT_LIMIT_BY_HIGHWAY.get(highway_type)
-        source = "default_estimate"
-
-    if maxspeed is None:
-        tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
-        if tomtom_limit is not None:
-            maxspeed = tomtom_limit
-            source = "tomtom_snap_to_roads"
-
+    # Hot path: GEEN Overpass hier. Overpass (2 endpoints x timeout) blokkeerde
+    # de rijdende app (iOS: Time-out van het verzoek). OSM-cameras blijven
+    # via fetch_osm_speed_cameras op een eigen pad.
     result = {
-        "maxspeed": maxspeed,
-        "zone": classify_zone(highway_type, maxspeed),
-        "road_name": road_name,
-        "highway_type": highway_type,
-        "source": source,
+        "maxspeed": None,
+        "zone": None,
+        "road_name": None,
+        "source": "unavailable",
+        "error": "no_tomtom_limit",
     }
     _speed_limit_cache[cache_key] = (result, time.time())
     return result
+
 
 
 def fetch_osm_speed_cameras(lat, lng, radius_m=2000):

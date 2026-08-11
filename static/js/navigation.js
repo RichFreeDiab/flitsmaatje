@@ -83,6 +83,7 @@
       );
       const start = pos.coords.longitude + "," + pos.coords.latitude;
       const end = places[0].lon + "," + places[0].lat;
+      window.__fmDest = { lat: parseFloat(places[0].lat), lng: parseFloat(places[0].lon), query };
       const data = await fetch(
         "https://router.project-osrm.org/route/v1/driving/" + start + ";" + end +
         "?overview=full&geometries=geojson&steps=true&language=nl"
@@ -104,6 +105,7 @@
       nextStep = 0;
       info.hidden = false;
       renderStep();
+      window.dispatchEvent(new CustomEvent("flitsmaatje:nav"));
       const summary = document.createElement("div");
       summary.className = "muted";
       summary.textContent = "Totaal " + (r.distance / 1000).toFixed(1) + " km · ongeveer " + Math.round(r.duration / 60) + " min";
@@ -146,6 +148,15 @@
       }
     }
   });
+
+
+  window.flitsmaatjeNav = {
+    hasRoute: () => steps.length > 0 && nextStep < steps.length,
+    getNextStep: () => steps[nextStep] || null,
+    getDestination: () => window.__fmDest || null,
+    getSteps: () => steps.slice(),
+  };
+  window.dispatchEvent(new CustomEvent("flitsmaatje:nav"));
 
   async function keepScreenOn() {
     try {

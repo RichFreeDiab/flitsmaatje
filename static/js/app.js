@@ -166,7 +166,10 @@ function onPosition(position) {
   userPos = { lat, lng };
   if (position.coords.heading !== null && Number.isFinite(position.coords.heading)) {
     currentHeading = position.coords.heading;
+    window.flitsmaatjeHeading = currentHeading;
   }
+  window.flitsmaatjePos = userPos;
+  window.flitsmaatjeHeading = currentHeading;
   window.dispatchEvent(new CustomEvent("flitsmaatje:position", { detail: { lat, lng } }));
 
   if (!map) {
@@ -419,7 +422,13 @@ async function fetchSpeedCheck() {
   if (!userPos) return;
   const speedParam = currentSpeedKmh !== null ? `&speed_kmh=${currentSpeedKmh.toFixed(1)}` : "";
   try {
-    const res = await fetch(`/api/speed-check?lat=${userPos.lat}&lng=${userPos.lng}${speedParam}`);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const res = await fetch(
+      `/api/speed-check?lat=${userPos.lat}&lng=${userPos.lng}${speedParam}`,
+      { signal: ctrl.signal }
+    );
+    clearTimeout(timer);
     const data = await res.json();
     renderSpeedLimit(data.limit, data.fine);
   } catch (e) {

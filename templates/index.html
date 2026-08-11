@@ -22,6 +22,14 @@
   <button id="install-hint-close" type="button" aria-label="Sluiten">✕</button>
   </div>
 
+
+  <div id="lane-hud" aria-live="polite">
+    <span id="lane-arrow" class="lane-arrow">↑</span>
+    <div id="lane-label" class="lane-label">Richting…</div>
+    <div id="lane-sub" class="lane-sub">Wacht op GPS</div>
+    <div id="lane-lanes" class="lane-lanes" hidden></div>
+  </div>
+
   <div id="speed-panel">
     <div id="speed-value">--</div>
     <div id="speed-unit">km/h</div>
@@ -63,5 +71,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/js/app.js"></script>
 <script src="/static/js/navigation.js"></script>
+<script src="/static/js/lane-hud.js"></script>
 </body>
 </html>

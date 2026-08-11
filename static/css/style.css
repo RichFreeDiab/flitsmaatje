@@ -259,3 +259,67 @@ body.alert-active #speed-panel {
     max-width: 480px;
   }
 }
+
+
+/* Permanente richting-/rijbaanpijl (altijd zichtbaar, links boven) */
+#lane-hud {
+  position: absolute;
+  top: max(110px, calc(env(safe-area-inset-top) + 96px));
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 1000;
+  background: rgba(30, 35, 39, 0.94);
+  color: #fff;
+  border-radius: 16px;
+  padding: 12px 14px;
+  min-width: 88px;
+  max-width: min(220px, 46vw);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+  text-align: center;
+  pointer-events: none;
+}
+#lane-hud .lane-arrow {
+  font-size: 42px;
+  line-height: 1;
+  font-weight: 700;
+  transform-origin: center center;
+  transition: transform 0.25s ease;
+  display: block;
+}
+#lane-hud .lane-label {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+#lane-hud .lane-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+  line-height: 1.2;
+}
+#lane-hud .lane-lanes {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+#lane-hud .lane-chip {
+  min-width: 28px;
+  height: 34px;
+  border-radius: 8px;
+  background: #2a3136;
+  border: 2px solid #4a5560;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+#lane-hud .lane-chip.follow {
+  background: #0a84ff;
+  border-color: #4da3ff;
+}
+body.alert-active #lane-hud {
+  opacity: 0.9;
+}
