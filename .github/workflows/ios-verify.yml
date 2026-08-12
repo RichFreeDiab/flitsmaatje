@@ -91,6 +91,10 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 150
     if: ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/testflight-'))
+    # Deel queue met workflow TestFlight — geen race op hetzelfde buildnummer
+    concurrency:
+      group: flitsmaatje-testflight-upload
+      cancel-in-progress: false
     permissions:
       contents: write
     env:

@@ -4,6 +4,11 @@ name: TestFlight
 on:
   workflow_dispatch: {}
 
+# Eén TestFlight-upload tegelijk (voorkomt dubbel buildnummer met ios-verify)
+concurrency:
+  group: flitsmaatje-testflight-upload
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: macos-26

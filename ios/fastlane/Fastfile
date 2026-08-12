@@ -182,17 +182,26 @@ def next_testflight_build_number(api_key:)
   end
 
   latest = [asc_latest, spaceship_latest].max
-  # App Store Connect can reserve a build number even when the upload job
-  # later fails. Leave one safety step so a retry never reuses that number.
-  # App Store Connect kan een buildnummer reserveren voordat een upload
-  # volledig verwerkt is. Neem daarom meerdere stappen afstand van het
-  # laatst zichtbare nummer, zodat een retry nooit opnieuw een bestaand of
-  # gereserveerd nummer gebruikt.
-  next_build = latest + 4
+  # +2: ASC kan een nummer reserveren vóór verwerking klaar is.
+  # CI-run_number als floor: parallelle jobs starten niet meer op hetzelfde nummer
+  # wanneer concurrency wacht; bij gelijke ASC-snapshot toch uniek genoeg.
+  run_floor = ENV.fetch("GITHUB_RUN_NUMBER", "0").to_i
+  next_build = [latest + 2, run_floor].max
+  # Extra unique salt when two upload jobs somehow still overlap
+  attempt = ENV.fetch("GITHUB_RUN_ATTEMPT", "1").to_i
+  rid_tail = ENV.fetch("GITHUB_RUN_ID", "0").to_s[-3, 3].to_i
+  if attempt > 1 || rid_tail.positive?
+    next_build = [next_build, latest + 2 + attempt + (rid_tail % 17)].max
+  end
   UI.important(
-    "Build-nummer: #{next_build} (fastlane=#{asc_latest}, spaceship=#{spaceship_latest})"
+    "Build-nummer: #{next_build} (fastlane=#{asc_latest}, spaceship=#{spaceship_latest}, "     "run=#{run_floor}, attempt=#{attempt})"
   )
   next_build
+end
+
+def redundant_binary_upload?(error)
+  msg = error.message.to_s
+  msg.match?(/redundant binary upload|already uploaded a build|bundle version must be higher/i)
 end
 
 platform :ios do
@@ -296,12 +305,43 @@ platform :ios do
         changelog: ENV["FLITSMAATJE_CHANGELOG"] || "CarPlay Dashboard-widget + achtergrondwaarschuwingen"
       )
     rescue StandardError => error
+      # Parallelle TestFlight-run won al met dit buildnummer → geen echte fout
+      if redundant_binary_upload?(error)
+        UI.success(
+          "Buildnummer al geüpload (waarschijnlijk parallelle workflow). "           "Behandel als succes — geen dubbele IPA nodig."
+        )
+        return
+      end
+
       retryable_upload_error = error.message.include?("buildUpload") || error.message.include?("409")
       raise unless retryable_upload_error && upload_attempt < 3
 
       wait_seconds = upload_attempt * 30
-      UI.important("App Store Connect uploadconflict (409); nieuwe poging over #{wait_seconds} seconden")
+      UI.important("App Store Connect uploadconflict (409); herbereken buildnummer en opnieuw")
       sleep(wait_seconds)
+      next_build = next_testflight_build_number(api_key: api_key)
+      increment_build_number(
+        xcodeproj: "FlitsMaatje.xcodeproj",
+        build_number: next_build.to_s
+      )
+      UI.message("[release] herbouw met build #{next_build}")
+      build_app(
+        scheme: "FlitsMaatje",
+        configuration: "Release",
+        export_method: "app-store",
+        output_directory: "./build",
+        export_options: {
+          provisioningProfiles: {
+            APP_BUNDLE_ID => sigh_profile_name(APP_BUNDLE_ID),
+            WIDGET_BUNDLE_ID => sigh_profile_name(WIDGET_BUNDLE_ID)
+          },
+          signingStyle: "manual",
+          teamID: ENV["APPLE_TEAM_ID"]
+        },
+        xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']} CODE_SIGN_STYLE=Manual -allowProvisioningUpdates",
+        disable_xcpretty: true,
+        buildlog_path: "./build/logs"
+      )
       retry
     end
   end
