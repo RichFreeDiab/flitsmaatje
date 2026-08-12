@@ -234,15 +234,84 @@ def classify_zone(highway_type, maxspeed):
     return "buiten_bebouwde_kom"
 
 
+def _parse_maxspeed_tag(raw):
+    """Parse OSM maxspeed tag (80, 80 mph, NL:urban, signals, …) naar km/h int."""
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    if not text or text in {"signals", "none", "variable", "walk"}:
+        return None
+    aliases = {
+        "nl:urban": 50,
+        "nl:rural": 80,
+        "nl:motorway": 100,
+        "nl:zone30": 30,
+        "nl:zone20": 20,
+        "de:urban": 50,
+        "de:rural": 100,
+    }
+    if text in aliases:
+        return aliases[text]
+    # "80", "80 km/h", "50 mph"
+    import re
+    m = re.search(r"(\d+(?:\.\d+)?)", text)
+    if not m:
+        return None
+    value = float(m.group(1))
+    if "mph" in text:
+        value *= 1.60934
+    return int(round(value))
+
+
+def fetch_osm_speed_limit(lat, lng):
+    """Snelle OSM-limiet (max 1 endpoint, korte timeout) voor als TomTom snap/flow leeg is."""
+    query = f"""[out:json][timeout:2];
+way(around:60,{lat},{lng})[highway];
+out tags 4;"""
+    try:
+        # Alleen eerste Overpass-endpoint — tweede timeout is te duur voor hot path
+        response = requests.post(
+            OVERPASS_URLS[0],
+            data={"data": query},
+            headers=OVERPASS_HEADERS,
+            timeout=1.8,
+        )
+        response.raise_for_status()
+        elements = response.json().get("elements") or []
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        return None
+
+    best = None
+    for element in elements:
+        tags = element.get("tags") or {}
+        highway = tags.get("highway")
+        maxspeed = _parse_maxspeed_tag(tags.get("maxspeed") or tags.get("maxspeed:forward"))
+        if maxspeed is None and highway in DEFAULT_LIMIT_BY_HIGHWAY:
+            maxspeed = DEFAULT_LIMIT_BY_HIGHWAY[highway]
+        if maxspeed is None:
+            continue
+        candidate = {
+            "maxspeed": maxspeed,
+            "zone": classify_zone(highway, maxspeed),
+            "road_name": tags.get("name") or tags.get("ref"),
+            "source": "osm_overpass",
+            "highway": highway,
+        }
+        # Prefer explicit maxspeed over highway-default
+        if tags.get("maxspeed") or tags.get("maxspeed:forward"):
+            return candidate
+        if best is None:
+            best = candidate
+    return best
+
+
 def fetch_speed_limit(lat, lng):
-    """Vraag de limiet snel via TomTom op, met OSM als aanvullende fallback."""
+    """TomTom eerst; bij credits/fout → snelle OSM-fallback (boete-USP)."""
     cache_key = (round(lat, 4), round(lng, 4))
     cached = _speed_limit_cache.get(cache_key)
     if cached and (time.time() - cached[1]) < SPEED_LIMIT_CACHE_TTL:
         return cached[0]
 
-    # TomTom reageert op productie doorgaans binnen 100 ms. Overpass kon twee
-    # time-outs veroorzaken en hield de boetekaart daardoor secondenlang vast.
     tomtom_limit = fetch_tomtom_speed_limit(lat, lng)
     if tomtom_limit is not None:
         result = {
@@ -254,9 +323,11 @@ def fetch_speed_limit(lat, lng):
         _speed_limit_cache[cache_key] = (result, time.time())
         return result
 
-    # Hot path: GEEN Overpass hier. Overpass (2 endpoints x timeout) blokkeerde
-    # de rijdende app (iOS: Time-out van het verzoek). OSM-cameras blijven
-    # via fetch_osm_speed_cameras op een eigen pad.
+    osm = fetch_osm_speed_limit(lat, lng)
+    if osm is not None:
+        _speed_limit_cache[cache_key] = (osm, time.time())
+        return osm
+
     result = {
         "maxspeed": None,
         "zone": None,

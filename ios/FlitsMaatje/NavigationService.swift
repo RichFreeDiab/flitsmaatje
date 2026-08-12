@@ -358,9 +358,13 @@ final class NavigationService: ObservableObject {
             return
         }
         let distance = laneDistance(section, from: location)
-        laneGuidanceDistanceM = distance.isFinite && distance <= 2_000
-            ? max(0, Int(distance.rounded()))
-            : nil
+        // Altijd volgende rijbaanvoorstel tonen tijdens navigatie (niet pas <2km).
+        // Afstand blijft zichtbaar; UI toont lane-pijlen zolang er een sectie is.
+        if distance.isFinite {
+            laneGuidanceDistanceM = max(0, Int(distance.rounded()))
+        } else {
+            laneGuidanceDistanceM = nil
+        }
     }
 
     private func laneDistance(_ section: LaneSection, from location: CLLocation) -> CLLocationDistance {

@@ -78,7 +78,7 @@ struct NavigationMapView: View {
                 if let route = navigation.route {
                     MapPolyline(route.polyline).stroke(.blue, lineWidth: 7)
                 }
-                ForEach(location.mapReports.filter { $0.type != "flitser_vast" }) { report in
+                ForEach(location.mapReports.filter { $0.type != "flitser_vast" && $0.type != "flitser_mobiel" && $0.type != "trajectcontrole" }) { report in
                     Annotation(report.label, coordinate: CLLocationCoordinate2D(latitude: report.lat, longitude: report.lng)) {
                         VStack(spacing: 1) {
                             Text(report.icon).font(.title3)
@@ -88,7 +88,7 @@ struct NavigationMapView: View {
                         .background(markerColor(for: report.type).opacity(0.95), in: RoundedRectangle(cornerRadius: 9))
                     }
                 }
-                ForEach(location.mapReports.filter { $0.type == "flitser_vast" }) { report in
+                ForEach(location.mapReports.filter { ["flitser_vast", "flitser_mobiel", "trajectcontrole"].contains($0.type) }) { report in
                     Annotation("Vaste flitspaal", coordinate: CLLocationCoordinate2D(latitude: report.lat, longitude: report.lng)) {
                         VStack(spacing: 2) {
                             Image(systemName: "camera.fill")
@@ -278,14 +278,37 @@ struct NavigationMapView: View {
         if let deg = courseDegrees {
             let course = "\(Int(deg.rounded()))° \(compassLabel(deg))"
             if navigation.isNavigating {
+                let laneHint = recommendedLaneHint()
                 if let meters = navigation.laneGuidanceDistanceM {
+                    if let laneHint {
+                        return "\(course) · \(laneHint) over \(formatGuidanceDistance(meters))"
+                    }
                     return "\(course) · rijbaan \(formatGuidanceDistance(meters))"
+                }
+                if let laneHint {
+                    return "\(course) · \(laneHint)"
                 }
                 return "\(course) · pijl blijft zichtbaar"
             }
             return "\(course) · pijl blijft zichtbaar"
         }
         return "Wacht op GPS-koers"
+    }
+
+    private func recommendedLaneHint() -> String? {
+        guard let section = navigation.laneSections.first else { return nil }
+        let follows = section.lanes.compactMap { $0.follow }
+        guard let first = follows.first else { return nil }
+        let idx = (section.lanes.firstIndex { $0.follow != nil } ?? 0) + 1
+        let total = max(section.lanes.count, 1)
+        let label: String
+        switch first {
+        case "STRAIGHT": label = "rij rechtdoor"
+        case "SLIGHT_LEFT", "LEFT", "SHARP_LEFT": label = "kies linkerbaan"
+        case "SLIGHT_RIGHT", "RIGHT", "SHARP_RIGHT": label = "kies rechterbaan"
+        default: label = "volg aangegeven baan"
+        }
+        return "\(label) (\(idx)/\(total))"
     }
 
     private func compassLabel(_ deg: Double) -> String {
