@@ -351,6 +351,22 @@ struct NavigationMapView: View {
             }
             .font(.caption.bold().monospacedDigit())
             .foregroundStyle(.white.opacity(0.82))
+            if let exitText = navigation.currentExitBannerText {
+                Text(exitText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+            } else if navigation.isNavigating {
+                let instruction = navigation.currentInstruction
+                if !instruction.isEmpty, instruction != "Volg de route" {
+                    Text(instruction)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                }
+            }
         }
         .onChange(of: location.mapReports) { _, reports in
             navigation.updateTrafficReports(reports)
@@ -368,7 +384,7 @@ struct NavigationMapView: View {
         if text.contains("keer") || text.contains("u-turn") { return "arrow.uturn.backward" }
         if text.contains("links") || text.contains("left") { return "arrow.turn.up.left" }
         if text.contains("rechts") || text.contains("right") { return "arrow.turn.up.right" }
-        if text.contains("rechtdoor") || text.contains("straight") { return "arrow.up" }
+        if text.contains("afrit") || text.contains("exit") { return "arrow.turn.up.right" }
         return "arrow.up.right"
     }
 

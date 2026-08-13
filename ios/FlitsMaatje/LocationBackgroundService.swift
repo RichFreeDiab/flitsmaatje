@@ -300,8 +300,15 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastPollAt = now
 
         do {
+            let road = roadName
+            let course = location.course >= 0 ? location.course : nil
             async let alertRequest = Task.detached(priority: .utility) {
-                try await FlitsMaatjeAPI.fetchNearbyAlert(lat: lat, lng: lng, heading: location.course >= 0 ? location.course : nil)
+                try await FlitsMaatjeAPI.fetchNearbyAlert(
+                    lat: lat,
+                    lng: lng,
+                    heading: course,
+                    road: road
+                )
             }.value
             async let reportsRequest = Task.detached(priority: .utility) {
                 try await FlitsMaatjeAPI.fetchReports(lat: lat, lng: lng)

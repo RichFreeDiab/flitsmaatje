@@ -58,6 +58,7 @@ const reportCancel = document.getElementById("report-cancel");
 
 let currentSpeedKmh = null;
 let currentHeading = null;
+let currentRoadName = null;
 let lastSpeedCheckPos = null;     // laatste positie waarvoor we /api/speed-check hebben aangeroepen
 let speedCheckTimer = null;
 const SPEED_CHECK_MIN_DISTANCE_M = 30;  // alleen opnieuw checken na zoveel meter verplaatsing
@@ -235,7 +236,8 @@ function renderReports(reports) {
   reports.forEach((r) => {
     seenIds.add(r.id);
     if (markers[r.id]) {
-      return; // marker bestaat al, niets te doen
+      markers[r.id].report = r;
+      return; // marker bestaat al, metadata wel verversen
     }
     const icon = L.divIcon({
       className: "",
@@ -262,10 +264,13 @@ function renderReports(reports) {
 
 function buildPopupHtml(r) {
   const label = TYPE_LABELS[r.type] || r.type;
+  const roadLine = r.road
+    ? `<br><small>${r.road}${r.hectometer != null ? ` HM ${r.hectometer}` : ""}</small>`
+    : "";
   return `
     <div>
       <strong>${TYPE_ICONS[r.type] || ""} ${label}</strong><br>
-      <small>${r.distance_km} km verderop</small><br>
+      <small>${r.distance_km} km verderop</small>${roadLine}<br>
       <small>👍 ${r.confirms} &nbsp; 👎 ${r.denies}</small><br>
       <button class="vote-confirm" data-id="${r.id}" data-vote="confirm">Nog aanwezig</button>
       <button class="vote-deny" data-id="${r.id}" data-vote="deny">Niet meer aanwezig</button>
@@ -290,6 +295,19 @@ function attachVoteHandlers(popup, reportId) {
   });
 }
 
+function normalizeRoadRef(value) {
+  if (!value) return "";
+  return String(value).toUpperCase().replace(/[\s\-]/g, "");
+}
+
+function roadsMatch(currentRoad, reportRoad) {
+  const want = normalizeRoadRef(currentRoad);
+  const have = normalizeRoadRef(reportRoad);
+  if (!want) return true;
+  if (!have) return true;
+  return want === have || want.includes(have) || have.includes(want);
+}
+
 function checkProximityWarnings() {
   if (!userPos) return;
   let closest = null;
@@ -297,15 +315,23 @@ function checkProximityWarnings() {
 
   Object.entries(markers).forEach(([id, marker]) => {
     const pos = marker.getLatLng();
-    if (currentHeading !== null && marker.report) {
+    const report = marker.report || reportCache[id] || null;
+    const reportType = report?.type || typeCache[id] || null;
+    const isCamera = ["flitser_vast", "flitser_mobiel", "trajectcontrole"].includes(reportType);
+    if (isCamera && report && !roadsMatch(currentRoadName, report.road)) {
+      if (report.road) return;
+    }
+    if (currentHeading !== null) {
       const bearing = bearingDegrees(userPos.lat, userPos.lng, pos.lat, pos.lng);
       const delta = Math.abs(((bearing - currentHeading + 540) % 360) - 180);
-      if (delta > 105) return;
+      // Achter je: flitsermelding verdwijnt / telt niet
+      if (isCamera && delta > 105) return;
+      if (!isCamera && delta > 105) return;
     }
     const dist = haversineMeters(userPos.lat, userPos.lng, pos.lat, pos.lng);
     if (dist < closestDist) {
       closestDist = dist;
-      closest = { id, pos };
+      closest = { id, pos, reportType };
     }
   });
 
@@ -314,9 +340,7 @@ function checkProximityWarnings() {
     return;
   }
 
-  // Bepaal type via marker -> we slaan het type niet direct op marker, dus zoek het opnieuw op via popup
-  // Eenvoudiger: gebruik vaste waarschuwingsafstand van 800m voor alle types als fallback
-  const reportType = findTypeForMarkerId(closest.id);
+  const reportType = closest.reportType || findTypeForMarkerId(closest.id);
   const threshold = WARN_DISTANCE_M[reportType] || 800;
 
   if (closestDist <= threshold) {
@@ -327,6 +351,7 @@ function checkProximityWarnings() {
 }
 
 let typeCache = {};
+let reportCache = {};
 function findTypeForMarkerId(id) {
   return typeCache[id] || null;
 }
@@ -396,7 +421,10 @@ function vibrateAlert() {
 // Houd typeCache bij wanneer renderReports draait
 const originalRenderReports = renderReports;
 renderReports = function (reports) {
-  reports.forEach((r) => (typeCache[r.id] = r.type));
+  reports.forEach((r) => {
+    typeCache[r.id] = r.type;
+    reportCache[r.id] = r;
+  });
   originalRenderReports(reports);
   checkProximityWarnings();
 };
@@ -430,6 +458,9 @@ async function fetchSpeedCheck() {
     );
     clearTimeout(timer);
     const data = await res.json();
+    if (data.limit) {
+      currentRoadName = data.limit.road_name || currentRoadName;
+    }
     renderSpeedLimit(data.limit, data.fine);
   } catch (e) {
     console.error("Kon snelheidslimiet niet ophalen:", e);

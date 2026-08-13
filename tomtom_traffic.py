@@ -149,6 +149,63 @@ def fetch_tomtom_speed_limit(lat, lng):
     return None
 
 
+def fetch_tomtom_reverse_speed_limit(lat, lng):
+    """Speed limit + road via Reverse Geocode (werkt vaak als Snap/Flow credits op zijn)."""
+    api_key = os.environ.get("TOMTOM_API_KEY")
+    if not api_key:
+        return None
+    cache_key = ("rev_limit", round(lat, 4), round(lng, 4))
+    hit, cached = _cached(cache_key)
+    if hit:
+        return cached
+    try:
+        response = requests.get(
+            f"https://api.tomtom.com/search/2/reverseGeocode/{lat},{lng}.json",
+            params={
+                "key": api_key,
+                "returnSpeedLimit": "true",
+                "radius": 80,
+            },
+            headers={"User-Agent": "FlitsMaatje/1.1"},
+            timeout=4,
+        )
+        response.raise_for_status()
+        addresses = response.json().get("addresses") or []
+        if not addresses:
+            _store(cache_key, None, 30)
+            return None
+        address = addresses[0].get("address") or {}
+        raw_limit = address.get("speedLimit")
+        maxspeed = None
+        if raw_limit:
+            text = str(raw_limit).upper().replace(",", ".")
+            digits = "".join(ch if (ch.isdigit() or ch == ".") else " " for ch in text).split()
+            if digits:
+                value = float(digits[0])
+                if "MPH" in text:
+                    value *= 1.60934
+                maxspeed = int(round(value))
+        route_numbers = address.get("routeNumbers") or []
+        road_name = None
+        if route_numbers:
+            road_name = str(route_numbers[0])
+        else:
+            road_name = address.get("streetName") or address.get("street") or address.get("freeformAddress")
+        if maxspeed is None and not road_name:
+            _store(cache_key, None, 30)
+            return None
+        result = {
+            "maxspeed": maxspeed,
+            "road_name": road_name,
+            "source": "tomtom_reverse_geocode",
+        }
+        _store(cache_key, result, 300)
+        return result
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        _store(cache_key, None, 20)
+        return None
+
+
 def fetch_flow_segment(lat, lng):
     api_key = os.environ.get("TOMTOM_API_KEY")
     if not api_key:

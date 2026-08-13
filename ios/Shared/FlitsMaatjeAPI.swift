@@ -15,7 +15,13 @@ enum FlitsMaatjeAPI {
         return URLSession(configuration: config)
     }()
 
-    static func fetchNearbyAlert(lat: Double, lng: Double, heading: CLLocationDirection? = nil, radiusKm: Double = AppConfig.pollRadiusKm) async throws -> NearbyAlert? {
+    static func fetchNearbyAlert(
+        lat: Double,
+        lng: Double,
+        heading: CLLocationDirection? = nil,
+        road: String? = nil,
+        radiusKm: Double = AppConfig.pollRadiusKm
+    ) async throws -> NearbyAlert? {
         var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/nearby-alert"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
@@ -23,6 +29,9 @@ enum FlitsMaatjeAPI {
             URLQueryItem(name: "radius_km", value: String(radiusKm)),
         ]
         if let heading { components?.queryItems?.append(URLQueryItem(name: "heading", value: String(format: "%.1f", heading))) }
+        if let road, !road.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            components?.queryItems?.append(URLQueryItem(name: "road", value: road))
+        }
         guard let url = components?.url else { throw APIError.badURL }
 
         let (data, response) = try await session.data(from: url)

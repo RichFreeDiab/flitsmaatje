@@ -11,6 +11,7 @@ Functies:
 """
 
 import os
+import re
 import sqlite3
 import time
 import math
@@ -20,7 +21,13 @@ import requests
 from flask import Flask, request, jsonify, g, send_from_directory
 from ndw_feeds import sync_ndw_reports
 from anwb_radars import fetch_anwb_mobile_radars
-from tomtom_traffic import fetch_flow_segment, fetch_incidents, fetch_tomtom_speed_limit, fetch_lane_guidance
+from tomtom_traffic import (
+    fetch_flow_segment,
+    fetch_incidents,
+    fetch_lane_guidance,
+    fetch_tomtom_reverse_speed_limit,
+    fetch_tomtom_speed_limit,
+)
 
 # Nightscout configuratie
 NIGHTSCOUT_URL = "https://nightscout.readvanes.nl"
@@ -135,6 +142,9 @@ def haversine_km(lat1, lng1, lat2, lng2):
 # Overpass / OpenStreetMap snelheidslimiet-lookup
 # ---------------------------------------------------------------------------
 OVERPASS_URLS = (
+    # primaire mirrors bereikbaar vanaf deze VPS (de.de/kumi vaak geblokkeerd)
+    "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 )
@@ -264,21 +274,14 @@ def _parse_maxspeed_tag(raw):
 
 
 def fetch_osm_speed_limit(lat, lng):
-    """Snelle OSM-limiet (max 1 endpoint, korte timeout) voor als TomTom snap/flow leeg is."""
-    query = f"""[out:json][timeout:2];
+    """OSM-limiet via Overpass (alle werkende mirrors, korte timeout)."""
+    query = f"""[out:json][timeout:4];
 way(around:60,{lat},{lng})[highway];
-out tags 4;"""
+out tags 6;"""
     try:
-        # Alleen eerste Overpass-endpoint — tweede timeout is te duur voor hot path
-        response = requests.post(
-            OVERPASS_URLS[0],
-            data={"data": query},
-            headers=OVERPASS_HEADERS,
-            timeout=1.8,
-        )
-        response.raise_for_status()
-        elements = response.json().get("elements") or []
-    except (requests.RequestException, ValueError, TypeError, KeyError):
+        payload = run_overpass_query(query, timeout=4)
+        elements = payload.get("elements") or []
+    except Exception:
         return None
 
     best = None
@@ -293,7 +296,7 @@ out tags 4;"""
         candidate = {
             "maxspeed": maxspeed,
             "zone": classify_zone(highway, maxspeed),
-            "road_name": tags.get("name") or tags.get("ref"),
+            "road_name": tags.get("ref") or tags.get("name"),
             "source": "osm_overpass",
             "highway": highway,
         }
@@ -306,7 +309,7 @@ out tags 4;"""
 
 
 def fetch_speed_limit(lat, lng):
-    """TomTom eerst; bij credits/fout → snelle OSM-fallback (boete-USP)."""
+    """TomTom Snap → Reverse Geocode → OSM Overpass (boete-USP mag niet doodvallen)."""
     cache_key = (round(lat, 4), round(lng, 4))
     cached = _speed_limit_cache.get(cache_key)
     if cached and (time.time() - cached[1]) < SPEED_LIMIT_CACHE_TTL:
@@ -323,10 +326,37 @@ def fetch_speed_limit(lat, lng):
         _speed_limit_cache[cache_key] = (result, time.time())
         return result
 
+    reverse = fetch_tomtom_reverse_speed_limit(lat, lng)
+    if reverse and reverse.get("maxspeed") is not None:
+        result = {
+            "maxspeed": reverse["maxspeed"],
+            "zone": classify_zone(None, reverse["maxspeed"]),
+            "road_name": reverse.get("road_name"),
+            "source": reverse.get("source") or "tomtom_reverse_geocode",
+        }
+        _speed_limit_cache[cache_key] = (result, time.time())
+        return result
+
     osm = fetch_osm_speed_limit(lat, lng)
     if osm is not None:
+        # Vul road_name aan vanuit reverse als OSM die mist
+        if not osm.get("road_name") and reverse and reverse.get("road_name"):
+            osm = dict(osm)
+            osm["road_name"] = reverse["road_name"]
         _speed_limit_cache[cache_key] = (osm, time.time())
         return osm
+
+    # Geen limiet, wel wegnaam → clients kunnen flitsers filteren
+    if reverse and reverse.get("road_name"):
+        result = {
+            "maxspeed": None,
+            "zone": None,
+            "road_name": reverse.get("road_name"),
+            "source": "tomtom_reverse_geocode",
+            "error": "no_speed_limit",
+        }
+        _speed_limit_cache[cache_key] = (result, time.time())
+        return result
 
     result = {
         "maxspeed": None,
@@ -651,7 +681,7 @@ def get_reports():
     for radar in fetch_anwb_mobile_radars():
         dist = haversine_km(lat, lng, radar["lat"], radar["lng"])
         if dist <= radius_km:
-            results.append({
+            item = {
                 "id": radar["id"], "type": radar["type"],
                 "lat": radar["lat"], "lng": radar["lng"],
                 "heading": radar.get("heading"),
@@ -659,7 +689,12 @@ def get_reports():
                 "expires_at": radar.get("expires_at"),
                 "confirms": radar.get("confirms", 1), "denies": 0,
                 "distance_km": round(dist, 3),
-            })
+            }
+            if radar.get("road"):
+                item["road"] = radar["road"]
+            if radar.get("hectometer") is not None:
+                item["hectometer"] = str(radar["hectometer"])
+            results.append(item)
 
     # TomTom levert actuele files, ongevallen en wegwerkzaamheden naast de
     # eigen vaste flitsers en NDW-meldingen. Deze meldingen worden niet in de
@@ -679,6 +714,57 @@ def get_reports():
 
     results.sort(key=lambda r: r["distance_km"])
     return jsonify({"reports": results})
+
+
+def normalize_road_ref(value):
+    """Normaliseer wegref voor matching: 'A 2' / 'a2' → 'A2'."""
+    if value is None:
+        return ""
+    text = str(value).upper().strip()
+    text = re.sub(r"\s+", "", text)
+    text = text.replace("-", "")
+    return text
+
+
+def roads_match(current_road, report_road):
+    """True als report bij huidige weg hoort, of als we geen filter kunnen toepassen."""
+    want = normalize_road_ref(current_road)
+    have = normalize_road_ref(report_road)
+    if not want:
+        return True
+    if not have:
+        # Vaste SCDB-palen hebben vaak geen wegnaam — toon die wel (ahead-filter volgt)
+        return True
+    if want == have:
+        return True
+    if want in have or have in want:
+        return True
+    return False
+
+
+def bearing_degrees(lat1, lng1, lat2, lng2):
+    """Richting van punt 1 naar punt 2 in graden [0,360)."""
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dlambda = math.radians(lng2 - lng1)
+    y = math.sin(dlambda) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dlambda)
+    return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+
+def is_ahead(user_lat, user_lng, user_heading, target_lat, target_lng, max_angle=105):
+    """True als target vóór of naast de rijrichting ligt (niet achter ons)."""
+    if user_heading is None:
+        return True
+    # Op/naast de paal: altijd tonen (bearing is onbetrouwbaar bij ~0 m)
+    if haversine_km(user_lat, user_lng, target_lat, target_lng) * 1000 < 15:
+        return True
+    try:
+        bearing = bearing_degrees(user_lat, user_lng, target_lat, target_lng)
+        delta = abs((bearing - float(user_heading) + 180) % 360 - 180)
+        return delta <= max_angle
+    except (TypeError, ValueError):
+        return True
 
 
 def heading_matches(user_heading, report_heading, tolerance=70):
@@ -702,6 +788,9 @@ def nearby_alert():
     Combineert tijdelijke, door gebruikers gemelde incidenten met vaste
     flitsers uit OpenStreetMap. Een externe kaartbron is aanvullend: een
     timeout mag de eigen meldingen nooit blokkeren.
+
+    Filter: alleen meldingen vóór je (niet achter), optioneel op huidige weg
+    (`road=` query, o.a. ANWB-mobiel).
     """
     try:
         lat = float(request.args.get("lat"))
@@ -710,6 +799,7 @@ def nearby_alert():
     except (TypeError, ValueError):
         return jsonify({"error": "lat en lng zijn verplicht"}), 400
 
+    current_road = request.args.get("road") or request.args.get("road_name") or ""
     radius_km = float(request.args.get("radius_km", 15))
     db = get_db()
     sync_ndw_reports(db)
@@ -722,32 +812,43 @@ def nearby_alert():
         (lat - deg_margin, lat + deg_margin, lng - deg_margin, lng + deg_margin),
     ).fetchall()
 
-    candidates = [
-        {
+    candidates = []
+    for row in rows:
+        if not heading_matches(heading, row["heading"]):
+            continue
+        candidates.append({
             "id": row["id"],
             "type": row["type"],
             "lat": row["lat"],
             "lng": row["lng"],
             "heading": row["heading"],
             "confirms": row["confirms"],
-        }
-        for row in rows
-        if heading_matches(heading, row["heading"])
-    ]
+            "road": None,
+        })
     if should_fetch_osm_speed_cameras(lat, lng):
-        candidates.extend(
-            camera for camera in fetch_osm_speed_cameras(lat, lng)
-            if heading_matches(heading, camera.get("heading"))
-        )
-    candidates.extend(
-        radar for radar in fetch_anwb_mobile_radars()
-        if heading_matches(heading, radar.get("heading"))
-    )
+        for camera in fetch_osm_speed_cameras(lat, lng):
+            if heading_matches(heading, camera.get("heading")):
+                candidates.append({**camera, "road": camera.get("road")})
+    for radar in fetch_anwb_mobile_radars():
+        if not heading_matches(heading, radar.get("heading")):
+            continue
+        if not roads_match(current_road, radar.get("road")):
+            continue
+        candidates.append(radar)
     candidates.extend(fetch_incidents(lat, lng, radius_km))
 
     closest = None
     closest_dist_m = None
     for candidate in candidates:
+        # Alleen flitsers/traject: streng wegfilter + alleen vóór je
+        is_camera = candidate.get("type") in ("flitser_vast", "flitser_mobiel", "trajectcontrole")
+        if is_camera:
+            if not roads_match(current_road, candidate.get("road")):
+                # Mobiel zonder match al gefilterd; vaste zonder road blijven
+                if candidate.get("road"):
+                    continue
+            if not is_ahead(lat, lng, heading, candidate["lat"], candidate["lng"]):
+                continue
         dist_m = haversine_km(lat, lng, candidate["lat"], candidate["lng"]) * 1000
         threshold = WARN_DISTANCE_M.get(candidate["type"], 800)
         if dist_m <= threshold and (closest is None or dist_m < closest_dist_m):
@@ -758,18 +859,21 @@ def nearby_alert():
         return jsonify({"alert": None})
 
     report_type = closest["type"]
-    return jsonify({
-        "alert": {
-            "id": closest["id"],
-            "type": report_type,
-            "label": TYPE_LABELS.get(report_type, report_type),
-            "icon": TYPE_ICONS.get(report_type, "⚠️"),
-            "distance_m": round(closest_dist_m),
-            "lat": closest["lat"],
-            "lng": closest["lng"],
-            "confirms": closest.get("confirms", 0),
-        }
-    })
+    alert = {
+        "id": closest["id"],
+        "type": report_type,
+        "label": TYPE_LABELS.get(report_type, report_type),
+        "icon": TYPE_ICONS.get(report_type, "⚠️"),
+        "distance_m": round(closest_dist_m),
+        "lat": closest["lat"],
+        "lng": closest["lng"],
+        "confirms": closest.get("confirms", 0),
+    }
+    if closest.get("road"):
+        alert["road"] = closest["road"]
+    if closest.get("hectometer") is not None:
+        alert["hectometer"] = str(closest["hectometer"])
+    return jsonify({"alert": alert})
 
 
 @app.route("/api/reports", methods=["POST"])

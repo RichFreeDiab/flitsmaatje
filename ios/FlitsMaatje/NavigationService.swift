@@ -69,6 +69,54 @@ final class NavigationService: ObservableObject {
         return text.isEmpty ? "Volg de route" : text
     }
 
+    /// Gestructureerde afrit: nummer + naam uit MapKit-instructie.
+    var currentExitInfo: (number: String, name: String?)? {
+        Self.parseExit(from: currentInstruction)
+    }
+
+    var currentExitBannerText: String? {
+        guard let exit = currentExitInfo else { return nil }
+        if let name = exit.name, !name.isEmpty {
+            return "Afrit \(exit.number) · \(name)"
+        }
+        return "Afrit \(exit.number)"
+    }
+
+    static func parseExit(from instruction: String) -> (number: String, name: String?)? {
+        let text = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let patterns = [
+            #"(?:neem|volg|rij)\s+(?:de\s+)?afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
+            #"afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
+            #"exit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            guard let match = regex.firstMatch(in: text, range: range),
+                  match.numberOfRanges >= 2,
+                  let numRange = Range(match.range(at: 1), in: text) else { continue }
+            let number = String(text[numRange])
+            var name: String?
+            if match.numberOfRanges >= 3, let nameRange = Range(match.range(at: 2), in: text) {
+                let raw = String(text[nameRange])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                if !raw.isEmpty, raw.lowercased() != "en" {
+                    name = raw
+                }
+            }
+            return (number, name)
+        }
+        // Alleen nummer, zonder naam: "Afrit 7"
+        if let regex = try? NSRegularExpression(pattern: #"\bafrit\s+(\d+[A-Za-z]?)\b"#, options: [.caseInsensitive]),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)),
+           let numRange = Range(match.range(at: 1), in: text) {
+            return (String(text[numRange]), nil)
+        }
+        return nil
+    }
+
     func search(near coordinate: CLLocationCoordinate2D) async {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.count >= 2 else {

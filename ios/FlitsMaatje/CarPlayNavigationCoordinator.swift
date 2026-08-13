@@ -292,10 +292,11 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     private func instructionVariants() -> [String] {
-        // De richting staat al in symbolImage. Een non-breaking space houdt
-        // de native CarPlay-manoeuvrekaart geldig zonder de lange
-        // routebeschrijving naast de pijl te herhalen.
-        ["\u{00A0}"]
+        if let exit = navigationService?.currentExitBannerText, !exit.isEmpty {
+            return [exit, "Afrit"]
+        }
+        // Geen afrit: richting staat in symbolImage; NBSP houdt CarPlay-kaart geldig.
+        return ["\u{00A0}"]
     }
 
     @available(iOS 17.4, *)

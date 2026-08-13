@@ -16,6 +16,8 @@ struct MapReport: Codable, Equatable, Identifiable {
     let lng: Double
     let confirms: Int
     let distance_km: Double
+    let road: String?
+    let hectometer: String?
 
     var label: String {
         switch type {
@@ -53,6 +55,32 @@ struct NearbyAlert: Codable, Equatable {
     let lat: Double
     let lng: Double
     let confirms: Int
+    let road: String?
+    let hectometer: String?
+
+    init(
+        id: String,
+        type: String,
+        label: String,
+        icon: String,
+        distance_m: Int,
+        lat: Double,
+        lng: Double,
+        confirms: Int,
+        road: String? = nil,
+        hectometer: String? = nil
+    ) {
+        self.id = id
+        self.type = type
+        self.label = label
+        self.icon = icon
+        self.distance_m = distance_m
+        self.lat = lat
+        self.lng = lng
+        self.confirms = confirms
+        self.road = road
+        self.hectometer = hectometer
+    }
 }
 
 struct SpeedLimitInfo: Codable, Equatable {
