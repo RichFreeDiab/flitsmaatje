@@ -98,10 +98,16 @@
       labelEl.textContent = (step.maneuver && step.maneuver.instruction)
         ? step.maneuver.instruction
         : `${(step.maneuver && step.maneuver.modifier) || "rechtdoor"}${road}`;
+      // Toon afritinformatie 2 km voor de afrit
+      let afritInfo = "";
+      if (step.distance != null && step.distance <= 2000 && step.distance > 0) {
+        const afritNaam = step.name || "afrit";
+        afritInfo = `Afrit ${afritNaam} over ${(step.distance / 1000).toFixed(1)} km`;
+      }
       subEl.textContent = [
         km,
         heading != null ? `koers ${Math.round(heading)}° ${compassLabel(heading)}` : null,
-        "rijbaan volgt",
+        afritInfo || "rijbaan volgt",
       ].filter(Boolean).join(" · ");
       maybeFetchLanes(nav);
       return;
