@@ -539,6 +539,26 @@ document.querySelectorAll(".report-btn").forEach((btn) => {
   });
 });
 
+// --- Boetemelding aan/uit knop ---
+let fineNotificationsEnabled = true;
+const fineToggleBtn = document.createElement("button");
+fineToggleBtn.id = "fine-toggle-btn";
+fineToggleBtn.textContent = "🔔 Boetemelding: AAN";
+fineToggleBtn.style.cssText = "position:fixed;bottom:80px;right:16px;z-index:1000;background:#4285F4;color:white;border:none;border-radius:24px;padding:10px 16px;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.3);";
+document.body.appendChild(fineToggleBtn);
+fineToggleBtn.addEventListener("click", () => {
+  fineNotificationsEnabled = !fineNotificationsEnabled;
+  fineToggleBtn.textContent = fineNotificationsEnabled ? "🔔 Boetemelding: AAN" : "🔕 Boetemelding: UIT";
+  fineToggleBtn.style.background = fineNotificationsEnabled ? "#4285F4" : "#666";
+});
+
+// Overschrijf playFineBeep om rekening te houden met de toggle
+const originalPlayFineBeep = playFineBeep;
+playFineBeep = function() {
+  if (!fineNotificationsEnabled) return;
+  originalPlayFineBeep.call(this);
+};
+
 startGPS();
 
 // --- PWA: service worker, install-tip, audio ontgrendelen ---
