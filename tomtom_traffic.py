@@ -261,8 +261,23 @@ def _first_coordinate(geometry):
     return None
 
 
+# Global toggle for boetemeldingen (True = aan, False = uit)
+_boetemeldingen_aan = True
+
+def toggle_boetemeldingen():
+    """Toggle boetemeldingen aan/uit. Retourneert nieuwe status."""
+    global _boetemeldingen_aan
+    _boetemeldingen_aan = not _boetemeldingen_aan
+    return _boetemeldingen_aan
+
+def get_boetemeldingen_status():
+    """Retourneer huidige status van boetemeldingen."""
+    return _boetemeldingen_aan
+
 def fetch_incidents(lat, lng, radius_km=15):
     """Fetch current TomTom incidents near the driver for the map/alerts."""
+    if not _boetemeldingen_aan:
+        return []
     api_key = os.environ.get("TOMTOM_API_KEY")
     if not api_key:
         return []
