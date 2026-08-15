@@ -69,7 +69,9 @@
       const dirs = lane.directions || [];
       const icon = directionIcon(dirs[0] || "STRAIGHT");
       const cls = lane.follow ? "lane-chip follow" : "lane-chip";
-      return `<span class="${cls}">${icon}</span>`;
+      // Toon pijl voor rijrichting en baan
+      const laneLabel = lane.follow ? "▶" : "○";
+      return `<span class="${cls}">${icon} ${laneLabel}</span>`;
     }).join("");
   }
 

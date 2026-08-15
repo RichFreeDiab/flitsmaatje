@@ -484,6 +484,12 @@ function renderSpeedLimit(limit, fine) {
     return;
   }
 
+  if (!fineNotificationsEnabled) {
+    speedPanelEl.classList.remove("speeding");
+    fineBanner.classList.add("hidden");
+    return;
+  }
+
   speedPanelEl.classList.add("speeding");
 
   if (fine.om_zaak) {
@@ -539,17 +545,33 @@ document.querySelectorAll(".report-btn").forEach((btn) => {
   });
 });
 
-// --- Boetemelding aan/uit knop ---
-let fineNotificationsEnabled = true;
-const fineToggleBtn = document.createElement("button");
-fineToggleBtn.id = "fine-toggle-btn";
-fineToggleBtn.textContent = "🔔 Boetemelding: AAN";
-fineToggleBtn.style.cssText = "position:fixed;bottom:80px;right:16px;z-index:1000;background:#4285F4;color:white;border:none;border-radius:24px;padding:10px 16px;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.3);";
-document.body.appendChild(fineToggleBtn);
-fineToggleBtn.addEventListener("click", () => {
+// --- Boetemelding aan/uit in ⚙️-menu ---
+let fineNotificationsEnabled = localStorage.getItem("flitsmaatje_fine_enabled") !== "0";
+const settingsBtn = document.getElementById("settings-btn");
+const settingsMenu = document.getElementById("settings-menu");
+const fineToggleBtn = document.getElementById("fine-toggle-btn");
+function syncFineToggleLabel() {
+  if (!fineToggleBtn) return;
+  fineToggleBtn.textContent = fineNotificationsEnabled
+    ? "🔔 Boetemelding: AAN"
+    : "🔕 Boetemelding: UIT";
+}
+syncFineToggleLabel();
+settingsBtn?.addEventListener("click", () => {
+  settingsMenu?.classList.toggle("hidden");
+});
+fineToggleBtn?.addEventListener("click", () => {
   fineNotificationsEnabled = !fineNotificationsEnabled;
-  fineToggleBtn.textContent = fineNotificationsEnabled ? "🔔 Boetemelding: AAN" : "🔕 Boetemelding: UIT";
-  fineToggleBtn.style.background = fineNotificationsEnabled ? "#4285F4" : "#666";
+  localStorage.setItem(
+    "flitsmaatje_fine_enabled",
+    fineNotificationsEnabled ? "1" : "0"
+  );
+  syncFineToggleLabel();
+});
+document.addEventListener("click", (e) => {
+  if (!settingsMenu || settingsMenu.classList.contains("hidden")) return;
+  if (settingsMenu.contains(e.target) || settingsBtn?.contains(e.target)) return;
+  settingsMenu.classList.add("hidden");
 });
 
 // Overschrijf playFineBeep om rekening te houden met de toggle

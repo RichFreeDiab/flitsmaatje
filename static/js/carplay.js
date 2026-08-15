@@ -20,6 +20,9 @@
   const panelNavEl = document.getElementById("panel-nav");
   const panelDrivingEl = document.getElementById("panel-driving-task");
   const speechToggle = document.getElementById("toggle-speech");
+  const fineToggle = document.getElementById("toggle-fine");
+  const FINE_PREF_KEY = "flitsmaatje_fine_enabled";
+  let fineAlertsEnabled = true;
   const settingsMenuEl = document.getElementById("settings-menu");
   const speedHudEl = document.getElementById("speed-hud");
   const speedHudValueEl = document.getElementById("speed-hud-value");
@@ -126,6 +129,21 @@
 
   function saveSpeechPreference() {
     localStorage.setItem(SPEECH_PREF_KEY, speechEnabled() ? "1" : "0");
+  }
+
+  function fineEnabled() {
+    return Boolean(fineToggle?.checked ?? fineAlertsEnabled);
+  }
+
+  function applyFinePreference() {
+    const stored = localStorage.getItem(FINE_PREF_KEY);
+    fineAlertsEnabled = stored !== "0";
+    if (fineToggle) fineToggle.checked = fineAlertsEnabled;
+  }
+
+  function saveFinePreference() {
+    fineAlertsEnabled = fineEnabled();
+    localStorage.setItem(FINE_PREF_KEY, fineAlertsEnabled ? "1" : "0");
   }
 
   function toggleSettingsMenu(forceOpen) {
@@ -264,6 +282,7 @@
   }
 
   function showFineCard(alert, speedKmh, limit, fine) {
+    if (!fineEnabled()) return;
     const alertText = alert ? `${alert.label} over ${alert.distance_m} m` : "Snelheidscontrole actief";
     fineCardTitleEl.textContent = alertText;
     fineCardTextEl.textContent = `Boete bij ${Math.round(speedKmh)} km/u:`;
@@ -272,6 +291,7 @@
   }
 
   function showSpeedingBanner(speedKmh, limit, fine) {
+    if (!fineEnabled()) return;
     const title = fine.om_zaak
       ? `Te hard - ${fine.excess_kmh} km/u`
       : `Te hard - indicatief EUR ${fine.bedrag}`;
@@ -717,6 +737,7 @@
   document.getElementById("btn-menu")?.addEventListener("click", () => toggleSettingsMenu());
   document.getElementById("settings-close")?.addEventListener("click", () => toggleSettingsMenu(false));
   speechToggle?.addEventListener("change", saveSpeechPreference);
+  fineToggle?.addEventListener("change", saveFinePreference);
 
   document.querySelectorAll(".mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => setCarPlayApp(btn.dataset.mode));
@@ -727,6 +748,7 @@
   });
 
   applySpeechPreference();
+  applyFinePreference();
   initMap();
   updateNavCard("R", "250 m", "Ga rechtsaf naar Meesterstraat");
   updateRouteSummary(16, 12);
