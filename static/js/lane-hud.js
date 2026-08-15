@@ -3,6 +3,7 @@
   const labelEl = document.getElementById("lane-label");
   const subEl = document.getElementById("lane-sub");
   const lanesEl = document.getElementById("lane-lanes");
+  const exitEl = document.getElementById("lane-exit");
   if (!arrowEl || !labelEl || !subEl || !lanesEl) return;
 
   const DIR_ICON = {
@@ -35,7 +36,10 @@
     if (mod.includes("sharp right")) return DIR_ICON.sharp_right;
     if (mod.includes("slight left")) return DIR_ICON.slight_left;
     if (mod.includes("slight right")) return DIR_ICON.slight_right;
-    if (mod.includes("left")) return DIR_ICON.left;
+    if (mod.includes("left") || type.includes("off ramp") || type.includes("fork")) {
+      if (type.includes("off ramp") || type.includes("exit")) return DIR_ICON.slight_right;
+      return DIR_ICON.left;
+    }
     if (mod.includes("right")) return DIR_ICON.right;
     if (type === "arrive") return "🏁";
     return DIR_ICON.straight;
@@ -43,18 +47,69 @@
 
   function directionIcon(name) {
     const n = String(name || "").toLowerCase();
-    if (n.includes("LEFT") || n.includes("left")) {
-      if (n.includes("SHARP") || n.includes("sharp")) return "↙";
-      if (n.includes("SLIGHT") || n.includes("slight")) return "↖";
+    if (n.includes("left")) {
+      if (n.includes("sharp")) return "↙";
+      if (n.includes("slight")) return "↖";
       return "←";
     }
-    if (n.includes("RIGHT") || n.includes("right")) {
-      if (n.includes("SHARP") || n.includes("sharp")) return "↘";
-      if (n.includes("SLIGHT") || n.includes("slight")) return "↗";
+    if (n.includes("right")) {
+      if (n.includes("sharp")) return "↘";
+      if (n.includes("slight")) return "↗";
       return "→";
     }
-    if (n.includes("UTURN") || n.includes("u_turn") || n.includes("uturn")) return "↩";
+    if (n.includes("uturn") || n.includes("u_turn")) return "↩";
     return "↑";
+  }
+
+  /** Afrit nummer + naam uit instructie (zelfde idee als iOS parseExit). */
+  function parseExit(step) {
+    if (!step) return null;
+    const type = String((step.maneuver && step.maneuver.type) || "").toLowerCase();
+    const instruction = String(
+      (step.maneuver && step.maneuver.instruction) || step.name || ""
+    );
+    const text = instruction.trim();
+    const isExitType =
+      type.includes("off ramp") ||
+      type.includes("off_ramp") ||
+      type.includes("exit") ||
+      /\bafrit\b/i.test(text) ||
+      /\bexit\b/i.test(text);
+    if (!isExitType && !/\bafrit\s+\d/i.test(text)) return null;
+
+    const patterns = [
+      /(?:neem|volg|rij)\s+(?:de\s+)?afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
+      /afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
+      /exit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
+    ];
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (m) {
+        const number = m[1];
+        let name = (m[2] || "").trim().replace(/\s+/g, " ");
+        if (!name || name.toLowerCase() === "en") name = step.name || "";
+        return { number, name: name || null };
+      }
+    }
+    const onlyNum = text.match(/\bafrit\s+(\d+[A-Za-z]?)\b/i);
+    if (onlyNum) return { number: onlyNum[1], name: step.name || null };
+    // Type is exit maar geen nummer in tekst
+    if (isExitType) {
+      return { number: "", name: step.name || text.slice(0, 80) || "afrit" };
+    }
+    return null;
+  }
+
+  function formatExitBanner(exit, distanceM) {
+    if (!exit) return "";
+    const dist =
+      distanceM != null && distanceM > 0
+        ? ` over ${(distanceM / 1000).toFixed(1)} km`
+        : "";
+    if (exit.number && exit.name) return `Afrit ${exit.number} · ${exit.name}${dist}`;
+    if (exit.number) return `Afrit ${exit.number}${dist}`;
+    if (exit.name) return `Afrit · ${exit.name}${dist}`;
+    return `Afrit${dist}`;
   }
 
   function renderLanes(section) {
@@ -65,57 +120,85 @@
       return;
     }
     lanesEl.hidden = false;
-    lanesEl.innerHTML = lanes.map((lane) => {
-      const dirs = lane.directions || [];
-      const icon = directionIcon(dirs[0] || "STRAIGHT");
-      const cls = lane.follow ? "lane-chip follow" : "lane-chip";
-      // Toon pijl voor rijrichting en baan
-      const laneLabel = lane.follow ? "▶" : "○";
-      return `<span class="${cls}">${icon} ${laneLabel}</span>`;
-    }).join("");
+    const followIdx = lanes.findIndex((l) => l.follow);
+    lanesEl.innerHTML = lanes
+      .map((lane, i) => {
+        const dirs = lane.directions || [];
+        const icon = directionIcon(lane.follow || dirs[0] || "STRAIGHT");
+        const follow = Boolean(lane.follow);
+        const cls = follow ? "lane-chip follow" : "lane-chip";
+        const title = follow
+          ? `Volg baan ${i + 1}/${lanes.length}`
+          : `Baan ${i + 1}`;
+        return `<span class="${cls}" title="${title}">${icon}<small>${i + 1}</small></span>`;
+      })
+      .join("");
+    if (followIdx >= 0) {
+      lanesEl.dataset.hint = `Rij baan ${followIdx + 1} van ${lanes.length}`;
+    } else {
+      delete lanesEl.dataset.hint;
+    }
   }
 
   function updateHud() {
     const nav = window.flitsmaatjeNav;
-    const heading = (typeof window.flitsmaatjeHeading === "number")
-      ? window.flitsmaatjeHeading
-      : null;
+    const heading =
+      typeof window.flitsmaatjeHeading === "number"
+        ? window.flitsmaatjeHeading
+        : null;
     const hasRoute = !!(nav && nav.hasRoute && nav.hasRoute());
     const step = hasRoute && nav.getNextStep ? nav.getNextStep() : null;
 
-    if (heading != null && Number.isFinite(heading)) {
+    if (heading != null && Number.isFinite(heading) && !(hasRoute && step)) {
       arrowEl.style.transform = `rotate(${heading}deg)`;
     }
 
     if (hasRoute && step) {
       arrowEl.textContent = maneuverIcon(step);
-      if (!(heading != null && Number.isFinite(heading))) {
-        arrowEl.style.transform = "none";
-      } else {
-        // bij navigatie: toon maneuver-icoon rechtop, heading apart in sub
-        arrowEl.style.transform = "none";
-      }
+      arrowEl.style.transform = "none";
+      const exit = parseExit(step);
       const road = step.name ? ` · ${step.name}` : "";
-      const km = step.distance != null ? `${(step.distance / 1000).toFixed(1)} km` : "";
-      labelEl.textContent = (step.maneuver && step.maneuver.instruction)
-        ? step.maneuver.instruction
-        : `${(step.maneuver && step.maneuver.modifier) || "rechtdoor"}${road}`;
-      // Toon afritinformatie 2 km voor de afrit
-      let afritInfo = "";
-      if (step.distance != null && step.distance <= 2000 && step.distance > 0) {
-        const afritNaam = step.name || "afrit";
-        afritInfo = `Afrit ${afritNaam} over ${(step.distance / 1000).toFixed(1)} km`;
+      const km =
+        step.distance != null ? `${(step.distance / 1000).toFixed(1)} km` : "";
+      labelEl.textContent =
+        step.maneuver && step.maneuver.instruction
+          ? step.maneuver.instruction
+          : `${(step.maneuver && step.maneuver.modifier) || "rechtdoor"}${road}`;
+
+      // Afrit: zichtbaar wanneer volgende manoeuvre een afrit is (of <2 km)
+      const showExit =
+        exit &&
+        (step.distance == null ||
+          step.distance <= 2500 ||
+          Boolean(exit.number));
+      if (exitEl) {
+        if (showExit) {
+          exitEl.hidden = false;
+          exitEl.textContent = formatExitBanner(exit, step.distance);
+        } else {
+          exitEl.hidden = true;
+          exitEl.textContent = "";
+        }
       }
+
+      const laneHint = lanesEl.dataset.hint || "rijbaan volgt";
       subEl.textContent = [
         km,
-        heading != null ? `koers ${Math.round(heading)}° ${compassLabel(heading)}` : null,
-        afritInfo || "rijbaan volgt",
-      ].filter(Boolean).join(" · ");
+        heading != null
+          ? `koers ${Math.round(heading)}° ${compassLabel(heading)}`
+          : null,
+        showExit ? null : laneHint,
+      ]
+        .filter(Boolean)
+        .join(" · ");
       maybeFetchLanes(nav);
       return;
     }
 
-    // Geen route: permanente koerspijl
+    if (exitEl) {
+      exitEl.hidden = true;
+      exitEl.textContent = "";
+    }
     arrowEl.textContent = "↑";
     if (heading != null && Number.isFinite(heading)) {
       labelEl.textContent = `Koers ${compassLabel(heading)}`;
@@ -143,19 +226,18 @@
       const timer = setTimeout(() => ctrl.abort(), 5000);
       const res = await fetch(
         `/api/lane-guidance?origin_lat=${pos.lat}&origin_lng=${pos.lng}` +
-        `&destination_lat=${dest.lat}&destination_lng=${dest.lng}`,
+          `&destination_lat=${dest.lat}&destination_lng=${dest.lng}`,
         { signal: ctrl.signal }
       );
       clearTimeout(timer);
       const data = await res.json();
       const sections = data.sections || [];
-      // nearest upcoming section
       let best = null;
       let bestDist = Infinity;
       for (const s of sections) {
         if (s.start_lat == null) continue;
-        const dlat = (s.start_lat - pos.lat);
-        const dlng = (s.start_lng - pos.lng);
+        const dlat = s.start_lat - pos.lat;
+        const dlng = s.start_lng - pos.lng;
         const dist = dlat * dlat + dlng * dlng;
         if (dist < bestDist) {
           bestDist = dist;
@@ -163,6 +245,7 @@
         }
       }
       renderLanes(best);
+      updateHud();
     } catch (_) {
       /* lane guidance is enhancement */
     }

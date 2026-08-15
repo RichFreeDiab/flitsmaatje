@@ -14,3 +14,5 @@ ios/fastlane/README.md
 *.dSYM.zip
 .env
 *.p8
+.aider*
+app.py.broken-*

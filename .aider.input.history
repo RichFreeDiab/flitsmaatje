@@ -1,6 +1,0 @@
-
-# 2026-08-15 18:53:41.348241
-+Controleer of FlitsMaatje op poort 5068 leeft: curl http://127.0.0.1:5068/ moet HTTP 200 geven. Geen code wijzigen. Meld de statuscode.
-
-# 2026-08-15 18:59:03.140750
-+Do not edit code. Run: curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5068/ and report the status code only.
