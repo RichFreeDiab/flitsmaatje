@@ -250,6 +250,20 @@
       }
       renderLanes(best);
       updateHud();
+      if (best && best.steps && best.steps.length > 0) {
+        const step = best.steps[0];
+        if (lanesEl) {
+          const laneInfo = step.lanes ? step.lanes.map(l => l.indications || '?').join(' / ') : '—';
+          lanesEl.textContent = 'Baan: ' + laneInfo;
+        }
+        if (exitEl) {
+          const exitName = step.maneuver && step.maneuver.exit ? step.maneuver.exit : (step.name || '—');
+          exitEl.textContent = 'Afrit: ' + exitName;
+        }
+      } else {
+        if (lanesEl) lanesEl.textContent = '';
+        if (exitEl) exitEl.textContent = '';
+      }
     } catch (_) {
       /* lane guidance is enhancement */
     }
