@@ -4,6 +4,7 @@
   const subEl = document.getElementById("lane-sub");
   const lanesEl = document.getElementById("lane-lanes");
   const exitEl = document.getElementById("lane-exit");
+  const laneTextEl = document.getElementById("lane-lane-text");
   if (!arrowEl || !labelEl || !subEl || !lanesEl) return;
 
   const DIR_ICON = {
@@ -93,7 +94,6 @@
     }
     const onlyNum = text.match(/\bafrit\s+(\d+[A-Za-z]?)\b/i);
     if (onlyNum) return { number: onlyNum[1], name: step.name || null };
-    // Type is exit maar geen nummer in tekst
     if (isExitType) {
       return { number: "", name: step.name || text.slice(0, 80) || "afrit" };
     }
@@ -104,7 +104,7 @@
     if (!exit) return "";
     const dist =
       distanceM != null && distanceM > 0
-        ? ` over ${(distanceM / 1000).toFixed(1)} km`
+        ? ` · ${(distanceM / 1000).toFixed(1)} km`
         : "";
     if (exit.number && exit.name) return `Afrit ${exit.number} · ${exit.name}${dist}`;
     if (exit.number) return `Afrit ${exit.number}${dist}`;
@@ -112,11 +112,34 @@
     return `Afrit${dist}`;
   }
 
+  function setLaneText(text) {
+    if (!laneTextEl) return;
+    if (text) {
+      laneTextEl.hidden = false;
+      laneTextEl.textContent = text;
+    } else {
+      laneTextEl.hidden = true;
+      laneTextEl.textContent = "";
+    }
+  }
+
+  function setExitText(text) {
+    if (!exitEl) return;
+    if (text) {
+      exitEl.hidden = false;
+      exitEl.textContent = text;
+    } else {
+      exitEl.hidden = true;
+      exitEl.textContent = "";
+    }
+  }
+
   function renderLanes(section) {
     const lanes = (section && section.lanes) || [];
     if (!lanes.length) {
       lanesEl.hidden = true;
       lanesEl.innerHTML = "";
+      delete lanesEl.dataset.hint;
       return;
     }
     lanesEl.hidden = false;
@@ -134,9 +157,9 @@
       })
       .join("");
     if (followIdx >= 0) {
-      lanesEl.dataset.hint = `Rij baan ${followIdx + 1} van ${lanes.length}`;
+      lanesEl.dataset.hint = `Baan ${followIdx + 1} van ${lanes.length}`;
     } else {
-      delete lanesEl.dataset.hint;
+      lanesEl.dataset.hint = `${lanes.length} banen`;
     }
   }
 
@@ -165,33 +188,24 @@
           ? step.maneuver.instruction
           : `${(step.maneuver && step.maneuver.modifier) || "rechtdoor"}${road}`;
 
-      // Afrit: zichtbaar wanneer volgende manoeuvre een afrit is (of <2 km)
+      // Afrit zichtbaar bij afrit-manoeuvre of binnen ~3 km
       const showExit =
         exit &&
         (step.distance == null ||
-          step.distance <= 2500 ||
-          Boolean(exit.number));
-      if (exitEl) {
-        if (showExit) {
-          exitEl.hidden = false;
-          exitEl.textContent = formatExitBanner(exit, step.distance);
-        } else {
-          exitEl.hidden = true;
-          exitEl.textContent = "";
-        }
-      }
+          step.distance <= 3000 ||
+          Boolean(exit.number) ||
+          Boolean(exit.name));
+      setExitText(showExit ? formatExitBanner(exit, step.distance) : "");
 
-      const laneHint = lanesEl.dataset.hint || "rijbaan volgt";
-      // Toon baaninformatie en afritnaam bij de pijl
-      const banenInfo = lanesEl.innerHTML.includes('follow') ? `Baan ${lanesEl.querySelector('.follow')?.innerText || '?'}` : laneHint;
-      const exitNaam = showExit ? formatExitBanner(exit, step.distance) : '';
-      arrowEl.title = [banenInfo, exitNaam].filter(Boolean).join(' · ');
+      // Baan-tekst naast de pijl (chips blijven apart)
+      const laneHint = lanesEl.dataset.hint || "";
+      setLaneText(laneHint || (!lanesEl.hidden && lanesEl.innerHTML ? "Rijbaan" : ""));
+
       subEl.textContent = [
         km,
         heading != null
           ? `koers ${Math.round(heading)}° ${compassLabel(heading)}`
           : null,
-        showExit ? null : laneHint,
       ]
         .filter(Boolean)
         .join(" · ");
@@ -199,11 +213,10 @@
       return;
     }
 
-    if (exitEl) {
-      exitEl.hidden = true;
-      exitEl.textContent = "";
-    }
+    setExitText("");
+    setLaneText("");
     arrowEl.textContent = "↑";
+    arrowEl.removeAttribute("title");
     if (heading != null && Number.isFinite(heading)) {
       labelEl.textContent = `Koers ${compassLabel(heading)}`;
       subEl.textContent = `${Math.round(heading)}° · pijl blijft zichtbaar`;
@@ -213,6 +226,7 @@
     }
     lanesEl.hidden = true;
     lanesEl.innerHTML = "";
+    delete lanesEl.dataset.hint;
   }
 
   async function maybeFetchLanes(nav) {
@@ -250,20 +264,6 @@
       }
       renderLanes(best);
       updateHud();
-      if (best && best.steps && best.steps.length > 0) {
-        const step = best.steps[0];
-        if (lanesEl) {
-          const laneInfo = step.lanes ? step.lanes.map(l => l.indications || '?').join(' / ') : '—';
-          lanesEl.textContent = 'Baan: ' + laneInfo;
-        }
-        if (exitEl) {
-          const exitName = step.maneuver && step.maneuver.exit ? step.maneuver.exit : (step.name || '—');
-          exitEl.textContent = 'Afrit: ' + exitName;
-        }
-      } else {
-        if (lanesEl) lanesEl.textContent = '';
-        if (exitEl) exitEl.textContent = '';
-      }
     } catch (_) {
       /* lane guidance is enhancement */
     }

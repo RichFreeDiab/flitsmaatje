@@ -13,7 +13,7 @@
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="/static/css/style.css?v=20260815-lane1">
+<link rel="stylesheet" href="/static/css/style.css?v=20260816-lane2">
 </head>
 <body>
 
@@ -24,9 +24,14 @@
 
 
   <div id="lane-hud" aria-live="polite">
-    <span id="lane-arrow" class="lane-arrow">↑</span>
+    <div class="lane-main">
+      <span id="lane-arrow" class="lane-arrow">↑</span>
+      <div class="lane-beside">
+        <div id="lane-lane-text" class="lane-lane-text" hidden></div>
+        <div id="lane-exit" class="lane-exit" hidden></div>
+      </div>
+    </div>
     <div id="lane-label" class="lane-label">Richting…</div>
-    <div id="lane-exit" class="lane-exit" hidden></div>
     <div id="lane-sub" class="lane-sub">Wacht op GPS</div>
     <div id="lane-lanes" class="lane-lanes" hidden></div>
   </div>
@@ -78,6 +83,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/js/app.js"></script>
 <script src="/static/js/navigation.js"></script>
-<script src="/static/js/lane-hud.js?v=20260815-lane1"></script>
+<script src="/static/js/lane-hud.js?v=20260816-lane2"></script>
 </body>
 </html>
