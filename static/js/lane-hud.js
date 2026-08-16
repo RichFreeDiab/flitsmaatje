@@ -182,6 +182,10 @@
       }
 
       const laneHint = lanesEl.dataset.hint || "rijbaan volgt";
+      // Toon baaninformatie en afritnaam bij de pijl
+      const banenInfo = lanesEl.innerHTML.includes('follow') ? `Baan ${lanesEl.querySelector('.follow')?.innerText || '?'}` : laneHint;
+      const exitNaam = showExit ? formatExitBanner(exit, step.distance) : '';
+      arrowEl.title = [banenInfo, exitNaam].filter(Boolean).join(' · ');
       subEl.textContent = [
         km,
         heading != null
