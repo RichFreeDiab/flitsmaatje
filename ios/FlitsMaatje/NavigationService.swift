@@ -75,10 +75,41 @@ final class NavigationService: ObservableObject {
     }
 
     var currentExitBannerText: String? {
-        guard let exit = currentExitInfo else { return nil }
+        Self.formatExitBanner(currentExitInfo)
+    }
+
+    /// Welke rijstrook volgen (TomTom lane guidance), bv. "Baan 2 van 3".
+    var recommendedLaneText: String? {
+        guard let section = laneSections.first, !section.lanes.isEmpty else { return nil }
+        if let idx = section.lanes.firstIndex(where: { $0.follow != nil }) {
+            return "Baan \(idx + 1) van \(section.lanes.count)"
+        }
+        if section.lanes.count > 1 {
+            return "\(section.lanes.count) banen"
+        }
+        return nil
+    }
+
+    /// Compacte kaarttekst: baan + afrit (of korte instructie).
+    var guidanceHeadlineText: String {
+        var parts: [String] = []
+        if let lane = recommendedLaneText { parts.append(lane) }
+        if let exit = currentExitBannerText { parts.append(exit) }
+        if parts.isEmpty {
+            let text = currentInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty, text != "Volg de route" { return text }
+            return "Navigeren"
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    static func formatExitBanner(_ exit: (number: String, name: String?)?) -> String? {
+        guard let exit else { return nil }
         if let name = exit.name, !name.isEmpty {
+            if exit.number.isEmpty { return "Afrit · \(name)" }
             return "Afrit \(exit.number) · \(name)"
         }
+        if exit.number.isEmpty { return nil }
         return "Afrit \(exit.number)"
     }
 
@@ -113,6 +144,15 @@ final class NavigationService: ObservableObject {
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)),
            let numRange = Range(match.range(at: 1), in: text) {
             return (String(text[numRange]), nil)
+        }
+        // Afrit/exit zonder nummer — wel wegnaam tonen indien aanwezig
+        let lower = text.lowercased()
+        if lower.contains("afrit") || lower.contains("off ramp") || lower.contains("exit") {
+            let cleaned = text
+                .replacingOccurrences(of: #"(?i)\b(neem|volg|rij)\s+(de\s+)?afrit\b"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleaned.isEmpty { return ("", cleaned) }
+            return ("", nil)
         }
         return nil
     }

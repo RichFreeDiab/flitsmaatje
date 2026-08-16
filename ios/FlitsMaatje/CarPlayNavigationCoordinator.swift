@@ -244,7 +244,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                     let maneuver = CPManeuver()
                     let image = UIImage(systemName: maneuverSymbolName(for: instruction))?
                         .withTintColor(.white, renderingMode: .alwaysOriginal)
-                    let variants = instructionVariants()
+                    let variants = instructionVariants(for: instruction, isCurrent: offset == 0)
                     maneuver.symbolImage = image
                     maneuver.dashboardSymbolImage = image
                     maneuver.notificationSymbolImage = image
@@ -266,6 +266,21 @@ final class CarPlayNavigationCoordinator: NSObject {
             // Alleen een nieuwe route of afslag vervangt de kaart. Bij gewone
             // GPS-updates blijft hetzelfde CPManeuver-object op zijn plek.
             session.upcomingManeuvers = stableManeuvers
+        } else if let current = stableManeuvers.first {
+            // Live bijwerken: baan + afrittekst op huidige manoeuvre
+            let instruction = navigationService?.currentInstruction ?? ""
+            let variants = instructionVariants(for: instruction, isCurrent: true)
+            if current.instructionVariants != variants {
+                current.instructionVariants = variants
+                current.dashboardInstructionVariants = variants
+                current.notificationInstructionVariants = variants
+            }
+            let symbol = maneuverSymbolName(for: instruction)
+            if let image = UIImage(systemName: symbol)?.withTintColor(.white, renderingMode: .alwaysOriginal) {
+                current.symbolImage = image
+                current.dashboardSymbolImage = image
+                current.notificationSymbolImage = image
+            }
         }
 
         if let current = stableManeuvers.first {
@@ -286,17 +301,35 @@ final class CarPlayNavigationCoordinator: NSObject {
         let text = instruction.lowercased()
         if text.contains("rotonde") || text.contains("roundabout") { return "arrow.clockwise" }
         if text.contains("keer") || text.contains("u-turn") { return "arrow.uturn.left" }
+        if text.contains("afrit") || text.contains("exit") || text.contains("off ramp") {
+            return "arrow.turn.up.right"
+        }
         if text.contains("links") || text.contains("left") { return "arrow.turn.up.left" }
         if text.contains("rechts") || text.contains("right") { return "arrow.turn.up.right" }
         return "arrow.up"
     }
 
-    private func instructionVariants() -> [String] {
-        if let exit = navigationService?.currentExitBannerText, !exit.isEmpty {
-            return [exit, "Afrit"]
+    /// CarPlay-kaarttekst: baan + afritnaam (huidige stap), of afrit per stap.
+    private func instructionVariants(for instruction: String, isCurrent: Bool) -> [String] {
+        var parts: [String] = []
+        if isCurrent, let lane = navigationService?.recommendedLaneText {
+            parts.append(lane)
         }
-        // Geen afrit: richting staat in symbolImage; NBSP houdt CarPlay-kaart geldig.
-        return ["\u{00A0}"]
+        if let exit = NavigationService.parseExit(from: instruction),
+           let exitText = NavigationService.formatExitBanner(exit) {
+            parts.append(exitText)
+        } else if isCurrent {
+            let short = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !short.isEmpty, short != "Volg de route", short.count <= 60 {
+                parts.append(short)
+            }
+        }
+        if parts.isEmpty {
+            // NBSP houdt CarPlay-kaart geldig als alleen het pijlsymbool telt
+            return ["\u{00A0}"]
+        }
+        let primary = parts.joined(separator: " · ")
+        return [primary, parts[0]]
     }
 
     @available(iOS 17.4, *)
@@ -336,7 +369,11 @@ final class CarPlayNavigationCoordinator: NSObject {
         let laneSignature = section.lanes
             .map { "\($0.directions.joined(separator: ",")):\($0.follow ?? "-")" }
             .joined(separator: "|")
-        let signature = "\(section.start_point_index)-\(section.end_point_index):\(laneSignature)"
+        let textSignature = [
+            navigationService?.recommendedLaneText ?? "",
+            navigationService?.currentExitBannerText ?? "",
+        ].joined(separator: "|")
+        let signature = "\(section.start_point_index)-\(section.end_point_index):\(laneSignature):\(textSignature)"
         let guidance: CPLaneGuidance
         let createdNewGuidance: Bool
         if signature == laneGuidanceSignature,
@@ -345,10 +382,7 @@ final class CarPlayNavigationCoordinator: NSObject {
             createdNewGuidance = false
         } else {
             let newGuidance = CPLaneGuidance()
-            newGuidance.instructionVariants = [
-                "Kies de gemarkeerde rijstrook",
-                "Rijstrook"
-            ]
+            newGuidance.instructionVariants = laneGuidanceInstructionVariants()
             newGuidance.lanes = section.lanes.compactMap(makeCarPlayLane)
             guard !newGuidance.lanes.isEmpty else {
                 session.currentLaneGuidance = nil
@@ -366,6 +400,22 @@ final class CarPlayNavigationCoordinator: NSObject {
             session.currentLaneGuidance = guidance
         }
         maneuvers.first?.linkedLaneGuidance = guidance
+    }
+
+    @available(iOS 17.4, *)
+    private func laneGuidanceInstructionVariants() -> [String] {
+        var parts: [String] = []
+        if let lane = navigationService?.recommendedLaneText {
+            parts.append(lane)
+        }
+        if let exit = navigationService?.currentExitBannerText {
+            parts.append(exit)
+        }
+        if parts.isEmpty {
+            return ["Kies de gemarkeerde rijstrook", "Rijstrook"]
+        }
+        let primary = parts.joined(separator: " · ")
+        return [primary, parts[0]]
     }
 
     @available(iOS 17.4, *)

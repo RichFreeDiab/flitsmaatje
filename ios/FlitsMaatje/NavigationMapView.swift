@@ -211,11 +211,28 @@ struct NavigationMapView: View {
                 .frame(width: 52, height: 52)
                 .background(Color.black.opacity(0.82), in: Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
+                if navigation.isNavigating, let lane = navigation.recommendedLaneText {
+                    Text(lane)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.green.opacity(0.85), in: Capsule())
+                }
+                if navigation.isNavigating, let exit = navigation.currentExitBannerText {
+                    Text(exit)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+                        .lineLimit(2)
+                }
                 Text(directionTitle)
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text(directionSubtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.85))
@@ -237,12 +254,12 @@ struct NavigationMapView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .frame(maxWidth: 340, alignment: .leading)
+        .frame(maxWidth: 360, alignment: .leading)
         .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Permanente richting en rijbaan")
+        .accessibilityLabel(navigation.isNavigating ? navigation.guidanceHeadlineText : "Permanente richting en rijbaan")
     }
 
     private var courseDegrees: Double? {
@@ -265,6 +282,12 @@ struct NavigationMapView: View {
 
     private var directionTitle: String {
         if navigation.isNavigating {
+            // Exit/baan staan als badges; titel = korte instructie zonder dubbele afrit
+            if navigation.currentExitBannerText != nil {
+                return navigation.currentInstruction
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty ? "Afrit naderen" : "Volgende manoeuvre"
+            }
             let text = navigation.currentInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? "Navigeren" : text
         }
@@ -278,37 +301,17 @@ struct NavigationMapView: View {
         if let deg = courseDegrees {
             let course = "\(Int(deg.rounded()))° \(compassLabel(deg))"
             if navigation.isNavigating {
-                let laneHint = recommendedLaneHint()
                 if let meters = navigation.laneGuidanceDistanceM {
-                    if let laneHint {
-                        return "\(course) · \(laneHint) over \(formatGuidanceDistance(meters))"
-                    }
                     return "\(course) · rijbaan \(formatGuidanceDistance(meters))"
                 }
-                if let laneHint {
-                    return "\(course) · \(laneHint)"
+                if navigation.currentManeuverDistanceM > 0 {
+                    return "\(course) · over \(formatGuidanceDistance(navigation.currentManeuverDistanceM))"
                 }
                 return "\(course) · pijl blijft zichtbaar"
             }
             return "\(course) · pijl blijft zichtbaar"
         }
         return "Wacht op GPS-koers"
-    }
-
-    private func recommendedLaneHint() -> String? {
-        guard let section = navigation.laneSections.first else { return nil }
-        let follows = section.lanes.compactMap { $0.follow }
-        guard let first = follows.first else { return nil }
-        let idx = (section.lanes.firstIndex { $0.follow != nil } ?? 0) + 1
-        let total = max(section.lanes.count, 1)
-        let label: String
-        switch first {
-        case "STRAIGHT": label = "rij rechtdoor"
-        case "SLIGHT_LEFT", "LEFT", "SHARP_LEFT": label = "kies linkerbaan"
-        case "SLIGHT_RIGHT", "RIGHT", "SHARP_RIGHT": label = "kies rechterbaan"
-        default: label = "volg aangegeven baan"
-        }
-        return "\(label) (\(idx)/\(total))"
     }
 
     private func compassLabel(_ deg: Double) -> String {
@@ -319,26 +322,37 @@ struct NavigationMapView: View {
 
     private var maneuverBanner: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if navigation.laneGuidanceDistanceM != nil,
-               let section = navigation.laneSections.first,
-               !section.lanes.isEmpty {
-                HStack(spacing: 12) {
-                    ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
-                        Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
-                            .font(.system(size: 38, weight: lane.follow != nil ? .bold : .regular))
-                            .foregroundStyle(Color.white.opacity(lane.follow != nil ? 1 : 0.3))
-                            .frame(width: 45, height: 56)
-                    }
-                }
-                if let meters = navigation.laneGuidanceDistanceM {
-                    Text(formatGuidanceDistance(meters))
-                        .font(.title.bold().monospacedDigit())
-                        .foregroundStyle(.white)
-                }
-            } else {
+            // Pijl + rijstroken tegelijk (niet XOR)
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
                     .font(.system(size: 42, weight: .bold))
                     .frame(width: 62, height: 62)
+                    .foregroundStyle(.white)
+                if navigation.laneGuidanceDistanceM != nil,
+                   let section = navigation.laneSections.first,
+                   !section.lanes.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
+                            Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
+                                .font(.system(size: 32, weight: lane.follow != nil ? .bold : .regular))
+                                .foregroundStyle(Color.white.opacity(lane.follow != nil ? 1 : 0.3))
+                                .frame(width: 36, height: 48)
+                        }
+                    }
+                }
+            }
+            if let lane = navigation.recommendedLaneText {
+                Text(lane)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+            if let meters = navigation.laneGuidanceDistanceM {
+                Text(formatGuidanceDistance(meters))
+                    .font(.title.bold().monospacedDigit())
+                    .foregroundStyle(.white)
+            } else if navigation.currentManeuverDistanceM > 0 {
+                Text(formatGuidanceDistance(navigation.currentManeuverDistanceM))
+                    .font(.title.bold().monospacedDigit())
                     .foregroundStyle(.white)
             }
             HStack(spacing: 14) {
@@ -353,8 +367,11 @@ struct NavigationMapView: View {
             .foregroundStyle(.white.opacity(0.82))
             if let exitText = navigation.currentExitBannerText {
                 Text(exitText)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 10))
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
             } else if navigation.isNavigating {
@@ -372,7 +389,7 @@ struct NavigationMapView: View {
             navigation.updateTrafficReports(reports)
         }
         .padding(14)
-        .frame(maxWidth: 330, alignment: .leading)
+        .frame(maxWidth: 340, alignment: .leading)
         .background(Color.blue.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
         .frame(maxWidth: .infinity, alignment: .leading)
