@@ -244,7 +244,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                     let maneuver = CPManeuver()
                     let image = UIImage(systemName: maneuverSymbolName(for: instruction))?
                         .withTintColor(.white, renderingMode: .alwaysOriginal)
-                    let variants = instructionVariants(for: instruction, isCurrent: offset == 0)
+                    let variants = instructionVariants(for: instruction)
                     maneuver.symbolImage = image
                     maneuver.dashboardSymbolImage = image
                     maneuver.notificationSymbolImage = image
@@ -269,7 +269,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         } else if let current = stableManeuvers.first {
             // Live bijwerken: baan + afrittekst op huidige manoeuvre
             let instruction = navigationService?.currentInstruction ?? ""
-            let variants = instructionVariants(for: instruction, isCurrent: true)
+            let variants = instructionVariants(for: instruction)
             if current.instructionVariants != variants {
                 current.instructionVariants = variants
                 current.dashboardInstructionVariants = variants
@@ -309,27 +309,13 @@ final class CarPlayNavigationCoordinator: NSObject {
         return "arrow.up"
     }
 
-    /// CarPlay-kaarttekst: baan + afritnaam (huidige stap), of afrit per stap.
-    private func instructionVariants(for instruction: String, isCurrent: Bool) -> [String] {
-        var parts: [String] = []
-        if isCurrent, let lane = navigationService?.recommendedLaneText {
-            parts.append(lane)
-        }
+    /// CarPlay-tekst: alleen afrit nummer + naam. Rijbaan = visuele CPLaneGuidance.
+    private func instructionVariants(for instruction: String) -> [String] {
         if let exit = NavigationService.parseExit(from: instruction),
            let exitText = NavigationService.formatExitBanner(exit) {
-            parts.append(exitText)
-        } else if isCurrent {
-            let short = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !short.isEmpty, short != "Volg de route", short.count <= 60 {
-                parts.append(short)
-            }
+            return [exitText]
         }
-        if parts.isEmpty {
-            // NBSP houdt CarPlay-kaart geldig als alleen het pijlsymbool telt
-            return ["\u{00A0}"]
-        }
-        let primary = parts.joined(separator: " · ")
-        return [primary, parts[0]]
+        return ["\u{00A0}"]
     }
 
     @available(iOS 17.4, *)
@@ -369,10 +355,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         let laneSignature = section.lanes
             .map { "\($0.directions.joined(separator: ",")):\($0.follow ?? "-")" }
             .joined(separator: "|")
-        let textSignature = [
-            navigationService?.recommendedLaneText ?? "",
-            navigationService?.currentExitBannerText ?? "",
-        ].joined(separator: "|")
+        let textSignature = navigationService?.currentExitBannerText ?? ""
         let signature = "\(section.start_point_index)-\(section.end_point_index):\(laneSignature):\(textSignature)"
         let guidance: CPLaneGuidance
         let createdNewGuidance: Bool
@@ -404,18 +387,10 @@ final class CarPlayNavigationCoordinator: NSObject {
 
     @available(iOS 17.4, *)
     private func laneGuidanceInstructionVariants() -> [String] {
-        var parts: [String] = []
-        if let lane = navigationService?.recommendedLaneText {
-            parts.append(lane)
-        }
         if let exit = navigationService?.currentExitBannerText {
-            parts.append(exit)
+            return [exit]
         }
-        if parts.isEmpty {
-            return ["Kies de gemarkeerde rijstrook", "Rijstrook"]
-        }
-        let primary = parts.joined(separator: " · ")
-        return [primary, parts[0]]
+        return ["\u{00A0}"]
     }
 
     @available(iOS 17.4, *)

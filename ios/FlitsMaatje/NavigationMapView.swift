@@ -211,43 +211,24 @@ struct NavigationMapView: View {
                 .frame(width: 52, height: 52)
                 .background(Color.black.opacity(0.82), in: Circle())
 
-            VStack(alignment: .leading, spacing: 4) {
-                if navigation.isNavigating, let lane = navigation.recommendedLaneText {
-                    Text(lane)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.green.opacity(0.85), in: Capsule())
+            VStack(alignment: .leading, spacing: 6) {
+                if navigation.isNavigating, let section = activeLaneSection {
+                    googleMapsLaneStrip(section, cellSize: 28, arrowSize: 16)
                 }
                 if navigation.isNavigating, let exit = navigation.currentExitBannerText {
                     Text(exit)
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.blue.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
                         .lineLimit(2)
-                }
-                Text(directionTitle)
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                Text(directionSubtitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(2)
-                if navigation.isNavigating,
-                   let section = navigation.laneSections.first,
-                   !section.lanes.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
-                            Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
-                                .font(.system(size: 18, weight: lane.follow != nil ? .bold : .regular))
-                                .foregroundStyle(Color.white.opacity(lane.follow != nil ? 1 : 0.35))
-                        }
-                    }
-                    .padding(.top, 2)
+                } else {
+                    Text(directionTitle)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(directionSubtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
@@ -280,16 +261,17 @@ struct NavigationMapView: View {
         return courseDegrees ?? 0
     }
 
+    private var activeLaneSection: LaneSection? {
+        guard navigation.isNavigating,
+              navigation.laneGuidanceDistanceM != nil,
+              let section = navigation.laneSections.first,
+              !section.lanes.isEmpty else { return nil }
+        return section
+    }
+
     private var directionTitle: String {
         if navigation.isNavigating {
-            // Exit/baan staan als badges; titel = korte instructie zonder dubbele afrit
-            if navigation.currentExitBannerText != nil {
-                return navigation.currentInstruction
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty ? "Afrit naderen" : "Volgende manoeuvre"
-            }
-            let text = navigation.currentInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? "Navigeren" : text
+            return navigation.currentExitBannerText ?? "Navigeren"
         }
         if let deg = courseDegrees {
             return "Koers \(compassLabel(deg))"
@@ -299,17 +281,7 @@ struct NavigationMapView: View {
 
     private var directionSubtitle: String {
         if let deg = courseDegrees {
-            let course = "\(Int(deg.rounded()))° \(compassLabel(deg))"
-            if navigation.isNavigating {
-                if let meters = navigation.laneGuidanceDistanceM {
-                    return "\(course) · rijbaan \(formatGuidanceDistance(meters))"
-                }
-                if navigation.currentManeuverDistanceM > 0 {
-                    return "\(course) · over \(formatGuidanceDistance(navigation.currentManeuverDistanceM))"
-                }
-                return "\(course) · pijl blijft zichtbaar"
-            }
-            return "\(course) · pijl blijft zichtbaar"
+            return "\(Int(deg.rounded()))° \(compassLabel(deg))"
         }
         return "Wacht op GPS-koers"
     }
@@ -321,68 +293,27 @@ struct NavigationMapView: View {
     }
 
     private var maneuverBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Pijl + rijstroken tegelijk (niet XOR)
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
                     .font(.system(size: 42, weight: .bold))
                     .frame(width: 62, height: 62)
                     .foregroundStyle(.white)
-                if navigation.laneGuidanceDistanceM != nil,
-                   let section = navigation.laneSections.first,
-                   !section.lanes.isEmpty {
-                    HStack(spacing: 8) {
-                        ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
-                            Image(systemName: laneSymbol(lane.follow ?? lane.directions.first))
-                                .font(.system(size: 32, weight: lane.follow != nil ? .bold : .regular))
-                                .foregroundStyle(Color.white.opacity(lane.follow != nil ? 1 : 0.3))
-                                .frame(width: 36, height: 48)
-                        }
-                    }
+                if let meters = navigation.laneGuidanceDistanceM ?? (navigation.currentManeuverDistanceM > 0 ? navigation.currentManeuverDistanceM : nil) {
+                    Text(formatGuidanceDistance(meters))
+                        .font(.title.bold().monospacedDigit())
+                        .foregroundStyle(.white)
                 }
             }
-            if let lane = navigation.recommendedLaneText {
-                Text(lane)
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
+            if let section = activeLaneSection {
+                googleMapsLaneStrip(section, cellSize: 44, arrowSize: 22)
             }
-            if let meters = navigation.laneGuidanceDistanceM {
-                Text(formatGuidanceDistance(meters))
-                    .font(.title.bold().monospacedDigit())
-                    .foregroundStyle(.white)
-            } else if navigation.currentManeuverDistanceM > 0 {
-                Text(formatGuidanceDistance(navigation.currentManeuverDistanceM))
-                    .font(.title.bold().monospacedDigit())
-                    .foregroundStyle(.white)
-            }
-            HStack(spacing: 14) {
-                if navigation.distanceRemainingM > 0 {
-                    Text(formatDistance(navigation.distanceRemainingM))
-                }
-                if let eta = navigation.eta {
-                    Text(eta.formatted(date: .omitted, time: .shortened))
-                }
-            }
-            .font(.caption.bold().monospacedDigit())
-            .foregroundStyle(.white.opacity(0.82))
             if let exitText = navigation.currentExitBannerText {
                 Text(exitText)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 10))
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
-            } else if navigation.isNavigating {
-                let instruction = navigation.currentInstruction
-                if !instruction.isEmpty, instruction != "Volg de route" {
-                    Text(instruction)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-                }
             }
         }
         .onChange(of: location.mapReports) { _, reports in
@@ -393,6 +324,43 @@ struct NavigationMapView: View {
         .background(Color.blue.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Google Maps-stijl: rijstroken als pijlen; volg-baan helder, rest gedimd.
+    private func googleMapsLaneStrip(_ section: LaneSection, cellSize: CGFloat, arrowSize: CGFloat) -> some View {
+        HStack(spacing: 5) {
+            ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
+                let follow = lane.follow
+                let isFollow = follow != nil
+                let arrows = laneArrowDirections(lane)
+                VStack(spacing: 2) {
+                    ForEach(Array(arrows.enumerated()), id: \.offset) { _, dir in
+                        Image(systemName: laneSymbol(dir))
+                            .font(.system(size: arrowSize, weight: dir == follow ? .bold : .semibold))
+                            .foregroundStyle(
+                                dir == follow
+                                    ? Color.blue
+                                    : Color.white.opacity(isFollow ? 0.35 : 0.45)
+                            )
+                    }
+                }
+                .frame(width: cellSize, height: max(cellSize + 8, CGFloat(max(arrows.count, 1)) * (arrowSize + 4) + 10))
+                .background(
+                    isFollow ? Color.white : Color.white.opacity(0.16),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+            }
+        }
+        .accessibilityLabel("Rijstroken")
+    }
+
+    private func laneArrowDirections(_ lane: Lane) -> [String] {
+        var dirs = lane.directions
+        if let follow = lane.follow, !dirs.contains(follow) {
+            dirs.append(follow)
+        }
+        if dirs.isEmpty { return ["STRAIGHT"] }
+        return dirs
     }
 
     private func maneuverSymbol(for instruction: String) -> String {
@@ -406,10 +374,14 @@ struct NavigationMapView: View {
     }
 
     private func laneSymbol(_ direction: String?) -> String {
-        switch direction {
-        case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT": return "arrow.up.left"
-        case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT": return "arrow.up.right"
-        case "LEFT_U_TURN", "RIGHT_U_TURN": return "arrow.uturn.up"
+        switch (direction ?? "").uppercased() {
+        case "LEFT": return "arrow.up.left"
+        case "SLIGHT_LEFT": return "arrow.up.left"
+        case "SHARP_LEFT": return "arrow.uturn.up"
+        case "RIGHT": return "arrow.up.right"
+        case "SLIGHT_RIGHT": return "arrow.up.right"
+        case "SHARP_RIGHT": return "arrow.uturn.up"
+        case "LEFT_U_TURN", "RIGHT_U_TURN", "U_TURN": return "arrow.uturn.up"
         default: return "arrow.up"
         }
     }
@@ -476,7 +448,6 @@ struct NavigationMapView: View {
     }
 
     private func runSearch() async { guard let user = location.lastLocation else { return }; await navigation.search(near: user.coordinate) }
-    private func formatDistance(_ meters: Int) -> String { String(format: "%.1f km", Double(meters) / 1000) }
     private func formatGuidanceDistance(_ meters: Int) -> String {
         meters < 1_000
             ? "\(max(10, Int((Double(meters) / 10).rounded()) * 10)) m"

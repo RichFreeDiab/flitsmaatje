@@ -78,29 +78,10 @@ final class NavigationService: ObservableObject {
         Self.formatExitBanner(currentExitInfo)
     }
 
-    /// Welke rijstrook volgen (TomTom lane guidance), bv. "Baan 2 van 3".
-    var recommendedLaneText: String? {
-        guard let section = laneSections.first, !section.lanes.isEmpty else { return nil }
-        if let idx = section.lanes.firstIndex(where: { $0.follow != nil }) {
-            return "Baan \(idx + 1) van \(section.lanes.count)"
-        }
-        if section.lanes.count > 1 {
-            return "\(section.lanes.count) banen"
-        }
-        return nil
-    }
-
-    /// Compacte kaarttekst: baan + afrit (of korte instructie).
+    /// Alleen afrit-tekst (baan is visueel, geen "Baan 2 van 3").
     var guidanceHeadlineText: String {
-        var parts: [String] = []
-        if let lane = recommendedLaneText { parts.append(lane) }
-        if let exit = currentExitBannerText { parts.append(exit) }
-        if parts.isEmpty {
-            let text = currentInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty, text != "Volg de route" { return text }
-            return "Navigeren"
-        }
-        return parts.joined(separator: " · ")
+        if let exit = currentExitBannerText { return exit }
+        return "Navigeren"
     }
 
     static func formatExitBanner(_ exit: (number: String, name: String?)?) -> String? {
