@@ -19,11 +19,20 @@ NAVIGATION_MAP = (
 
 class CarPlayUIContractTests(unittest.TestCase):
     def test_maneuver_card_uses_only_native_arrow_and_neutral_background(self):
-        self.assertIn("let variants = instructionVariants()", COORDINATOR)
+        self.assertIn("let variants = instructionVariants(for: instruction)", COORDINATOR)
         self.assertIn("maneuver.instructionVariants = variants", COORDINATOR)
         self.assertIn("maneuver.cardBackgroundColor = .black", COORDINATOR)
         self.assertIn(r'["\u{00A0}"]', COORDINATOR)
         self.assertNotIn("var variants = [instruction]", COORDINATOR)
+        self.assertNotIn("Baan ", COORDINATOR)
+        self.assertNotIn("Kies de gemarkeerde rijstrook", COORDINATOR)
+
+    def test_lane_choice_is_visual_arrows_and_text_is_exit_only(self):
+        self.assertIn("googleMapsLaneStrip", NAVIGATION_MAP)
+        self.assertIn("currentExitBannerText", NAVIGATION_MAP)
+        self.assertNotIn("recommendedLaneText", NAVIGATION_MAP)
+        self.assertNotIn("Baan X van", NAVIGATION)
+        self.assertIn("formatExitBanner", COORDINATOR)
 
     def test_lane_guidance_uses_official_carplay_metadata(self):
         self.assertIn("session.currentLaneGuidance = guidance", COORDINATOR)
