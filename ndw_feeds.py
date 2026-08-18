@@ -95,7 +95,7 @@ def sync_ndw_reports(db):
         try:
             response = requests.get(
                 NDW_BASE + filename,
-                timeout=12,
+                timeout=8,
                 headers={"User-Agent": "FlitsMaatje/1.1"},
             )
             response.raise_for_status()

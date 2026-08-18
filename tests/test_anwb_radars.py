@@ -53,6 +53,25 @@ class ANWBRadarTests(unittest.TestCase):
 
         self.assertEqual(reports[0]["id"], "anwb-radar-cached")
 
+    def test_uses_midpoint_when_radar_loc_is_missing(self):
+        payload = {
+            "success": True,
+            "roads": [{
+                "road": "A12",
+                "radars": [{
+                    "id": 99,
+                    "fromLoc": {"lat": 52.0, "lon": 5.0},
+                    "toLoc": {"lat": 52.2, "lon": 5.0},
+                    "events": [{"text": "Snelheidscontrole"}],
+                }],
+            }],
+        }
+        reports = anwb_radars._parse_radars(payload, now=1.0)
+        self.assertEqual(len(reports), 1)
+        self.assertAlmostEqual(reports[0]["lat"], 52.1)
+        self.assertEqual(reports[0]["description"], "Snelheidscontrole")
+        self.assertEqual(reports[0]["road"], "A12")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@
 The API key is deliberately read only from TOMTOM_API_KEY. Never ship it in
 the iOS app or commit it to the repository.
 """
+import math
 import os
 import threading
 import time
@@ -249,6 +250,27 @@ def fetch_flow_segment(lat, lng):
         return None
 
 
+def _line_heading(geometry):
+    coords = (geometry or {}).get("coordinates") or []
+    geometry_type = (geometry or {}).get("type")
+    a = b = None
+    if geometry_type == "LineString" and len(coords) >= 2:
+        a, b = coords[0], coords[-1]
+    elif geometry_type == "MultiLineString" and coords and len(coords[0]) >= 2:
+        a, b = coords[0][0], coords[0][-1]
+    if not a or not b or len(a) < 2 or len(b) < 2:
+        return None
+    try:
+        lat1 = math.radians(float(a[1]))
+        lat2 = math.radians(float(b[1]))
+        delta_lng = math.radians(float(b[0]) - float(a[0]))
+    except (TypeError, ValueError, IndexError):
+        return None
+    y = math.sin(delta_lng) * math.cos(lat2)
+    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(delta_lng)
+    return round((math.degrees(math.atan2(y, x)) + 360) % 360, 1)
+
+
 def _first_coordinate(geometry):
     coords = (geometry or {}).get("coordinates") or []
     geometry_type = (geometry or {}).get("type")
@@ -259,6 +281,31 @@ def _first_coordinate(geometry):
     if geometry_type == "MultiLineString":
         return coords[0][0] if coords and coords[0] and len(coords[0][0]) >= 2 else None
     return None
+
+
+def _request_incidents(api_key, bbox, fields):
+    params = {
+        "key": api_key,
+        "bbox": bbox,
+        "fields": fields,
+        "language": "nl-NL",
+        "timeValidityFilter": "present",
+    }
+    headers = {"User-Agent": "FlitsMaatje/1.1"}
+    last_error = None
+    for method in ("post", "get"):
+        try:
+            response = getattr(requests, method)(
+                TOMTOM_INCIDENTS_URL,
+                params=params,
+                headers=headers,
+                timeout=8,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as error:
+            last_error = error
+    raise last_error or RuntimeError("TomTom incidents onbereikbaar")
 
 
 def fetch_incidents(lat, lng, radius_km=15):
@@ -274,39 +321,37 @@ def fetch_incidents(lat, lng, radius_km=15):
 
     margin = radius_km / 111.0
     bbox = f"{lng - margin},{lat - margin},{lng + margin},{lat + margin}"
-    fields = "{incidents{type,geometry{type,coordinates},properties{iconCategory,description,delay}}}"
+    fields = (
+        "{incidents{type,geometry{type,coordinates},"
+        "properties{id,iconCategory,description,delay,from,to}}}"
+    )
     try:
-        response = requests.post(
-            TOMTOM_INCIDENTS_URL,
-            params={
-                "key": api_key,
-                "bbox": bbox,
-                "fields": fields,
-                "language": "nl-NL",
-                "timeValidityFilter": "present",
-            },
-            headers={"User-Agent": "FlitsMaatje/1.1"},
-            timeout=8,
-        )
-        response.raise_for_status()
+        payload = _request_incidents(api_key, bbox, fields)
         reports = []
-        for index, incident in enumerate(response.json().get("incidents", [])):
-            coordinate = _first_coordinate(incident.get("geometry"))
+        for index, incident in enumerate(payload.get("incidents") or []):
+            geometry = incident.get("geometry")
+            coordinate = _first_coordinate(geometry)
             if not coordinate:
                 continue
             props = incident.get("properties") or {}
             category = int(props.get("iconCategory") or 0)
             report_type = {
-                1: "ongeval", 6: "file", 7: "wegwerkzaamheden",
-                8: "wegwerkzaamheden", 9: "wegwerkzaamheden",
+                1: "ongeval",
+                6: "file",
+                7: "wegwerkzaamheden",
+                8: "wegwerkzaamheden",
+                9: "wegwerkzaamheden",
             }.get(category, "gevaar")
+            incident_id = props.get("id") or f"{index}-{coordinate[1]}-{coordinate[0]}"
             reports.append({
-                "id": f"tomtom-{index}-{coordinate[1]}-{coordinate[0]}",
+                "id": f"tomtom-{incident_id}",
                 "type": report_type,
                 "lat": float(coordinate[1]),
                 "lng": float(coordinate[0]),
+                "heading": _line_heading(geometry),
                 "description": (props.get("description") or "TomTom verkeersmelding")[:240],
                 "delay_s": props.get("delay"),
+                "road": props.get("from") or props.get("to"),
                 "created_at": time.time(),
                 "expires_at": time.time() + 15 * 60,
             })

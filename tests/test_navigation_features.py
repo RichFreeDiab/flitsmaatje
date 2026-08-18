@@ -1,6 +1,8 @@
 import os
 import unittest
+from datetime import datetime
 from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo
 
 import app
 import tomtom_traffic
@@ -81,6 +83,31 @@ class NavigationFeatureTests(unittest.TestCase):
     def test_fine_estimate_requires_a_known_limit(self):
         self.assertIsNone(app.estimate_fine("snelweg", 113, None))
 
+    def test_motorway_default_is_100_by_day_and_130_at_night(self):
+        day = datetime(2026, 8, 18, 12, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        night = datetime(2026, 8, 18, 22, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        self.assertEqual(app.DEFAULT_LIMIT_BY_HIGHWAY["motorway"], 130)
+        self.assertEqual(app.DEFAULT_LIMIT_BY_HIGHWAY["trunk"], 130)
+        self.assertEqual(
+            app.apply_nl_motorway_limit("motorway", 130, explicit=False, now=day),
+            100,
+        )
+        self.assertEqual(
+            app.apply_nl_motorway_limit("motorway", None, explicit=False, now=night),
+            130,
+        )
+        self.assertEqual(
+            app.apply_nl_motorway_limit("motorway", 80, explicit=True, now=day),
+            80,
+        )
+
+    def test_posted_130_becomes_100_during_day_limit(self):
+        day = datetime(2026, 8, 18, 8, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        self.assertEqual(
+            app.apply_nl_motorway_limit("motorway", 130, explicit=True, now=day),
+            100,
+        )
+
     def test_nearby_alert_excludes_opposite_direction_fixed_camera(self):
         camera = {
             "id": "osm-speed-camera-node-opposite",
@@ -103,6 +130,38 @@ class NavigationFeatureTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.get_json()["alert"])
 
+
+    def test_tomtom_incidents_retry_get_and_keep_heading(self):
+        tomtom_traffic._cache.clear()
+        post_error = Mock()
+        post_error.raise_for_status.side_effect = Exception("post-disabled")
+        get_ok = Mock()
+        get_ok.raise_for_status.return_value = None
+        get_ok.json.return_value = {
+            "incidents": [{
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[5.0, 52.0], [5.01, 52.02]],
+                },
+                "properties": {
+                    "id": "abc",
+                    "iconCategory": 6,
+                    "description": "File A2",
+                    "delay": 120,
+                },
+            }]
+        }
+        with (
+            patch.dict(os.environ, {"TOMTOM_API_KEY": "test-key"}),
+            patch.object(tomtom_traffic.requests, "post", return_value=post_error),
+            patch.object(tomtom_traffic.requests, "get", return_value=get_ok),
+        ):
+            reports = tomtom_traffic.fetch_incidents(52.0, 5.0, radius_km=10)
+
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]["id"], "tomtom-abc")
+        self.assertEqual(reports[0]["type"], "file")
+        self.assertIsNotNone(reports[0]["heading"])
 
     def test_lane_guidance_contains_coordinates_for_display_ordering(self):
         response = Mock()

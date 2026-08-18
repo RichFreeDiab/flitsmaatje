@@ -16,7 +16,9 @@ import sqlite3
 import time
 import math
 import uuid
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import requests
 from flask import Flask, request, jsonify, g, send_from_directory
 from ndw_feeds import sync_ndw_reports
@@ -190,13 +192,20 @@ def should_fetch_osm_speed_cameras(lat, lng):
     )
 
 # Als een weg geen expliciete maxspeed-tag heeft, vallen we terug op een
-# vuistregel per wegtype (Nederlandse standaardlimieten). Dit is een
-# benadering: de officiële, geldende limiet wordt altijd bepaald door de
-# bebording ter plaatse, niet door deze app.
+# vuistregel per wegtype (Nederlandse standaardlimieten). Motorway/trunk:
+# 130 km/u, met 100 km/u als wettelijke daglimiet 06:00–19:00.
+# De bebording ter plaatse blijft leidend.
+NL_TZ = ZoneInfo("Europe/Amsterdam")
+MOTORWAY_HIGHWAYS = frozenset({"motorway", "motorway_link", "trunk", "trunk_link"})
+MOTORWAY_NIGHT_LIMIT = 130
+MOTORWAY_DAY_LIMIT = 100
+MOTORWAY_DAY_START_HOUR = 6
+MOTORWAY_DAY_END_HOUR = 19
+
 DEFAULT_LIMIT_BY_HIGHWAY = {
-    "motorway": 100,
-    "motorway_link": 100,
-    "trunk": 100,
+    "motorway": MOTORWAY_NIGHT_LIMIT,
+    "motorway_link": MOTORWAY_NIGHT_LIMIT,
+    "trunk": MOTORWAY_NIGHT_LIMIT,
     "trunk_link": 80,
     "primary": 80,
     "primary_link": 80,
@@ -229,9 +238,42 @@ def run_overpass_query(query, timeout=OVERPASS_TIMEOUT):
     raise last_error or RuntimeError("Overpass niet bereikbaar")
 
 
+def nl_is_motorway_day(now=None):
+    """True tijdens de landelijke 100 km/u-daglimiet (06:00–19:00 Europe/Amsterdam)."""
+    now = now or datetime.now(NL_TZ)
+    return MOTORWAY_DAY_START_HOUR <= now.hour < MOTORWAY_DAY_END_HOUR
+
+
+def looks_like_a_road(road_name):
+    if not road_name:
+        return False
+    return bool(re.match(r"^A\s*\d+", str(road_name).strip(), re.I))
+
+
+def apply_nl_motorway_limit(highway, maxspeed, explicit=False, road_name=None, now=None):
+    """Pas 130/'s nachts en 100 overdag toe op NL-snelwegen.
+
+    Lagere bebording (80, 70) blijft staan. Een expliciete 100-tag behandelen
+    we als 24-uurslimiet; `nl:motorway` en highway-defaults volgen de dagregel.
+    """
+    motorway = highway in MOTORWAY_HIGHWAYS or looks_like_a_road(road_name)
+    if not motorway:
+        return maxspeed
+    if maxspeed is None:
+        maxspeed = MOTORWAY_NIGHT_LIMIT
+        explicit = False
+    if maxspeed < MOTORWAY_DAY_LIMIT:
+        return maxspeed
+    if nl_is_motorway_day(now):
+        return min(maxspeed, MOTORWAY_DAY_LIMIT)
+    if not explicit:
+        return MOTORWAY_NIGHT_LIMIT
+    return maxspeed
+
+
 def classify_zone(highway_type, maxspeed):
     """Leid de boete-zone af (bebouwde kom / buiten bebouwde kom / snelweg)."""
-    if highway_type in ("motorway", "motorway_link", "trunk", "trunk_link"):
+    if highway_type in MOTORWAY_HIGHWAYS:
         return "snelweg"
     if maxspeed is not None:
         if maxspeed >= 90:
@@ -254,7 +296,7 @@ def _parse_maxspeed_tag(raw):
     aliases = {
         "nl:urban": 50,
         "nl:rural": 80,
-        "nl:motorway": 100,
+        "nl:motorway": MOTORWAY_NIGHT_LIMIT,
         "nl:zone30": 30,
         "nl:zone20": 20,
         "de:urban": 50,
@@ -263,7 +305,6 @@ def _parse_maxspeed_tag(raw):
     if text in aliases:
         return aliases[text]
     # "80", "80 km/h", "50 mph"
-    import re
     m = re.search(r"(\d+(?:\.\d+)?)", text)
     if not m:
         return None
@@ -288,20 +329,32 @@ out tags 6;"""
     for element in elements:
         tags = element.get("tags") or {}
         highway = tags.get("highway")
-        maxspeed = _parse_maxspeed_tag(tags.get("maxspeed") or tags.get("maxspeed:forward"))
+        raw_maxspeed = tags.get("maxspeed") or tags.get("maxspeed:forward")
+        maxspeed = _parse_maxspeed_tag(raw_maxspeed)
+        explicit = bool(raw_maxspeed) and str(raw_maxspeed).strip().lower() not in {
+            "nl:motorway", "signals", "none", "variable",
+        }
         if maxspeed is None and highway in DEFAULT_LIMIT_BY_HIGHWAY:
             maxspeed = DEFAULT_LIMIT_BY_HIGHWAY[highway]
+            explicit = False
+        road_name = tags.get("ref") or tags.get("name")
+        maxspeed = apply_nl_motorway_limit(
+            highway, maxspeed, explicit=explicit, road_name=road_name,
+        )
         if maxspeed is None:
             continue
         candidate = {
             "maxspeed": maxspeed,
             "zone": classify_zone(highway, maxspeed),
-            "road_name": tags.get("ref") or tags.get("name"),
+            "road_name": road_name,
             "source": "osm_overpass",
             "highway": highway,
+            "day_limit_active": bool(
+                highway in MOTORWAY_HIGHWAYS and nl_is_motorway_day()
+            ),
         }
         # Prefer explicit maxspeed over highway-default
-        if tags.get("maxspeed") or tags.get("maxspeed:forward"):
+        if explicit:
             return candidate
         if best is None:
             best = candidate
@@ -310,7 +363,8 @@ out tags 6;"""
 
 def fetch_speed_limit(lat, lng):
     """TomTom Snap → Reverse Geocode → OSM Overpass (boete-USP mag niet doodvallen)."""
-    cache_key = (round(lat, 4), round(lng, 4))
+    day_flag = int(nl_is_motorway_day())
+    cache_key = (round(lat, 4), round(lng, 4), day_flag)
     cached = _speed_limit_cache.get(cache_key)
     if cached and (time.time() - cached[1]) < SPEED_LIMIT_CACHE_TTL:
         return cached[0]
@@ -328,11 +382,20 @@ def fetch_speed_limit(lat, lng):
 
     reverse = fetch_tomtom_reverse_speed_limit(lat, lng)
     if reverse and reverse.get("maxspeed") is not None:
+        maxspeed = apply_nl_motorway_limit(
+            None,
+            reverse["maxspeed"],
+            explicit=True,
+            road_name=reverse.get("road_name"),
+        )
         result = {
-            "maxspeed": reverse["maxspeed"],
-            "zone": classify_zone(None, reverse["maxspeed"]),
+            "maxspeed": maxspeed,
+            "zone": classify_zone(None, maxspeed),
             "road_name": reverse.get("road_name"),
             "source": reverse.get("source") or "tomtom_reverse_geocode",
+            "day_limit_active": bool(
+                looks_like_a_road(reverse.get("road_name")) and nl_is_motorway_day()
+            ),
         }
         _speed_limit_cache[cache_key] = (result, time.time())
         return result
@@ -583,7 +646,7 @@ def speed_check():
         try:
             speed_kmh = float(speed_param)
             zone = limit_info.get("zone") or classify_zone(
-                limit_info.get("highway_type"),
+                limit_info.get("highway") or limit_info.get("highway_type"),
                 limit_info["maxspeed"],
             )
             fine = estimate_fine(zone, speed_kmh, limit_info["maxspeed"])
@@ -694,6 +757,8 @@ def get_reports():
                 item["road"] = radar["road"]
             if radar.get("hectometer") is not None:
                 item["hectometer"] = str(radar["hectometer"])
+            if radar.get("description"):
+                item["description"] = radar["description"]
             results.append(item)
 
     # TomTom levert actuele files, ongevallen en wegwerkzaamheden naast de
@@ -705,7 +770,7 @@ def get_reports():
             results.append({
                 "id": incident["id"], "type": incident["type"],
                 "lat": incident["lat"], "lng": incident["lng"],
-                "heading": None, "created_at": incident["created_at"],
+                "heading": incident.get("heading"), "created_at": incident["created_at"],
                 "expires_at": incident["expires_at"], "confirms": 1,
                 "denies": 0, "distance_km": round(dist, 3),
                 "description": incident["description"],
