@@ -205,15 +205,15 @@ struct NavigationMapView: View {
     private var directionHUD: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: directionArrowSymbol)
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 46, weight: .bold))
                 .foregroundStyle(.white)
                 .rotationEffect(.degrees(directionArrowRotation))
-                .frame(width: 52, height: 52)
+                .frame(width: 66, height: 66)
                 .background(Color.black.opacity(0.82), in: Circle())
 
             VStack(alignment: .leading, spacing: 6) {
                 if navigation.isNavigating, let section = activeLaneSection {
-                    googleMapsLaneStrip(section, cellSize: 28, arrowSize: 16)
+                    googleMapsLaneStrip(section, cellSize: 34, arrowSize: 22)
                 }
                 if navigation.isNavigating, let exit = navigation.currentExitBannerText {
                     Text(exit)
@@ -296,8 +296,8 @@ struct NavigationMapView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
-                    .font(.system(size: 42, weight: .bold))
-                    .frame(width: 62, height: 62)
+                    .font(.system(size: 48, weight: .bold))
+                    .frame(width: 68, height: 68)
                     .foregroundStyle(.white)
                 if let meters = navigation.laneGuidanceDistanceM ?? (navigation.currentManeuverDistanceM > 0 ? navigation.currentManeuverDistanceM : nil) {
                     Text(formatGuidanceDistance(meters))

@@ -269,10 +269,10 @@ body.alert-active #speed-panel {
   z-index: 1000;
   background: rgba(30, 35, 39, 0.94);
   color: #fff;
-  border-radius: 16px;
-  padding: 12px 14px;
-  min-width: 88px;
-  max-width: min(280px, 72vw);
+  border-radius: 18px;
+  padding: 14px 16px;
+  min-width: 96px;
+  max-width: min(320px, 78vw);
   box-shadow: 0 2px 12px rgba(0,0,0,0.35);
   text-align: center;
   pointer-events: none;
@@ -281,7 +281,7 @@ body.alert-active #speed-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   text-align: left;
 }
 #lane-hud .lane-beside {
@@ -292,8 +292,8 @@ body.alert-active #speed-panel {
   gap: 6px;
 }
 #lane-hud .lane-arrow {
-  font-size: 42px;
-  line-height: 1;
+  font-size: 62px;
+  line-height: 0.9;
   font-weight: 700;
   transform-origin: center center;
   transition: transform 0.25s ease;
@@ -301,12 +301,15 @@ body.alert-active #speed-panel {
   flex-shrink: 0;
 }
 #lane-hud .lane-lane-text {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-radius: 10px;
   background: #1f6f43;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.25;
+  border: 2px solid #34c06f;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+  box-shadow: 0 0 10px rgba(52, 192, 111, 0.45);
 }
 #lane-hud .lane-label {
   margin-top: 6px;
@@ -333,33 +336,35 @@ body.alert-active #speed-panel {
 #lane-hud .lane-lanes {
   display: flex;
   justify-content: center;
-  gap: 4px;
-  margin-top: 8px;
+  gap: 6px;
+  margin-top: 10px;
   flex-wrap: wrap;
 }
 #lane-hud .lane-chip {
-  min-width: 28px;
-  height: 40px;
-  border-radius: 8px;
+  min-width: 34px;
+  height: 50px;
+  border-radius: 10px;
   background: #2a3136;
-  border: 2px solid #4a5560;
+  border: 2px solid #55606b;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
-  gap: 2px;
+  gap: 3px;
 }
 #lane-hud .lane-chip small {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   opacity: 0.85;
 }
 #lane-hud .lane-chip.follow {
   background: #0a84ff;
   border-color: #4da3ff;
+  box-shadow: 0 0 12px rgba(10, 132, 255, 0.7);
+  transform: scale(1.08);
 }
 body.alert-active #lane-hud {
   opacity: 0.9;

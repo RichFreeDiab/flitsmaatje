@@ -157,7 +157,7 @@
       })
       .join("");
     if (followIdx >= 0) {
-      lanesEl.dataset.hint = `Baan ${followIdx + 1} van ${lanes.length}`;
+      lanesEl.dataset.hint = `Volg baan ${followIdx + 1} van ${lanes.length}`;
     } else {
       lanesEl.dataset.hint = `${lanes.length} banen`;
     }
