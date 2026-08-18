@@ -563,7 +563,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func configureAudioSession() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay])
         try? AVAudioSession.sharedInstance().setActive(true)
     }
 }
