@@ -45,7 +45,7 @@ final class NavigationService: ObservableObject {
 
     private static let speechPreferenceKey = "spoken-guidance-enabled"
     static let laneDisplayHorizonM = 3500
-    private static let laneRouteAlignmentM = 250
+    private static let laneRouteAlignmentM: CLLocationDistance = 250
     private static let laneRefreshMovementM: CLLocationDistance = 500
     private var speechDefaults: UserDefaults {
         UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
