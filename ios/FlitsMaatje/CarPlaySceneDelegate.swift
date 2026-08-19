@@ -19,7 +19,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CarPlaySessionTracker.setForegroundOnCarPlay(true)
 
             let locationService = LocationBackgroundService()
-            let navigationService = NavigationService()
+            let navigationService = NavigationService.shared
             self.locationService = locationService
             self.navigationService = navigationService
 
@@ -69,7 +69,6 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
             CarPlaySessionTracker.setForegroundOnCarPlay(false)
             self.locationService?.onLocationUpdate = nil
-            self.navigationService?.stopNavigation()
             CarPlayNavigationCoordinator.shared.detach()
             CarPlayDrivingTaskCoordinator.shared.detach()
             self.locationService?.stop()

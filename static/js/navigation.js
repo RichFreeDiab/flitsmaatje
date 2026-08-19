@@ -57,7 +57,26 @@
       return;
     }
     const km = ((step.distance || 0) / 1000).toFixed(1);
-    info.innerHTML = '<div class="muted">Volgende instructie · ' + km + ' km</div><div class="instruction">' + instruction(step) + '</div>';
+    let guidanceHtml = "";
+    const G = window.FlitsMaatjeGuidance;
+    if (G) {
+      const nav = window.flitsmaatjeNav;
+      const exit = G.currentOrUpcomingExitBanner(nav, step);
+      const detail = G.guidanceDetailText(nav, step, null, window.flitsmaatjePos);
+      if (exit) {
+        guidanceHtml += '<div class="muted">' + exit + "</div>";
+      }
+      if (detail && detail !== exit) {
+        guidanceHtml += '<div class="muted">' + detail + "</div>";
+      }
+    }
+    info.innerHTML =
+      '<div class="muted">Volgende instructie · ' +
+      km +
+      ' km</div><div class="instruction">' +
+      instruction(step) +
+      "</div>" +
+      guidanceHtml;
   }
 
   async function route() {
@@ -136,7 +155,7 @@
         return;
       }
     }
-    if (distanceMeters(p, target) <= 60) {
+    if (distanceMeters(p, target) <= (window.FlitsMaatjeGuidance?.STEP_ADVANCE_M ?? 50)) {
       nextStep += 1;
       renderStep();
       const spoken = steps[nextStep];
@@ -155,6 +174,8 @@
     getNextStep: () => steps[nextStep] || null,
     getDestination: () => window.__fmDest || null,
     getSteps: () => steps.slice(),
+    getStepIndex: () => nextStep,
+    getRouteCoordinates: () => routeCoordinates.slice(),
   };
   window.dispatchEvent(new CustomEvent("flitsmaatje:nav"));
 

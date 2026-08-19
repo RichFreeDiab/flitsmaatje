@@ -5,6 +5,8 @@ import MapKit
 
 @MainActor
 final class NavigationService: ObservableObject {
+    static let shared = NavigationService()
+
     @Published var searchQuery = ""
     @Published var searchResults: [MKMapItem] = []
     @Published var route: MKRoute?
@@ -37,8 +39,14 @@ final class NavigationService: ObservableObject {
     private var lastRouteCalculationAt = Date.distantPast
     private var isRerouting = false
     private var consecutiveOffRouteUpdates = 0
+    private var lastLaneRefreshAt = Date.distantPast
+    private var lastLaneRefreshLocation: CLLocation?
+    private var isRefreshingLanes = false
 
     private static let speechPreferenceKey = "spoken-guidance-enabled"
+    static let laneDisplayHorizonM = 3500
+    private static let laneRouteAlignmentM = 250
+    private static let laneRefreshMovementM: CLLocationDistance = 500
     private var speechDefaults: UserDefaults {
         UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
     }
@@ -78,10 +86,133 @@ final class NavigationService: ObservableObject {
         Self.formatExitBanner(currentExitInfo)
     }
 
-    /// Alleen afrit-tekst (baan is visueel, geen "Baan 2 van 3").
+    /// Gebruik ook een komende instructie zodat afrittekst niet "verdwijnt"
+    /// wanneer de huidige stap nog net geen expliciete afrittekst bevat.
+    var currentOrUpcomingExitBannerText: String? {
+        if let currentInfo = currentExitInfo,
+           let currentBanner = Self.formatExitBanner(currentInfo) {
+            return currentBanner
+        }
+        if let bestInfo = bestUpcomingExitInfo(),
+           let bestBanner = Self.formatExitBanner(bestInfo) {
+            return bestBanner
+        }
+        return nil
+    }
+
+    /// Kies de beste afrit in de komende stappen:
+    /// 1) nummer + naam, 2) nummer, 3) alleen naam.
+    private func bestUpcomingExitInfo() -> (number: String, name: String?)? {
+        guard let route, currentStepIndex < route.steps.count else { return nil }
+        let horizon = min(route.steps.count, currentStepIndex + 8)
+        var best: (score: Int, info: (number: String, name: String?))?
+        for index in currentStepIndex..<horizon {
+            var distanceToStep = Double(currentManeuverDistanceM)
+            if index > currentStepIndex {
+                for prior in currentStepIndex..<index {
+                    distanceToStep += route.steps[prior].distance
+                }
+            }
+            if distanceToStep > Double(Self.laneDisplayHorizonM) { break }
+            let text = route.steps[index].instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            guard let exit = Self.parseExit(from: text),
+                  Self.formatExitBanner(exit) != nil else { continue }
+            let hasNumber = !exit.number.isEmpty
+            let hasName = !(exit.name?.isEmpty ?? true)
+            let score = (hasNumber ? 2 : 0) + (hasName ? 1 : 0)
+            if let best, score <= best.score {
+                continue
+            }
+            best = (score, exit)
+            if score == 3 { break }
+        }
+        return best?.info
+    }
+
+    /// Afrit + optioneel baanadvies voor HUD/CarPlay (visueel, geen audio).
+    var guidanceDetailText: String? {
+        var parts: [String] = []
+        if let exit = currentOrUpcomingExitBannerText {
+            parts.append(exit)
+        }
+        if let section = laneSections.first(where: { shouldShowLaneSection($0) }),
+           let lane = Self.laneRecommendationText(for: section) {
+            parts.append(lane)
+        }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
+    }
+
     var guidanceHeadlineText: String {
-        if let exit = currentExitBannerText { return exit }
-        return "Navigeren"
+        guidanceDetailText ?? "Navigeren"
+    }
+
+    func shouldShowLaneSection(_ section: LaneSection) -> Bool {
+        guard !section.lanes.isEmpty, section.startCoordinate != nil else { return false }
+        if let meters = laneGuidanceDistanceM, meters <= Self.laneDisplayHorizonM {
+            return true
+        }
+        if laneGuidanceDistanceM == nil,
+           currentManeuverDistanceM > 0,
+           currentManeuverDistanceM <= Self.laneDisplayHorizonM {
+            return true
+        }
+        return false
+    }
+
+    static func scoreRoute(_ route: MKRoute, avoiding trafficReports: [MapReport]) -> TimeInterval {
+        route.expectedTravelTime + ndwPenalty(for: route, trafficReports: trafficReports)
+    }
+
+    private static func ndwPenalty(for route: MKRoute, trafficReports: [MapReport]) -> TimeInterval {
+        let points = route.polyline.coordinates
+        guard !points.isEmpty else { return 0 }
+        return trafficReports.reduce(0) { total, report in
+            let reportLocation = CLLocation(latitude: report.lat, longitude: report.lng)
+            let nearRoute = points.contains {
+                reportLocation.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= 180
+            }
+            guard nearRoute else { return total }
+            switch report.type {
+            case "ongeval": return total + 600
+            case "wegwerkzaamheden": return total + 300
+            default: return total + 240
+            }
+        }
+    }
+
+    static func laneRecommendationText(for section: LaneSection) -> String? {
+        let lanes = section.lanes
+        guard !lanes.isEmpty else { return nil }
+        guard let index = lanes.firstIndex(where: { $0.follow != nil }) else {
+            return "Houd je rijstrook aan"
+        }
+        let follow = (lanes[index].follow ?? "").uppercased()
+        let total = lanes.count
+        let fromLeft = index + 1
+        let fromRight = total - index
+        let directionHint: String
+        switch follow {
+        case "LEFT", "SLIGHT_LEFT", "SHARP_LEFT":
+            directionHint = "voor linksaf"
+        case "RIGHT", "SLIGHT_RIGHT", "SHARP_RIGHT":
+            directionHint = "voor rechtsaf"
+        case "LEFT_U_TURN", "RIGHT_U_TURN", "U_TURN":
+            directionHint = "voor keren"
+        default:
+            directionHint = "voor rechtdoor"
+        }
+        if total == 1 {
+            return "Blijf op deze rijstrook (\(directionHint))"
+        }
+        if fromRight == 1 {
+            return "Neem de meest rechter rijstrook (\(directionHint))"
+        }
+        if fromLeft == 1 {
+            return "Neem de meest linker rijstrook (\(directionHint))"
+        }
+        return "Neem rijstrook \(fromLeft) van links (\(fromRight) van rechts, \(directionHint))"
     }
 
     static func formatExitBanner(_ exit: (number: String, name: String?)?) -> String? {
@@ -90,7 +221,7 @@ final class NavigationService: ObservableObject {
             if exit.number.isEmpty { return "Afrit · \(name)" }
             return "Afrit \(exit.number) · \(name)"
         }
-        if exit.number.isEmpty { return nil }
+        if exit.number.isEmpty { return "Afrit" }
         return "Afrit \(exit.number)"
     }
 
@@ -99,8 +230,11 @@ final class NavigationService: ObservableObject {
         guard !text.isEmpty else { return nil }
         let patterns = [
             #"(?:neem|volg|rij)\s+(?:de\s+)?afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
+            #"(?:neem|volg|rij)\s+(?:de\s+)?afslag\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
             #"afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
+            #"afslag\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
             #"exit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
+            #"off[\s\-]?ramp\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?"#,
         ]
         for pattern in patterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
@@ -111,31 +245,63 @@ final class NavigationService: ObservableObject {
             let number = String(text[numRange])
             var name: String?
             if match.numberOfRanges >= 3, let nameRange = Range(match.range(at: 2), in: text) {
-                let raw = String(text[nameRange])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-                if !raw.isEmpty, raw.lowercased() != "en" {
-                    name = raw
+                if let cleaned = cleanedExitName(String(text[nameRange])) {
+                    name = cleaned
                 }
             }
             return (number, name)
         }
         // Alleen nummer, zonder naam: "Afrit 7"
-        if let regex = try? NSRegularExpression(pattern: #"\bafrit\s+(\d+[A-Za-z]?)\b"#, options: [.caseInsensitive]),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)),
-           let numRange = Range(match.range(at: 1), in: text) {
-            return (String(text[numRange]), nil)
+        for token in ["afrit", "afslag"] {
+            let pattern = "\\b\(token)\\s+(\\d+[A-Za-z]?)\\b"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)),
+               let numRange = Range(match.range(at: 1), in: text) {
+                return (String(text[numRange]), nil)
+            }
         }
         // Afrit/exit zonder nummer — wel wegnaam tonen indien aanwezig
         let lower = text.lowercased()
-        if lower.contains("afrit") || lower.contains("off ramp") || lower.contains("exit") {
+        if lower.contains("afrit") || lower.contains("afslag") || lower.contains("off ramp") || lower.contains("exit") {
             let cleaned = text
-                .replacingOccurrences(of: #"(?i)\b(neem|volg|rij)\s+(de\s+)?afrit\b"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"(?i)\b(neem|volg|rij)\s+(de\s+)?(afrit|afslag|exit|off[\s\-]?ramp)\b"#, with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !cleaned.isEmpty { return ("", cleaned) }
+            if let road = firstRoadToken(in: text) {
+                return ("", road)
+            }
+            if let cleanedName = cleanedExitName(cleaned) {
+                return ("", cleanedName)
+            }
             return ("", nil)
         }
         return nil
+    }
+
+    private static func cleanedExitName(_ value: String) -> String? {
+        let cleaned = value
+            .replacingOccurrences(of: #"(?i)^(richting|naar|towards)\s+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"[,;:.]+$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        let lowered = cleaned.lowercased()
+        if lowered == "en" || lowered == "de" || lowered == "het" {
+            return nil
+        }
+        return cleaned
+    }
+
+    private static func firstRoadToken(in text: String) -> String? {
+        let pattern = #"\b([ANSE]\d{1,3}[A-Za-z]?)\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              let tokenRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[tokenRange]).uppercased()
     }
 
     func search(near coordinate: CLLocationCoordinate2D) async {
@@ -186,10 +352,14 @@ final class NavigationService: ObservableObject {
 
             route = best
             laneGuidanceDistanceM = nil
+            let waypoints = sampledRouteWaypoints(from: location, route: best)
             laneSections = (try? await FlitsMaatjeAPI.fetchLaneGuidance(
                 origin: location.coordinate,
-                destination: destination.placemark.coordinate
+                destination: destination.placemark.coordinate,
+                waypoints: waypoints
             )) ?? []
+            lastLaneRefreshAt = Date()
+            lastLaneRefreshLocation = location
             currentStepIndex = 0
             lastSpokenStep = -1
             lastSpokenDistanceBand = Int.max
@@ -206,6 +376,7 @@ final class NavigationService: ObservableObject {
             searchResults = []
             searchQuery = destinationName ?? ""
             statusMessage = "Navigatie gestart"
+            CarPlayNavigationCoordinator.shared.syncFromPhoneNavigation()
         } catch {
             statusMessage = "Route berekenen mislukt"
         }
@@ -242,6 +413,7 @@ final class NavigationService: ObservableObject {
         guard isNavigating, let route else { return }
 
         updateUpcomingLaneSections(from: location)
+        maybeRefreshLaneGuidance(from: location)
 
         let accuracyIsUsable = location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 50
         let deviationThreshold = max(30, location.horizontalAccuracy * 1.3)
@@ -419,21 +591,101 @@ final class NavigationService: ObservableObject {
             return location.distance(from: end) <= 90
                 && isBehindVehicle(coordinate, from: location)
         }
+        if let route {
+            laneSections = laneSections.filter { section in
+                guard let start = section.startCoordinate else { return false }
+                let startLocation = CLLocation(latitude: start.latitude, longitude: start.longitude)
+                return distanceFromRoute(startLocation, route: route) <= Self.laneRouteAlignmentM
+            }
+        }
         laneSections.sort { left, right in
             laneDistance(left, from: location) < laneDistance(right, from: location)
+        }
+        laneSections = laneSections.filter { section in
+            let distance = laneDistance(section, from: location)
+            return distance.isFinite && distance <= Double(Self.laneDisplayHorizonM)
         }
         guard let section = laneSections.first else {
             laneGuidanceDistanceM = nil
             return
         }
         let distance = laneDistance(section, from: location)
-        // Altijd volgende rijbaanvoorstel tonen tijdens navigatie (niet pas <2km).
-        // Afstand blijft zichtbaar; UI toont lane-pijlen zolang er een sectie is.
         if distance.isFinite {
             laneGuidanceDistanceM = max(0, Int(distance.rounded()))
         } else {
             laneGuidanceDistanceM = nil
         }
+    }
+
+    private func maybeRefreshLaneGuidance(from location: CLLocation) {
+        guard isNavigating, let destinationCoordinate, let route else { return }
+        let stale = Date().timeIntervalSince(lastLaneRefreshAt) > 90
+        let empty = laneSections.isEmpty
+        let moved = lastLaneRefreshLocation.map {
+            location.distance(from: $0) >= Self.laneRefreshMovementM
+        } ?? true
+        guard (stale || empty || moved), !isRefreshingLanes else { return }
+        isRefreshingLanes = true
+        lastLaneRefreshAt = Date()
+        lastLaneRefreshLocation = location
+        let waypoints = sampledRouteWaypoints(from: location, route: route)
+        Task { @MainActor in
+            defer { self.isRefreshingLanes = false }
+            guard let sections = try? await FlitsMaatjeAPI.fetchLaneGuidance(
+                origin: location.coordinate,
+                destination: destinationCoordinate,
+                waypoints: waypoints
+            ), !sections.isEmpty else {
+                return
+            }
+            self.laneSections = sections
+            self.updateUpcomingLaneSections(from: location)
+        }
+    }
+
+    func sampledRouteWaypoints(from location: CLLocation, route: MKRoute) -> [CLLocationCoordinate2D] {
+        let coords = route.polyline.coordinates
+        guard coords.count >= 2 else { return [] }
+
+        let userPoint = MKMapPoint(location.coordinate)
+        var nearestSegment = 0
+        var nearestFraction = 0.0
+        var nearestDistance = CLLocationDistance.greatestFiniteMagnitude
+        let points = coords.map { MKMapPoint($0) }
+        for index in 0..<(points.count - 1) {
+            let start = points[index]
+            let end = points[index + 1]
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let lengthSquared = dx * dx + dy * dy
+            let fraction = lengthSquared == 0
+                ? 0
+                : min(1, max(0, ((userPoint.x - start.x) * dx + (userPoint.y - start.y) * dy) / lengthSquared))
+            let projected = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+            let distance = userPoint.distance(to: projected)
+            if distance < nearestDistance {
+                nearestDistance = distance
+                nearestSegment = index
+                nearestFraction = fraction
+            }
+        }
+
+        var samples: [CLLocationCoordinate2D] = []
+        var accumulated: CLLocationDistance = points[nearestSegment].distance(to: points[nearestSegment + 1]) * (1 - nearestFraction)
+        var lastPoint = points[nearestSegment + 1]
+        for index in (nearestSegment + 1)..<(points.count - 1) {
+            let end = points[index + 1]
+            let segmentLength = lastPoint.distance(to: end)
+            if accumulated + segmentLength >= 500 {
+                samples.append(end.coordinate)
+                accumulated = 0
+            } else {
+                accumulated += segmentLength
+            }
+            lastPoint = end
+            if samples.count >= 8 { break }
+        }
+        return samples
     }
 
     private func laneDistance(_ section: LaneSection, from location: CLLocation) -> CLLocationDistance {
@@ -462,24 +714,11 @@ final class NavigationService: ObservableObject {
     }
 
     private func routeScore(_ route: MKRoute) -> TimeInterval {
-        route.expectedTravelTime + ndwPenalty(for: route)
+        Self.scoreRoute(route, avoiding: trafficReports)
     }
 
     private func ndwPenalty(for route: MKRoute) -> TimeInterval {
-        let points = route.polyline.coordinates
-        guard !points.isEmpty else { return 0 }
-        return trafficReports.reduce(0) { total, report in
-            let reportLocation = CLLocation(latitude: report.lat, longitude: report.lng)
-            let nearRoute = points.contains {
-                reportLocation.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= 180
-            }
-            guard nearRoute else { return total }
-            switch report.type {
-            case "ongeval": return total + 600
-            case "wegwerkzaamheden": return total + 300
-            default: return total + 240
-            }
-        }
+        Self.ndwPenalty(for: route, trafficReports: trafficReports)
     }
 
     private func routeHasMeaningfulNDWDelay(route: MKRoute) -> Bool {

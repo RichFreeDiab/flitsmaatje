@@ -206,10 +206,12 @@ struct LaunchView: View {
             BootLogger.mark("gps-before-service")
             let service = LocationBackgroundService()
             location = service
-            navigationService = NavigationService()
-            service.onLocationUpdate = { [weak navigationService] location in
-                navigationService?.updateTrafficReports(service.mapReports)
-                navigationService?.updateProgress(location: location)
+            navigationService = NavigationService.shared
+            CarPlayNavigationCoordinator.shared.navigationService = NavigationService.shared
+            service.onLocationUpdate = { location in
+                NavigationService.shared.updateTrafficReports(service.mapReports)
+                NavigationService.shared.updateProgress(location: location)
+                CarPlayNavigationCoordinator.shared.updateNavigationProgress()
             }
             // CarPlay may connect before the phone dashboard is opened. Keep the
             // shared coordinator connected to the live GPS service immediately.

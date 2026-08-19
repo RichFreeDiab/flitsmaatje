@@ -76,14 +76,27 @@ enum FlitsMaatjeAPI {
         return try JSONDecoder().decode(SpeedCheckResponse.self, from: data)
     }
 
-    static func fetchLaneGuidance(origin: CLLocationCoordinate2D, destination: CLLocationCoordinate2D) async throws -> [LaneSection] {
+    static func fetchLaneGuidance(
+        origin: CLLocationCoordinate2D,
+        destination: CLLocationCoordinate2D,
+        waypoints: [CLLocationCoordinate2D] = []
+    ) async throws -> [LaneSection] {
         var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/lane-guidance"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "origin_lat", value: String(origin.latitude)),
             URLQueryItem(name: "origin_lng", value: String(origin.longitude)),
             URLQueryItem(name: "destination_lat", value: String(destination.latitude)),
             URLQueryItem(name: "destination_lng", value: String(destination.longitude)),
         ]
+        if !waypoints.isEmpty {
+            let payload = waypoints.map { ["lat": $0.latitude, "lng": $0.longitude] }
+            if let data = try? JSONSerialization.data(withJSONObject: payload),
+               let encoded = String(data: data, encoding: .utf8)?
+                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                queryItems.append(URLQueryItem(name: "waypoints", value: encoded))
+            }
+        }
+        components?.queryItems = queryItems
         guard let url = components?.url else { throw APIError.badURL }
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.badResponse }

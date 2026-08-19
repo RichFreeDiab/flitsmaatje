@@ -188,9 +188,27 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         return text
     }
 
-    func updateManeuver(instruction: String?, distanceText: String?, laneSections: [LaneSection]) {
-        // Laat de native CarPlay-manoeuvrekaart de enige route-instructie renderen.
-        maneuverPanel.isHidden = true
+    func updateManeuver(
+        instruction: String?,
+        distanceText: String?,
+        detailText: String? = nil,
+        showFallback: Bool = false
+    ) {
+        guard showFallback else {
+            maneuverPanel.isHidden = true
+            lanePanel.isHidden = true
+            return
+        }
+        let text = (detailText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            ? detailText
+            : instruction
+        if let text, !text.isEmpty {
+            maneuverLabel.text = text
+            maneuverPanel.isHidden = false
+        } else {
+            maneuverLabel.text = nil
+            maneuverPanel.isHidden = true
+        }
         lanePanel.isHidden = true
     }
 

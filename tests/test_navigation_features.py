@@ -163,6 +163,30 @@ class NavigationFeatureTests(unittest.TestCase):
         self.assertEqual(reports[0]["type"], "file")
         self.assertIsNotNone(reports[0]["heading"])
 
+    def test_lane_guidance_accepts_waypoints_and_caches(self):
+        captured = {}
+
+        def fake_get(url, **kwargs):
+            captured["url"] = url
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"routes": []}
+            return response
+
+        with patch.dict(os.environ, {"TOMTOM_API_KEY": "test-key"}, clear=False):
+            with patch.object(tomtom_traffic.requests, "get", side_effect=fake_get) as mock_get:
+                tomtom_traffic.fetch_lane_guidance(
+                    52.0, 5.0, 52.02, 5.02,
+                    waypoints=[{"lat": 52.01, "lng": 5.01}],
+                )
+                self.assertIn("52.0,5.0:52.01,5.01:52.02,5.02", captured["url"])
+                mock_get.reset_mock()
+                tomtom_traffic.fetch_lane_guidance(
+                    52.0, 5.0, 52.02, 5.02,
+                    waypoints=[{"lat": 52.01, "lng": 5.01}],
+                )
+                mock_get.assert_not_called()
+
     def test_lane_guidance_contains_coordinates_for_display_ordering(self):
         response = Mock()
         response.raise_for_status.return_value = None

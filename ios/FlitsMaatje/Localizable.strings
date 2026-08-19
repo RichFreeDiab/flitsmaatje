@@ -1,0 +1,25 @@
+/* Speed unit */
+"km_u" = "km/u";
+
+/* Speed limit label */
+"speed_limit" = "limiet";
+
+/* Fine warning */
+"fine_warning" = "Boete —";
+
+/* No alerts message */
+"no_alerts_nearby" = "Geen flitsers in de buurt";
+
+/* Location permission buttons */
+"set_location_always_carplay" = "Zet locatie op Altijd (CarPlay)";
+"enable_background_tracking" = "Achtergrond-tracking aanzetten";
+
+/* Log upload button */
+"log_upload_button" = "Log naar server sturen";
+
+/* Authorization status texts */
+"authorization_status_always" = "Altijd";
+"authorization_status_not_allowed" = "Niet toegestaan";
+"authorization_status_denied" = "Locatie geweigerd";
+"authorization_status_unavailable" = "Locatie niet beschikbaar";
+"authorization_status_not_enabled" = "Locatie niet geactiveerd";

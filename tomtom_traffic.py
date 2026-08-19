@@ -38,14 +38,27 @@ def _store(key, value, ttl):
         _cache[key] = (time.monotonic() + ttl, value)
 
 
-def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng):
+def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng, waypoints=None):
     """Fetch TomTom v1 lane sections for the active route."""
     api_key = os.environ.get("TOMTOM_API_KEY")
     if not api_key:
         return []
+    route_points = [f"{origin_lat},{origin_lng}"]
+    for waypoint in waypoints or []:
+        lat = waypoint.get("lat")
+        lng = waypoint.get("lng")
+        if lat is None or lng is None:
+            continue
+        route_points.append(f"{lat},{lng}")
+    route_points.append(f"{destination_lat},{destination_lng}")
+    route_path = ":".join(route_points)
+    cache_key = ("lanes", route_path)
+    hit, cached = _cached(cache_key)
+    if hit:
+        return cached
     try:
         response = requests.get(
-            f"{TOMTOM_ROUTING_URL}/{origin_lat},{origin_lng}:{destination_lat},{destination_lng}/json",
+            f"{TOMTOM_ROUTING_URL}/{route_path}/json",
             params={
                 "key": api_key,
                 "traffic": "true",
@@ -62,17 +75,18 @@ def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng
         response.raise_for_status()
         routes = response.json().get("routes") or []
         if not routes:
+            _store(cache_key, [], ttl=45)
             return []
         route = routes[0]
         sections = route.get("sections") or []
-        route_points = []
+        geometry_points = []
         for leg in route.get("legs") or []:
             for point in leg.get("points") or []:
-                if not route_points or point != route_points[-1]:
-                    route_points.append(point)
+                if not geometry_points or point != geometry_points[-1]:
+                    geometry_points.append(point)
         result = []
         for section in sections:
-            if section.get("sectionType") != "LANES":
+            if str(section.get("sectionType", "")).upper() != "LANES":
                 continue
             lanes = []
             for lane in section.get("lanes") or []:
@@ -84,8 +98,8 @@ def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng
             if lanes:
                 start_index = int(section.get("startPointIndex", 0))
                 end_index = int(section.get("endPointIndex", start_index))
-                start_point = route_points[start_index] if 0 <= start_index < len(route_points) else {}
-                end_point = route_points[end_index] if 0 <= end_index < len(route_points) else {}
+                start_point = geometry_points[start_index] if 0 <= start_index < len(geometry_points) else {}
+                end_point = geometry_points[end_index] if 0 <= end_index < len(geometry_points) else {}
                 result.append({
                     "start_point_index": start_index,
                     "end_point_index": end_index,
@@ -95,6 +109,7 @@ def fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng
                     "end_lng": end_point.get("longitude"),
                     "lanes": lanes,
                 })
+        _store(cache_key, result, ttl=45)
         return result
     except (requests.RequestException, ValueError, TypeError, KeyError):
         return []

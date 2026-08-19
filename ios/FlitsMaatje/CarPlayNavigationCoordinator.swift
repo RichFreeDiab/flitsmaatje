@@ -80,9 +80,7 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     func updateNavigationProgress() {
-        guard let navigationService, let route = navigationService.route, navigationSession != nil else {
-            return
-        }
+        guard let navigationService, let route = navigationService.route else { return }
 
         if activeRoute !== route {
             activeRoute = route
@@ -90,17 +88,21 @@ final class CarPlayNavigationCoordinator: NSObject {
             AppLogger.log("CarPlay-kaart bijgewerkt met herberekende route")
         }
 
+        mapViewController?.updateManeuver(
+            instruction: navigationService.currentInstruction,
+            distanceText: nil,
+            detailText: navigationService.guidanceDetailText,
+            showFallback: navigationSession == nil
+        )
+
+        guard navigationSession != nil else { return }
+
         if navigationService.currentStepIndex >= route.steps.count {
             endGuidance()
             return
         }
 
         updateManeuvers(for: route)
-        mapViewController?.updateManeuver(
-            instruction: navigationService.currentInstruction,
-            distanceText: nil,
-            laneSections: []
-        )
         if let trip = activeTrip {
             let estimates = CPTravelEstimates(
                 distanceRemaining: Measurement(
@@ -187,7 +189,12 @@ final class CarPlayNavigationCoordinator: NSObject {
         activeRoute = route
         activeTrip = trip
         mapViewController?.showRoute(route)
-        mapViewController?.updateManeuver(instruction: navigationService?.currentInstruction, distanceText: nil, laneSections: [])
+        mapViewController?.updateManeuver(
+            instruction: navigationService?.currentInstruction,
+            distanceText: nil,
+            detailText: navigationService?.guidanceDetailText,
+            showFallback: true
+        )
 
         let config = CPTripPreviewTextConfiguration(
             startButtonTitle: "Start",
@@ -309,13 +316,22 @@ final class CarPlayNavigationCoordinator: NSObject {
         return "arrow.up"
     }
 
-    /// CarPlay-tekst: alleen afrit nummer + naam. Rijbaan = visuele CPLaneGuidance.
+    /// CarPlay-tekst: afrit + expliciet rijstrook-advies (visueel én leesbaar).
     private func instructionVariants(for instruction: String) -> [String] {
-        if let exit = NavigationService.parseExit(from: instruction),
-           let exitText = NavigationService.formatExitBanner(exit) {
-            return [exitText]
+        if let detail = navigationService?.guidanceDetailText, !detail.isEmpty {
+            return [detail]
         }
-        return ["\u{00A0}"]
+        if let exit = navigationService?.currentOrUpcomingExitBannerText {
+            return [exit]
+        }
+        if let section = navigationService?.laneSections.first(where: {
+            navigationService?.shouldShowLaneSection($0) == true
+        }),
+           let lane = NavigationService.laneRecommendationText(for: section) {
+            return [lane]
+        }
+        let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [trimmed.isEmpty ? "Volg de route" : trimmed]
     }
 
     @available(iOS 17.4, *)
@@ -338,9 +354,9 @@ final class CarPlayNavigationCoordinator: NSObject {
             session.currentRoadNameVariants = []
         }
 
-        guard navigationService?.laneGuidanceDistanceM != nil,
-              let section = navigationService?.laneSections.first,
-              !section.lanes.isEmpty else {
+        guard let section = navigationService?.laneSections.first(where: {
+            navigationService?.shouldShowLaneSection($0) == true
+        }), !section.lanes.isEmpty else {
             // Een enkele onnauwkeurige GPS-update mag de rijstrookkaart niet
             // laten knipperen. Houd de laatste geldige aanwijzing kort vast.
             if Date().timeIntervalSince(laneGuidanceLastSeenAt) > 2.5 {
@@ -355,7 +371,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         let laneSignature = section.lanes
             .map { "\($0.directions.joined(separator: ",")):\($0.follow ?? "-")" }
             .joined(separator: "|")
-        let textSignature = navigationService?.currentExitBannerText ?? ""
+        let textSignature = navigationService?.guidanceDetailText ?? ""
         let signature = "\(section.start_point_index)-\(section.end_point_index):\(laneSignature):\(textSignature)"
         let guidance: CPLaneGuidance
         let createdNewGuidance: Bool
@@ -387,10 +403,16 @@ final class CarPlayNavigationCoordinator: NSObject {
 
     @available(iOS 17.4, *)
     private func laneGuidanceInstructionVariants() -> [String] {
-        if let exit = navigationService?.currentExitBannerText {
-            return [exit]
+        if let detail = navigationService?.guidanceDetailText, !detail.isEmpty {
+            return [detail]
         }
-        return ["\u{00A0}"]
+        if let instruction = navigationService?.currentInstruction {
+            let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return [trimmed]
+            }
+        }
+        return ["Volg de route"]
     }
 
     @available(iOS 17.4, *)
@@ -506,13 +528,21 @@ final class CarPlayNavigationCoordinator: NSObject {
 
         do {
             let response = try await MKDirections(request: request).calculate()
-            guard let route = response.routes.min(by: { $0.expectedTravelTime < $1.expectedTravelTime }) else {
+            let reports = navigationService?.trafficReports ?? []
+            guard let route = response.routes.min(by: {
+                NavigationService.scoreRoute($0, avoiding: reports) < NavigationService.scoreRoute($1, avoiding: reports)
+            }) else {
                 AppLogger.error("CarPlay route: geen route")
                 return
             }
+            let waypoints = NavigationService.shared.sampledRouteWaypoints(
+                from: user,
+                route: route
+            )
             let laneSections = (try? await FlitsMaatjeAPI.fetchLaneGuidance(
                 origin: user.coordinate,
-                destination: mapItem.placemark.coordinate
+                destination: mapItem.placemark.coordinate,
+                waypoints: waypoints
             )) ?? []
             navigationService?.route = route
             navigationService?.laneSections = laneSections
@@ -537,7 +567,8 @@ final class CarPlayNavigationCoordinator: NSObject {
             mapViewController?.updateManeuver(
                 instruction: navigationService?.currentInstruction,
                 distanceText: String(format: "%.1f km", route.distance / 1000),
-                laneSections: []
+                detailText: navigationService?.guidanceDetailText,
+                showFallback: true
             )
             try? await interfaceController?.popTemplate(animated: true)
         } catch {

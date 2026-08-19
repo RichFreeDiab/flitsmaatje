@@ -12,6 +12,7 @@ Functies:
 
 import os
 import re
+import json
 import sqlite3
 import time
 import math
@@ -678,7 +679,19 @@ def lane_guidance():
         destination_lng = float(request.args.get("destination_lng"))
     except (TypeError, ValueError):
         return jsonify({"error": "origin en destination zijn verplicht"}), 400
-    return jsonify({"sections": fetch_lane_guidance(origin_lat, origin_lng, destination_lat, destination_lng)})
+    waypoints = None
+    raw_waypoints = request.args.get("waypoints")
+    if raw_waypoints:
+        try:
+            parsed = json.loads(raw_waypoints)
+            if isinstance(parsed, list):
+                waypoints = parsed
+        except (TypeError, ValueError):
+            waypoints = None
+    sections = fetch_lane_guidance(
+        origin_lat, origin_lng, destination_lat, destination_lng, waypoints=waypoints
+    )
+    return jsonify({"sections": sections})
 
 
 @app.route("/api/reports", methods=["GET"])

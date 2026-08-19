@@ -214,8 +214,14 @@ struct NavigationMapView: View {
             VStack(alignment: .leading, spacing: 6) {
                 if navigation.isNavigating, let section = activeLaneSection {
                     googleMapsLaneStrip(section, cellSize: 34, arrowSize: 22)
+                    if let laneHint = NavigationService.laneRecommendationText(for: section) {
+                        Text(laneHint)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .lineLimit(2)
+                    }
                 }
-                if navigation.isNavigating, let exit = navigation.currentExitBannerText {
+                if navigation.isNavigating, let exit = navigation.currentOrUpcomingExitBannerText {
                     Text(exit)
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white)
@@ -240,7 +246,7 @@ struct NavigationMapView: View {
         .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(navigation.isNavigating ? navigation.guidanceHeadlineText : "Permanente richting en rijbaan")
+        .accessibilityLabel(navigation.isNavigating ? (navigation.guidanceDetailText ?? "Navigeren") : "Permanente richting en rijbaan")
     }
 
     private var courseDegrees: Double? {
@@ -262,16 +268,13 @@ struct NavigationMapView: View {
     }
 
     private var activeLaneSection: LaneSection? {
-        guard navigation.isNavigating,
-              navigation.laneGuidanceDistanceM != nil,
-              let section = navigation.laneSections.first,
-              !section.lanes.isEmpty else { return nil }
-        return section
+        guard navigation.isNavigating else { return nil }
+        return navigation.laneSections.first(where: { navigation.shouldShowLaneSection($0) })
     }
 
     private var directionTitle: String {
         if navigation.isNavigating {
-            return navigation.currentExitBannerText ?? "Navigeren"
+            return navigation.currentOrUpcomingExitBannerText ?? navigation.currentExitBannerText ?? "Navigeren"
         }
         if let deg = courseDegrees {
             return "Koers \(compassLabel(deg))"
@@ -308,12 +311,18 @@ struct NavigationMapView: View {
             if let section = activeLaneSection {
                 googleMapsLaneStrip(section, cellSize: 44, arrowSize: 22)
             }
-            if let exitText = navigation.currentExitBannerText {
+            if let exitText = navigation.currentOrUpcomingExitBannerText {
                 Text(exitText)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
+            }
+            if let section = activeLaneSection, let laneHint = NavigationService.laneRecommendationText(for: section) {
+                Text(laneHint)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(2)
             }
         }
         .onChange(of: location.mapReports) { _, reports in

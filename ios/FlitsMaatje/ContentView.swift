@@ -52,7 +52,7 @@ struct ContentView: View {
                     .font(.system(size: 56, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(isSpeeding ? .red : .primary)
-                Text("km/u")
+                Text(localizedString("km_u"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }

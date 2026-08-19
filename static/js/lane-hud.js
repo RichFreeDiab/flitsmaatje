@@ -1,4 +1,7 @@
 (() => {
+  const G = window.FlitsMaatjeGuidance;
+  if (!G) return;
+
   const arrowEl = document.getElementById("lane-arrow");
   const labelEl = document.getElementById("lane-label");
   const subEl = document.getElementById("lane-sub");
@@ -20,6 +23,8 @@
 
   let lastLaneFetch = 0;
   let lastLaneKey = "";
+  let lastFetchPos = null;
+  let cachedLaneSection = null;
 
   function compassLabel(deg) {
     if (deg == null || !Number.isFinite(deg)) return "—";
@@ -60,56 +65,6 @@
     }
     if (n.includes("uturn") || n.includes("u_turn")) return "↩";
     return "↑";
-  }
-
-  /** Afrit nummer + naam uit instructie (zelfde idee als iOS parseExit). */
-  function parseExit(step) {
-    if (!step) return null;
-    const type = String((step.maneuver && step.maneuver.type) || "").toLowerCase();
-    const instruction = String(
-      (step.maneuver && step.maneuver.instruction) || step.name || ""
-    );
-    const text = instruction.trim();
-    const isExitType =
-      type.includes("off ramp") ||
-      type.includes("off_ramp") ||
-      type.includes("exit") ||
-      /\bafrit\b/i.test(text) ||
-      /\bexit\b/i.test(text);
-    if (!isExitType && !/\bafrit\s+\d/i.test(text)) return null;
-
-    const patterns = [
-      /(?:neem|volg|rij)\s+(?:de\s+)?afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-      /afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-      /exit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-    ];
-    for (const re of patterns) {
-      const m = text.match(re);
-      if (m) {
-        const number = m[1];
-        let name = (m[2] || "").trim().replace(/\s+/g, " ");
-        if (!name || name.toLowerCase() === "en") name = step.name || "";
-        return { number, name: name || null };
-      }
-    }
-    const onlyNum = text.match(/\bafrit\s+(\d+[A-Za-z]?)\b/i);
-    if (onlyNum) return { number: onlyNum[1], name: step.name || null };
-    if (isExitType) {
-      return { number: "", name: step.name || text.slice(0, 80) || "afrit" };
-    }
-    return null;
-  }
-
-  function formatExitBanner(exit, distanceM) {
-    if (!exit) return "";
-    const dist =
-      distanceM != null && distanceM > 0
-        ? ` · ${(distanceM / 1000).toFixed(1)} km`
-        : "";
-    if (exit.number && exit.name) return `Afrit ${exit.number} · ${exit.name}${dist}`;
-    if (exit.number) return `Afrit ${exit.number}${dist}`;
-    if (exit.name) return `Afrit · ${exit.name}${dist}`;
-    return `Afrit${dist}`;
   }
 
   function setLaneText(text) {
@@ -157,20 +112,39 @@
       })
       .join("");
     if (followIdx >= 0) {
-      lanesEl.dataset.hint = `Volg baan ${followIdx + 1} van ${lanes.length}`;
+      lanesEl.dataset.hint = G.laneRecommendationText(section);
     } else {
       lanesEl.dataset.hint = `${lanes.length} banen`;
     }
   }
 
+  function refreshCachedSection() {
+    const pos = window.flitsmaatjePos;
+    const heading =
+      typeof window.flitsmaatjeHeading === "number" ? window.flitsmaatjeHeading : null;
+    cachedLaneSection = G.pruneLaneSection(cachedLaneSection, pos, heading);
+    const nav = window.flitsmaatjeNav;
+    const step = nav && nav.getNextStep ? nav.getNextStep() : null;
+    if (
+      cachedLaneSection &&
+      !G.shouldShowLaneSection(cachedLaneSection, step, pos)
+    ) {
+      cachedLaneSection = null;
+    }
+    renderLanes(cachedLaneSection);
+  }
+
   function updateHud() {
     const nav = window.flitsmaatjeNav;
+    const pos = window.flitsmaatjePos;
     const heading =
       typeof window.flitsmaatjeHeading === "number"
         ? window.flitsmaatjeHeading
         : null;
     const hasRoute = !!(nav && nav.hasRoute && nav.hasRoute());
     const step = hasRoute && nav.getNextStep ? nav.getNextStep() : null;
+
+    refreshCachedSection();
 
     if (heading != null && Number.isFinite(heading) && !(hasRoute && step)) {
       arrowEl.style.transform = `rotate(${heading}deg)`;
@@ -179,7 +153,6 @@
     if (hasRoute && step) {
       arrowEl.textContent = maneuverIcon(step);
       arrowEl.style.transform = "none";
-      const exit = parseExit(step);
       const road = step.name ? ` · ${step.name}` : "";
       const km =
         step.distance != null ? `${(step.distance / 1000).toFixed(1)} km` : "";
@@ -188,18 +161,15 @@
           ? step.maneuver.instruction
           : `${(step.maneuver && step.maneuver.modifier) || "rechtdoor"}${road}`;
 
-      // Afrit zichtbaar bij afrit-manoeuvre of binnen ~3 km
-      const showExit =
-        exit &&
-        (step.distance == null ||
-          step.distance <= 3000 ||
-          Boolean(exit.number) ||
-          Boolean(exit.name));
-      setExitText(showExit ? formatExitBanner(exit, step.distance) : "");
+      const exitBanner = G.currentOrUpcomingExitBanner(nav, step);
+      setExitText(exitBanner || "");
 
-      // Baan-tekst naast de pijl (chips blijven apart)
-      const laneHint = lanesEl.dataset.hint || "";
-      setLaneText(laneHint || (!lanesEl.hidden && lanesEl.innerHTML ? "Rijbaan" : ""));
+      const detail = G.guidanceDetailText(nav, step, cachedLaneSection, pos);
+      setLaneText(
+        detail && detail !== exitBanner
+          ? detail
+          : lanesEl.dataset.hint || (!lanesEl.hidden ? "Rijbaan" : "")
+      );
 
       subEl.textContent = [
         km,
@@ -213,6 +183,7 @@
       return;
     }
 
+    cachedLaneSection = null;
     setExitText("");
     setLaneText("");
     arrowEl.textContent = "↑";
@@ -234,35 +205,34 @@
     const pos = window.flitsmaatjePos;
     if (!dest || !pos) return;
     const now = Date.now();
-    const key = `${pos.lat.toFixed(3)},${pos.lng.toFixed(3)}>${dest.lat.toFixed(3)},${dest.lng.toFixed(3)}`;
-    if (key === lastLaneKey && now - lastLaneFetch < 20000) return;
+    const routeCoords = nav.getRouteCoordinates ? nav.getRouteCoordinates() : [];
+    const waypoints = G.sampledRouteWaypoints(pos, routeCoords);
+    const wpKey = waypoints.map((p) => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`).join("|");
+    const key = `${pos.lat.toFixed(3)},${pos.lng.toFixed(3)}>${dest.lat.toFixed(3)},${dest.lng.toFixed(3)}:${wpKey}`;
+    const moved =
+      lastFetchPos && G.distanceMeters(lastFetchPos, pos) >= G.LANE_REFRESH_MOVEMENT_M;
+    if (key === lastLaneKey && !moved && now - lastLaneFetch < G.LANE_REFRESH_MS) return;
     if (now - lastLaneFetch < 8000) return;
     lastLaneFetch = now;
     lastLaneKey = key;
+    lastFetchPos = { ...pos };
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 5000);
-      const res = await fetch(
+      let url =
         `/api/lane-guidance?origin_lat=${pos.lat}&origin_lng=${pos.lng}` +
-          `&destination_lat=${dest.lat}&destination_lng=${dest.lng}`,
-        { signal: ctrl.signal }
-      );
+        `&destination_lat=${dest.lat}&destination_lng=${dest.lng}`;
+      if (waypoints.length) {
+        url += `&waypoints=${encodeURIComponent(JSON.stringify(waypoints))}`;
+      }
+      const res = await fetch(url, { signal: ctrl.signal });
       clearTimeout(timer);
       const data = await res.json();
-      const sections = data.sections || [];
-      let best = null;
-      let bestDist = Infinity;
-      for (const s of sections) {
-        if (s.start_lat == null) continue;
-        const dlat = s.start_lat - pos.lat;
-        const dlng = s.start_lng - pos.lng;
-        const dist = dlat * dlat + dlng * dlng;
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = s;
-        }
-      }
-      renderLanes(best);
+      cachedLaneSection = G.pickBestLaneSection(
+        data.sections || [],
+        pos,
+        routeCoords
+      );
       updateHud();
     } catch (_) {
       /* lane guidance is enhancement */
