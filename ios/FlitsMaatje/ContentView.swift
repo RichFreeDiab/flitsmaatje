@@ -167,3 +167,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
+
+private func localizedString(_ key: String) -> String {
+    NSLocalizedString(key, bundle: .main, comment: "")
+}
