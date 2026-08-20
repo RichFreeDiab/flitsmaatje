@@ -42,16 +42,27 @@ class CarPlayUIContractTests(unittest.TestCase):
     def test_lane_choice_is_visual_arrows_with_exit_and_lane_detail_text(self):
         self.assertIn("googleMapsLaneStrip", NAVIGATION_MAP)
         self.assertIn("currentOrUpcomingExitBannerText", NAVIGATION_MAP)
-        self.assertIn("NavigationService.laneRecommendationText", NAVIGATION_MAP)
+        self.assertIn("Color.white", NAVIGATION_MAP)
         self.assertNotIn("recommendedLaneText", NAVIGATION_MAP)
         self.assertIn("guidanceDetailText", NAVIGATION)
         self.assertIn("shouldShowLaneSection", NAVIGATION)
-        self.assertIn("guidanceDetailText", COORDINATOR)
+        self.assertIn("flitsmeisterLaneStripText", MAP_VIEW)
         self.assertIn("formatExitBanner", NAVIGATION)
 
-    def test_carplay_fallback_shows_guidance_before_native_session(self):
-        self.assertIn("showFallback:", MAP_VIEW)
-        self.assertIn("navigationSession == nil", COORDINATOR)
+    def test_waypoints_are_not_double_encoded(self):
+        api = (ROOT / "ios" / "Shared" / "FlitsMaatjeAPI.swift").read_text(encoding="utf-8")
+        self.assertIn('URLQueryItem(name: "waypoints", value: json)', api)
+        self.assertNotIn("addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)", api)
+
+    def test_carplay_speed_refresh_does_not_hide_lane_panel(self):
+        # Regression: update(speed...) used to force lanePanel.isHidden = true every second.
+        update_fn = MAP_VIEW.split("func update(speedKmh:")[1].split("func compactFineText")[0]
+        self.assertNotIn("lanePanel.isHidden = true", update_fn)
+        self.assertNotIn("maneuverPanel.isHidden = true", update_fn)
+
+    def test_should_show_lane_ignores_mapkit_step_length(self):
+        self.assertIn("nooit MapKit-staplengte", NAVIGATION)
+        self.assertNotIn("currentManeuverDistanceM <= Self.laneDisplayHorizonM", NAVIGATION)
 
     def test_lane_guidance_uses_official_carplay_metadata(self):
         self.assertIn("session.currentLaneGuidance = guidance", COORDINATOR)

@@ -45,8 +45,10 @@ final class NavigationService: ObservableObject {
 
     private static let speechPreferenceKey = "spoken-guidance-enabled"
     static let laneDisplayHorizonM = 3500
-    private static let laneRouteAlignmentM: CLLocationDistance = 250
-    private static let laneRefreshMovementM: CLLocationDistance = 500
+    private static let laneRouteAlignmentM: CLLocationDistance = 600
+    private static let laneRefreshMovementM: CLLocationDistance = 400
+    private static let maxLaneWaypoints = 20
+    private static let laneWaypointSpacingM: CLLocationDistance = 400
     private var speechDefaults: UserDefaults {
         UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
     }
@@ -149,16 +151,13 @@ final class NavigationService: ObservableObject {
     }
 
     func shouldShowLaneSection(_ section: LaneSection) -> Bool {
-        guard !section.lanes.isEmpty, section.startCoordinate != nil else { return false }
-        if let meters = laneGuidanceDistanceM, meters <= Self.laneDisplayHorizonM {
-            return true
+        guard !section.lanes.isEmpty else { return false }
+        // Secties in laneSections zijn al gehorizon-filterd. Gebruik afstand tot
+        // de baanafslag zelf — nooit MapKit-staplengte (die kan 20+ km zijn op A2).
+        if let meters = laneGuidanceDistanceM {
+            return meters <= Self.laneDisplayHorizonM
         }
-        if laneGuidanceDistanceM == nil,
-           currentManeuverDistanceM > 0,
-           currentManeuverDistanceM <= Self.laneDisplayHorizonM {
-            return true
-        }
-        return false
+        return section.startCoordinate != nil
     }
 
     static func scoreRoute(_ route: MKRoute, avoiding trafficReports: [MapReport]) -> TimeInterval {
@@ -353,13 +352,19 @@ final class NavigationService: ObservableObject {
             route = best
             laneGuidanceDistanceM = nil
             let waypoints = sampledRouteWaypoints(from: location, route: best)
-            laneSections = (try? await FlitsMaatjeAPI.fetchLaneGuidance(
-                origin: location.coordinate,
-                destination: destination.placemark.coordinate,
-                waypoints: waypoints
-            )) ?? []
+            do {
+                laneSections = try await FlitsMaatjeAPI.fetchLaneGuidance(
+                    origin: location.coordinate,
+                    destination: destination.placemark.coordinate,
+                    waypoints: waypoints
+                )
+            } catch {
+                laneSections = []
+                AppLogger.error("Lane guidance start mislukt: \(error.localizedDescription)")
+            }
             lastLaneRefreshAt = Date()
             lastLaneRefreshLocation = location
+            updateUpcomingLaneSections(from: location)
             currentStepIndex = 0
             lastSpokenStep = -1
             lastSpokenDistanceBand = Int.max
@@ -582,6 +587,12 @@ final class NavigationService: ObservableObject {
         }
     }
 
+    func markLaneGuidanceUpdated(from location: CLLocation) {
+        lastLaneRefreshAt = Date()
+        lastLaneRefreshLocation = location
+        updateUpcomingLaneSections(from: location)
+    }
+
     private func updateUpcomingLaneSections(from location: CLLocation) {
         laneSections.removeAll { section in
             guard let coordinate = section.endCoordinate else { return false }
@@ -592,10 +603,15 @@ final class NavigationService: ObservableObject {
                 && isBehindVehicle(coordinate, from: location)
         }
         if let route {
-            laneSections = laneSections.filter { section in
+            let aligned = laneSections.filter { section in
                 guard let start = section.startCoordinate else { return false }
                 let startLocation = CLLocation(latitude: start.latitude, longitude: start.longitude)
                 return distanceFromRoute(startLocation, route: route) <= Self.laneRouteAlignmentM
+            }
+            // Nooit alle banen wissen door MapKit≠TomTom-afwijking: behoud dan
+            // de dichtstbijzijnde secties binnen de horizon.
+            if !aligned.isEmpty {
+                laneSections = aligned
             }
         }
         laneSections.sort { left, right in
@@ -626,20 +642,26 @@ final class NavigationService: ObservableObject {
         } ?? true
         guard (stale || empty || moved), !isRefreshingLanes else { return }
         isRefreshingLanes = true
-        lastLaneRefreshAt = Date()
-        lastLaneRefreshLocation = location
         let waypoints = sampledRouteWaypoints(from: location, route: route)
         Task { @MainActor in
             defer { self.isRefreshingLanes = false }
-            guard let sections = try? await FlitsMaatjeAPI.fetchLaneGuidance(
-                origin: location.coordinate,
-                destination: destinationCoordinate,
-                waypoints: waypoints
-            ), !sections.isEmpty else {
-                return
+            do {
+                let sections = try await FlitsMaatjeAPI.fetchLaneGuidance(
+                    origin: location.coordinate,
+                    destination: destinationCoordinate,
+                    waypoints: waypoints
+                )
+                guard !sections.isEmpty else {
+                    AppLogger.log("Lane guidance: lege response")
+                    return
+                }
+                self.lastLaneRefreshAt = Date()
+                self.lastLaneRefreshLocation = location
+                self.laneSections = sections
+                self.updateUpcomingLaneSections(from: location)
+            } catch {
+                AppLogger.error("Lane guidance refresh mislukt: \(error.localizedDescription)")
             }
-            self.laneSections = sections
-            self.updateUpcomingLaneSections(from: location)
         }
     }
 
@@ -676,14 +698,14 @@ final class NavigationService: ObservableObject {
         for index in (nearestSegment + 1)..<(points.count - 1) {
             let end = points[index + 1]
             let segmentLength = lastPoint.distance(to: end)
-            if accumulated + segmentLength >= 500 {
+            if accumulated + segmentLength >= Self.laneWaypointSpacingM {
                 samples.append(end.coordinate)
                 accumulated = 0
             } else {
                 accumulated += segmentLength
             }
             lastPoint = end
-            if samples.count >= 8 { break }
+            if samples.count >= Self.maxLaneWaypoints { break }
         }
         return samples
     }

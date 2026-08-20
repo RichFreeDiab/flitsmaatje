@@ -149,8 +149,8 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         }
         fineLabel.textColor = .white
         finePanel.isHidden = !hasFine
-        maneuverPanel.isHidden = true
-        lanePanel.isHidden = true
+        // Geen lane/maneuver hier verbergen: dat deed update() elke seconde
+        // via speed/boete-refresh en wiste Flitsmeister-banenstrip.
 
         // Eerst beide uitzetten om tijdelijke conflicterende Auto Layout-
         // constraints tijdens een live waarschuwing te voorkomen.
@@ -169,6 +169,8 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         if alert != nil {
             view.bringSubviewToFront(alertPanel)
         }
+        view.bringSubviewToFront(lanePanel)
+        view.bringSubviewToFront(maneuverPanel)
     }
 
     private func compactFineText(_ text: String, speedKmh: Int?) -> String {
@@ -188,28 +190,86 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         return text
     }
 
+    /// Flitsmeister-stijl overlay: grote pijl-afstand + banenstrip (ook naast native CPLaneGuidance).
     func updateManeuver(
         instruction: String?,
         distanceText: String?,
         detailText: String? = nil,
-        showFallback: Bool = false
+        laneSections: [LaneSection] = [],
+        showFallback: Bool = true
     ) {
-        guard showFallback else {
-            maneuverPanel.isHidden = true
+        let section = laneSections.first
+        let laneStrip = section.map(Self.flitsmeisterLaneStripText)
+        let hasLaneStrip = !(laneStrip?.isEmpty ?? true)
+
+        if hasLaneStrip, let laneStrip {
+            laneLabel.text = laneStrip
+            laneLabel.font = .systemFont(ofSize: laneStrip.count > 18 ? 28 : 36, weight: .bold)
+            laneLabel.numberOfLines = 2
+            laneLabel.adjustsFontSizeToFitWidth = true
+            laneLabel.minimumScaleFactor = 0.55
+            lanePanel.isHidden = false
+            view.bringSubviewToFront(lanePanel)
+        } else {
+            laneLabel.text = nil
             lanePanel.isHidden = true
-            return
         }
-        let text = (detailText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-            ? detailText
-            : instruction
-        if let text, !text.isEmpty {
-            maneuverLabel.text = text
+
+        var lines: [String] = []
+        if let distanceText, !distanceText.isEmpty {
+            lines.append(distanceText)
+        }
+        if let detailText, !detailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append(detailText)
+        } else if let instruction, !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append(instruction)
+        }
+
+        if showFallback, !lines.isEmpty {
+            maneuverLabel.text = lines.joined(separator: "\n")
+            maneuverLabel.numberOfLines = 3
+            maneuverLabel.font = .systemFont(ofSize: 22, weight: .bold)
             maneuverPanel.isHidden = false
+            view.bringSubviewToFront(maneuverPanel)
+        } else if hasLaneStrip {
+            // Alleen banen zichtbaar; tekst komt van native CarPlay-manoeuvre.
+            maneuverLabel.text = nil
+            maneuverPanel.isHidden = true
         } else {
             maneuverLabel.text = nil
             maneuverPanel.isHidden = true
         }
-        lanePanel.isHidden = true
+    }
+
+    /// Unicode-banenstrip: volg-baan helder (▶), rest gedimd (▷).
+    private static func flitsmeisterLaneStripText(_ section: LaneSection) -> String {
+        guard !section.lanes.isEmpty else { return "" }
+        let parts = section.lanes.map { lane -> String in
+            let dirs = lane.directions.isEmpty
+                ? [lane.follow ?? "STRAIGHT"]
+                : lane.directions
+            let follow = lane.follow?.uppercased()
+            let arrows = dirs.map { dir -> String in
+                let symbol = laneArrowGlyph(dir)
+                if let follow, dir.uppercased() == follow {
+                    return "【\(symbol)】"
+                }
+                return symbol
+            }
+            return arrows.joined()
+        }
+        return parts.joined(separator: "  ")
+    }
+
+    private static func laneArrowGlyph(_ direction: String) -> String {
+        switch direction.uppercased() {
+        case "LEFT", "SLIGHT_LEFT": return "↖"
+        case "SHARP_LEFT", "LEFT_U_TURN": return "↰"
+        case "RIGHT", "SLIGHT_RIGHT": return "↗"
+        case "SHARP_RIGHT", "RIGHT_U_TURN": return "↱"
+        case "U_TURN": return "↩"
+        default: return "↑"
+        }
     }
 
     func updateFromSnapshot(_ snapshot: WidgetSnapshot) {

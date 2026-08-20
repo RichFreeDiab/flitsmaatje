@@ -91,9 +91,10 @@ enum FlitsMaatjeAPI {
         if !waypoints.isEmpty {
             let payload = waypoints.map { ["lat": $0.latitude, "lng": $0.longitude] }
             if let data = try? JSONSerialization.data(withJSONObject: payload),
-               let encoded = String(data: data, encoding: .utf8)?
-                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                queryItems.append(URLQueryItem(name: "waypoints", value: encoded))
+               let json = String(data: data, encoding: .utf8) {
+                // Geen handmatige percent-encoding: URLQueryItem encodeert zelf.
+                // Dubbele encoding brak json.loads in Flask → waypoints=None.
+                queryItems.append(URLQueryItem(name: "waypoints", value: json))
             }
         }
         components?.queryItems = queryItems

@@ -88,11 +88,18 @@ final class CarPlayNavigationCoordinator: NSObject {
             AppLogger.log("CarPlay-kaart bijgewerkt met herberekende route")
         }
 
+        let visibleLanes = navigationService.laneSections.filter {
+            navigationService.shouldShowLaneSection($0)
+        }
+        let distanceM = navigationService.laneGuidanceDistanceM
+            ?? (navigationService.currentManeuverDistanceM > 0
+                ? navigationService.currentManeuverDistanceM : nil)
         mapViewController?.updateManeuver(
             instruction: navigationService.currentInstruction,
-            distanceText: nil,
+            distanceText: distanceM.map(Self.formatDistance),
             detailText: navigationService.guidanceDetailText,
-            showFallback: navigationSession == nil
+            laneSections: visibleLanes,
+            showFallback: true
         )
 
         guard navigationSession != nil else { return }
@@ -113,6 +120,14 @@ final class CarPlayNavigationCoordinator: NSObject {
             )
             mapTemplate?.updateEstimates(estimates, for: trip)
         }
+    }
+
+    private static func formatDistance(_ meters: Int) -> String {
+        if meters >= 1000 {
+            return String(format: "%.1f km", Double(meters) / 1000)
+        }
+        let rounded = max(10, (meters / 10) * 10)
+        return "\(rounded) m"
     }
 
     private func configureDefaultButtons(on template: CPMapTemplate) {
@@ -193,6 +208,9 @@ final class CarPlayNavigationCoordinator: NSObject {
             instruction: navigationService?.currentInstruction,
             distanceText: nil,
             detailText: navigationService?.guidanceDetailText,
+            laneSections: navigationService?.laneSections.filter {
+                navigationService?.shouldShowLaneSection($0) == true
+            } ?? [],
             showFallback: true
         )
 
@@ -316,19 +334,10 @@ final class CarPlayNavigationCoordinator: NSObject {
         return "arrow.up"
     }
 
-    /// CarPlay-tekst: afrit + expliciet rijstrook-advies (visueel én leesbaar).
+    /// CarPlay-tekst: eerst afrit, dan MapKit-instructie — banen via visuele strip.
     private func instructionVariants(for instruction: String) -> [String] {
-        if let detail = navigationService?.guidanceDetailText, !detail.isEmpty {
-            return [detail]
-        }
-        if let exit = navigationService?.currentOrUpcomingExitBannerText {
+        if let exit = navigationService?.currentOrUpcomingExitBannerText, !exit.isEmpty {
             return [exit]
-        }
-        if let section = navigationService?.laneSections.first(where: {
-            navigationService?.shouldShowLaneSection($0) == true
-        }),
-           let lane = NavigationService.laneRecommendationText(for: section) {
-            return [lane]
         }
         let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         return [trimmed.isEmpty ? "Volg de route" : trimmed]
@@ -559,6 +568,7 @@ final class CarPlayNavigationCoordinator: NSObject {
             )
             navigationService?.eta = Date().addingTimeInterval(route.expectedTravelTime)
             navigationService?.markRouteCalculatedNow()
+            navigationService?.markLaneGuidanceUpdated(from: user)
             presentTripPreview(
                 route: route,
                 destinationName: mapItem.name ?? "Bestemming",
@@ -568,6 +578,7 @@ final class CarPlayNavigationCoordinator: NSObject {
                 instruction: navigationService?.currentInstruction,
                 distanceText: String(format: "%.1f km", route.distance / 1000),
                 detailText: navigationService?.guidanceDetailText,
+                laneSections: laneSections,
                 showFallback: true
             )
             try? await interfaceController?.popTemplate(animated: true)

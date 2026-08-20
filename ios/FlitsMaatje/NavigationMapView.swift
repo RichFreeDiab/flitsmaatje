@@ -18,9 +18,10 @@ struct NavigationMapView: View {
             mapLayer
             VStack(spacing: 10) {
                 searchBar
-                directionHUD
                 if navigation.isNavigating {
                     maneuverBanner
+                } else {
+                    directionHUD
                 }
                 favoriteButtons
                 Spacer()
@@ -297,69 +298,80 @@ struct NavigationMapView: View {
 
     private var maneuverBanner: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
                 Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
-                    .font(.system(size: 48, weight: .bold))
-                    .frame(width: 68, height: 68)
+                    .font(.system(size: 52, weight: .bold))
+                    .frame(width: 72, height: 72)
                     .foregroundStyle(.white)
-                if let meters = navigation.laneGuidanceDistanceM ?? (navigation.currentManeuverDistanceM > 0 ? navigation.currentManeuverDistanceM : nil) {
-                    Text(formatGuidanceDistance(meters))
-                        .font(.title.bold().monospacedDigit())
-                        .foregroundStyle(.white)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    if let meters = navigation.laneGuidanceDistanceM
+                        ?? (navigation.currentManeuverDistanceM > 0 ? navigation.currentManeuverDistanceM : nil) {
+                        Text(formatGuidanceDistance(meters))
+                            .font(.system(size: 36, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(.white)
+                    }
+                    if let exitText = navigation.currentOrUpcomingExitBannerText {
+                        Text(exitText)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                    } else {
+                        Text(navigation.currentInstruction)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.95))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                    }
                 }
+                Spacer(minLength: 0)
             }
             if let section = activeLaneSection {
-                googleMapsLaneStrip(section, cellSize: 44, arrowSize: 22)
-            }
-            if let exitText = navigation.currentOrUpcomingExitBannerText {
-                Text(exitText)
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-            }
-            if let section = activeLaneSection, let laneHint = NavigationService.laneRecommendationText(for: section) {
-                Text(laneHint)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(2)
+                // Flitsmeister/Google: banenstrip onder de pijl
+                googleMapsLaneStrip(section, cellSize: 48, arrowSize: 26)
             }
         }
         .onChange(of: location.mapReports) { _, reports in
             navigation.updateTrafficReports(reports)
         }
         .padding(14)
-        .frame(maxWidth: 340, alignment: .leading)
-        .background(Color.blue.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+        .frame(maxWidth: 380, alignment: .leading)
+        .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Google Maps-stijl: rijstroken als pijlen; volg-baan helder, rest gedimd.
+    /// Flitsmeister-stijl: donkere banen, volg-pijl helder wit, rest gedimd.
     private func googleMapsLaneStrip(_ section: LaneSection, cellSize: CGFloat, arrowSize: CGFloat) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
                 let follow = lane.follow
                 let isFollow = follow != nil
                 let arrows = laneArrowDirections(lane)
-                VStack(spacing: 2) {
+                VStack(spacing: 1) {
                     ForEach(Array(arrows.enumerated()), id: \.offset) { _, dir in
                         Image(systemName: laneSymbol(dir))
-                            .font(.system(size: arrowSize, weight: dir == follow ? .bold : .semibold))
+                            .font(.system(size: arrowSize, weight: dir == follow ? .heavy : .semibold))
                             .foregroundStyle(
                                 dir == follow
-                                    ? Color.blue
-                                    : Color.white.opacity(isFollow ? 0.35 : 0.45)
+                                    ? Color.white
+                                    : Color.white.opacity(isFollow ? 0.22 : 0.38)
                             )
                     }
                 }
-                .frame(width: cellSize, height: max(cellSize + 8, CGFloat(max(arrows.count, 1)) * (arrowSize + 4) + 10))
+                .frame(width: cellSize, height: max(cellSize + 6, CGFloat(max(arrows.count, 1)) * (arrowSize + 3) + 8))
                 .background(
-                    isFollow ? Color.white : Color.white.opacity(0.16),
-                    in: RoundedRectangle(cornerRadius: 8)
+                    isFollow ? Color.white.opacity(0.18) : Color.white.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: 6)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(isFollow ? Color.white.opacity(0.55) : Color.clear, lineWidth: 1.5)
                 )
             }
         }
+        .padding(.vertical, 4)
         .accessibilityLabel("Rijstroken")
     }
 
@@ -379,7 +391,7 @@ struct NavigationMapView: View {
         if text.contains("links") || text.contains("left") { return "arrow.turn.up.left" }
         if text.contains("rechts") || text.contains("right") { return "arrow.turn.up.right" }
         if text.contains("afrit") || text.contains("exit") { return "arrow.turn.up.right" }
-        return "arrow.up.right"
+        return "arrow.up"
     }
 
     private func laneSymbol(_ direction: String?) -> String {
