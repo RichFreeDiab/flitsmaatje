@@ -204,14 +204,13 @@ struct LaunchView: View {
 
         Task {
             BootLogger.mark("gps-before-service")
-            let service = LocationBackgroundService()
+            let service = LocationBackgroundService.shared
             location = service
             navigationService = NavigationService.shared
             CarPlayNavigationCoordinator.shared.navigationService = NavigationService.shared
-            service.onLocationUpdate = { location in
-                NavigationService.shared.updateTrafficReports(service.mapReports)
-                NavigationService.shared.updateProgress(location: location)
-                CarPlayNavigationCoordinator.shared.updateNavigationProgress()
+            CarPlayNavigationCoordinator.shared.locationService = service
+            service.onLocationUpdate = { _ in
+                // Nav-progress gebeurt in LocationBackgroundService.processLocation.
             }
             // CarPlay may connect before the phone dashboard is opened. Keep the
             // shared coordinator connected to the live GPS service immediately.
@@ -225,7 +224,9 @@ struct LaunchView: View {
             try? await Task.sleep(nanoseconds: 600_000_000)
 
             statusMessage = "GPS starten…"
-            service.activateForegroundOnly()
+            if !service.isTracking {
+                service.activateForegroundOnly()
+            }
             BootLogger.mark("gps-active")
 
             try? await Task.sleep(nanoseconds: 400_000_000)

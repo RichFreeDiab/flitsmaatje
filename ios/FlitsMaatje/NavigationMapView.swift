@@ -39,9 +39,8 @@ struct NavigationMapView: View {
         }
         .onChange(of: location.lastLocation) { _, newLocation in
             centerOnUserIfPossible()
-            if let newLocation {
-                navigation.updateProgress(location: newLocation)
-                if navigation.isNavigating { followDrivingCamera(location: newLocation) }
+            if let newLocation, navigation.isNavigating {
+                followDrivingCamera(location: newLocation)
             }
         }
         .alert(favoriteToEdit.map { "\($0.title) instellen" } ?? "Favoriet instellen", isPresented: Binding(

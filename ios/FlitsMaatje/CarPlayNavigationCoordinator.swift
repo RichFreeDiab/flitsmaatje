@@ -40,6 +40,7 @@ final class CarPlayNavigationCoordinator: NSObject {
     }
 
     func detach() {
+        // Alleen CarPlay-UI loskoppelen; telefoonnavigatie blijft actief.
         navigationSession?.finishTrip()
         navigationSession = nil
         activeTrip = nil
@@ -62,6 +63,19 @@ final class CarPlayNavigationCoordinator: NSObject {
         guard let route = navigationService?.route,
               let name = navigationService?.destinationName,
               let user = locationService?.lastLocation else { return }
+
+        // Al aan het navigeren op CarPlay: nooit een tweede sessie starten
+        // (showTripPreviews/startNavigationSession tijdens actieve trip = crash).
+        if navigationSession != nil {
+            if activeRoute !== route {
+                activeRoute = route
+                mapViewController?.showRoute(route)
+                AppLogger.log("CarPlay sync: bestaande sessie, route bijgewerkt")
+            }
+            updateManeuvers(for: route)
+            return
+        }
+
         presentTripPreview(route: route, destinationName: name, from: user, autoStart: true)
     }
 
@@ -188,6 +202,13 @@ final class CarPlayNavigationCoordinator: NSObject {
 
     private func presentTripPreview(route: MKRoute, destinationName: String, from location: CLLocation, autoStart: Bool = false) {
         guard let mapTemplate else { return }
+        // Nooit trip preview tonen tijdens actieve navigatiesessie.
+        if navigationSession != nil {
+            activeRoute = route
+            mapViewController?.showRoute(route)
+            updateManeuvers(for: route)
+            return
+        }
 
         let origin = MKMapItem(placemark: MKPlacemark(coordinate: location.coordinate))
         origin.name = "Huidige locatie"
@@ -233,6 +254,13 @@ final class CarPlayNavigationCoordinator: NSObject {
     private func startGuidance(for trip: CPTrip) {
         guard let mapTemplate, let route = activeRoute else { return }
 
+        // Tweede startNavigationSession op dezelfde template crasht CarPlay.
+        if navigationSession != nil {
+            AppLogger.log("CarPlay startGuidance genegeerd: sessie bestaat al")
+            updateManeuvers(for: route)
+            return
+        }
+
         mapTemplate.hideTripPreviews()
         navigationSession = mapTemplate.startNavigationSession(for: trip)
         mapViewController?.showRoute(route)
@@ -241,12 +269,12 @@ final class CarPlayNavigationCoordinator: NSObject {
 
         let estimates = CPTravelEstimates(
             distanceRemaining: Measurement(value: Double(route.distance), unit: UnitLength.meters),
-            timeRemaining: route.expectedTravelTime
+            timeRemaining: max(1, route.expectedTravelTime)
         )
         mapTemplate.updateEstimates(estimates, for: trip)
 
         let stop = CPBarButton(title: "Stop") { [weak self] _ in
-            self?.endGuidance()
+            self?.endGuidance(stopPhoneNavigation: true)
         }
         mapTemplate.leadingNavigationBarButtons = [stop]
         mapTemplate.trailingNavigationBarButtons = []
@@ -293,6 +321,10 @@ final class CarPlayNavigationCoordinator: NSObject {
             maneuverStepIndex = startIndex
             // Alleen een nieuwe route of afslag vervangt de kaart. Bij gewone
             // GPS-updates blijft hetzelfde CPManeuver-object op zijn plek.
+            guard !stableManeuvers.isEmpty else {
+                AppLogger.log("CarPlay: geen manoeuvres om te tonen")
+                return
+            }
             session.upcomingManeuvers = stableManeuvers
         } else if let current = stableManeuvers.first {
             // Live bijwerken: baan + afrittekst op huidige manoeuvre
@@ -508,7 +540,7 @@ final class CarPlayNavigationCoordinator: NSObject {
         )
     }
 
-    private func endGuidance() {
+    private func endGuidance(stopPhoneNavigation: Bool = true) {
         navigationSession?.finishTrip()
         navigationSession = nil
         activeTrip = nil
@@ -519,8 +551,16 @@ final class CarPlayNavigationCoordinator: NSObject {
         maneuverRouteIdentifier = nil
         maneuverStepIndex = -1
         stableManeuvers = []
-        navigationService?.stopNavigation()
+        if stopPhoneNavigation {
+            navigationService?.stopNavigation()
+        }
         mapViewController?.clearRoute()
+        mapViewController?.updateManeuver(
+            instruction: nil,
+            distanceText: nil,
+            laneSections: [],
+            showFallback: false
+        )
         mapTemplate?.hideTripPreviews()
         if let mapTemplate {
             configureDefaultButtons(on: mapTemplate)

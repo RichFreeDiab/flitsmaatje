@@ -6,6 +6,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     private var mapViewController: CarPlayMapViewController?
     private var locationService: LocationBackgroundService?
     private var navigationService: NavigationService?
+    private var locationHandlerId: UUID?
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
@@ -18,18 +19,19 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             AppLogger.log("CarPlay connect")
             CarPlaySessionTracker.setForegroundOnCarPlay(true)
 
-            let locationService = LocationBackgroundService()
+            // Eén gedeelde GPS-service — tweede CLLocationManager veroorzaakte
+            // dubbele updates en CarPlay-sessie-crashes bij herberekenen.
+            let locationService = LocationBackgroundService.shared
             let navigationService = NavigationService.shared
             self.locationService = locationService
             self.navigationService = navigationService
 
             locationService.prepareForUse()
-            locationService.activateWhenReady()
-            locationService.start()
+            if !locationService.isTracking {
+                locationService.activateWhenReady()
+                locationService.start()
+            }
 
-            // CPMapTemplate renders the visible map UI. Set a neutral app tint before
-            // creating the template so native maneuver cards do not inherit the
-            // warning-red accent used by the speeding alerts.
             window.tintColor = .systemBlue
 
             let mapViewController = CarPlayMapViewController()
@@ -50,11 +52,9 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CarPlayDrivingTaskCoordinator.shared.locationService = locationService
             CarPlayDrivingTaskCoordinator.shared.attach(interfaceController: interfaceController, mapViewController: mapViewController)
 
-            locationService.onLocationUpdate = { [weak self, weak navigationService] location in
-                navigationService?.updateTrafficReports(locationService.mapReports)
-                navigationService?.updateProgress(location: location)
+            locationHandlerId = locationService.addLocationUpdateHandler { [weak self] location in
+                // Alleen CarPlay-kaart volgen; nav-progress is centraal afgehandeld.
                 self?.mapViewController?.follow(location: location)
-                CarPlayNavigationCoordinator.shared.updateNavigationProgress()
             }
         }
     }
@@ -68,10 +68,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             guard let self else { return }
 
             CarPlaySessionTracker.setForegroundOnCarPlay(false)
-            self.locationService?.onLocationUpdate = nil
+            self.locationService?.removeLocationUpdateHandler(self.locationHandlerId)
+            self.locationHandlerId = nil
+            // Stop géén shared GPS/navigatie — telefoon blijft rijden.
             CarPlayNavigationCoordinator.shared.detach()
             CarPlayDrivingTaskCoordinator.shared.detach()
-            self.locationService?.stop()
             self.locationService = nil
             self.navigationService = nil
             self.mapViewController = nil

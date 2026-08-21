@@ -52,8 +52,16 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertNotIn("size: 52", NAVIGATION_MAP)
         self.assertNotIn("cellSize: 48", NAVIGATION_MAP)
 
-    def test_carplay_hides_custom_overlay_during_native_session(self):
+    def test_carplay_does_not_restart_session_while_active(self):
+        self.assertIn("CarPlay startGuidance genegeerd: sessie bestaat al", COORDINATOR)
+        self.assertIn("nooit een tweede sessie starten", COORDINATOR)
         self.assertIn("showFallback: navigationSession == nil", COORDINATOR)
+        self.assertIn("LocationBackgroundService.shared", (
+            ROOT / "ios" / "FlitsMaatje" / "CarPlaySceneDelegate.swift"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("static let shared = LocationBackgroundService()", (
+            ROOT / "ios" / "FlitsMaatje" / "LocationBackgroundService.swift"
+        ).read_text(encoding="utf-8"))
 
     def test_waypoints_are_not_double_encoded(self):
         api = (ROOT / "ios" / "Shared" / "FlitsMaatjeAPI.swift").read_text(encoding="utf-8")

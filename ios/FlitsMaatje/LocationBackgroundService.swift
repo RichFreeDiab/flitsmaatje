@@ -5,6 +5,8 @@ import UIKit
 
 @MainActor
 final class LocationBackgroundService: NSObject, ObservableObject, CLLocationManagerDelegate {
+    static let shared = LocationBackgroundService()
+
     @Published var isTracking = false
     @Published var statusText = "Wacht op locatietoestemming…"
     @Published var currentAlert: NearbyAlert?
@@ -80,6 +82,19 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update
     /// direct als routevoortgang te verwerken.
     var onLocationUpdate: ((CLLocation) -> Void)?
+    private var locationUpdateHandlers: [UUID: (CLLocation) -> Void] = [:]
+
+    @discardableResult
+    func addLocationUpdateHandler(_ handler: @escaping (CLLocation) -> Void) -> UUID {
+        let id = UUID()
+        locationUpdateHandlers[id] = handler
+        return id
+    }
+
+    func removeLocationUpdateHandler(_ id: UUID?) {
+        guard let id else { return }
+        locationUpdateHandlers.removeValue(forKey: id)
+    }
 
     private let distanceAlarmThresholds = [600, 400, 200, 100]
     private let alarmRepeatInterval: TimeInterval = 25
@@ -272,7 +287,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         updateCurrentSpeed(from: location)
         // CarPlay leest dezelfde App Group-snapshot; schrijf snelheid direct weg.
         persistSnapshot(lat: location.coordinate.latitude, lng: location.coordinate.longitude, alert: currentAlert, message: statusText)
+        // Eén plek voor nav-progress — voorkomt dubbele CarPlay-updates (crash).
+        NavigationService.shared.updateTrafficReports(mapReports)
+        NavigationService.shared.updateProgress(location: location)
+        CarPlayNavigationCoordinator.shared.updateNavigationProgress()
         onLocationUpdate?(location)
+        for handler in locationUpdateHandlers.values {
+            handler(location)
+        }
 
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude

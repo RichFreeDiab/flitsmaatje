@@ -52,7 +52,7 @@ struct ContentView: View {
                     .font(.system(size: 56, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(isSpeeding ? .red : .primary)
-                Text(localizedString("km_u"))
+                Text("km/u")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -166,8 +166,4 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-}
-
-private func localizedString(_ key: String) -> String {
-    NSLocalizedString(key, bundle: .main, comment: "")
 }
