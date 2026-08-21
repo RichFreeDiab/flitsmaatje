@@ -97,9 +97,12 @@ final class CarPlayNavigationCoordinator: NSObject {
         mapViewController?.updateManeuver(
             instruction: navigationService.currentInstruction,
             distanceText: distanceM.map(Self.formatDistance),
-            detailText: navigationService.guidanceDetailText,
+            detailText: navigationService.currentOrUpcomingExitBannerText
+                ?? navigationService.currentInstruction,
             laneSections: visibleLanes,
-            showFallback: true
+            // Alleen custom overlay vóór native sessie — anders dubbele pijlen
+            // (native CPManeuver + onze panel).
+            showFallback: navigationSession == nil
         )
 
         guard navigationSession != nil else { return }

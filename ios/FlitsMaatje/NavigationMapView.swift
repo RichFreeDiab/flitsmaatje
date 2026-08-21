@@ -16,14 +16,15 @@ struct NavigationMapView: View {
     var body: some View {
         ZStack(alignment: .top) {
             mapLayer
-            VStack(spacing: 10) {
-                searchBar
-                if navigation.isNavigating {
-                    maneuverBanner
-                } else {
+            VStack(spacing: 8) {
+                if !navigation.isNavigating {
+                    searchBar
                     directionHUD
+                    favoriteButtons
+                } else {
+                    // Eén compacte navigatiekaart — geen zoek/favorieten eroverheen
+                    maneuverBanner
                 }
-                favoriteButtons
                 Spacer()
                 bottomHUD
             }
@@ -204,50 +205,33 @@ struct NavigationMapView: View {
     }
 
     private var directionHUD: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: directionArrowSymbol)
-                .font(.system(size: 46, weight: .bold))
+                .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(.white)
                 .rotationEffect(.degrees(directionArrowRotation))
-                .frame(width: 66, height: 66)
+                .frame(width: 40, height: 40)
                 .background(Color.black.opacity(0.82), in: Circle())
 
-            VStack(alignment: .leading, spacing: 6) {
-                if navigation.isNavigating, let section = activeLaneSection {
-                    googleMapsLaneStrip(section, cellSize: 34, arrowSize: 22)
-                    if let laneHint = NavigationService.laneRecommendationText(for: section) {
-                        Text(laneHint)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.92))
-                            .lineLimit(2)
-                    }
-                }
-                if navigation.isNavigating, let exit = navigation.currentOrUpcomingExitBannerText {
-                    Text(exit)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                } else {
-                    Text(directionTitle)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(directionSubtitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineLimit(1)
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(directionTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(directionSubtitle)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: 360, alignment: .leading)
-        .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 280, alignment: .leading)
+        .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 12))
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(navigation.isNavigating ? (navigation.guidanceDetailText ?? "Navigeren") : "Permanente richting en rijbaan")
+        .accessibilityLabel("Permanente richting")
     }
 
     private var courseDegrees: Double? {
@@ -297,91 +281,61 @@ struct NavigationMapView: View {
     }
 
     private var maneuverBanner: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 14) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: maneuverSymbol(for: navigation.currentInstruction))
-                    .font(.system(size: 52, weight: .bold))
-                    .frame(width: 72, height: 72)
+                    .font(.system(size: 26, weight: .bold))
+                    .frame(width: 44, height: 44)
                     .foregroundStyle(.white)
-                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 2) {
-                    if let meters = navigation.laneGuidanceDistanceM
-                        ?? (navigation.currentManeuverDistanceM > 0 ? navigation.currentManeuverDistanceM : nil) {
+                    .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 1) {
+                    if let meters = navigation.currentManeuverDistanceM > 0
+                        ? navigation.currentManeuverDistanceM
+                        : navigation.laneGuidanceDistanceM {
                         Text(formatGuidanceDistance(meters))
-                            .font(.system(size: 36, weight: .bold, design: .rounded).monospacedDigit())
+                            .font(.title3.bold().monospacedDigit())
                             .foregroundStyle(.white)
                     }
-                    if let exitText = navigation.currentOrUpcomingExitBannerText {
-                        Text(exitText)
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.75)
-                    } else {
-                        Text(navigation.currentInstruction)
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.95))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
-                    }
+                    Text(navigation.currentOrUpcomingExitBannerText ?? navigation.currentInstruction)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 0)
             }
             if let section = activeLaneSection {
-                // Flitsmeister/Google: banenstrip onder de pijl
-                googleMapsLaneStrip(section, cellSize: 48, arrowSize: 26)
+                googleMapsLaneStrip(section, cellSize: 28, arrowSize: 14)
             }
         }
         .onChange(of: location.mapReports) { _, reports in
             navigation.updateTrafficReports(reports)
         }
-        .padding(14)
-        .frame(maxWidth: 380, alignment: .leading)
-        .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 300, alignment: .leading)
+        .background(Color.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 12))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Flitsmeister-stijl: donkere banen, volg-pijl helder wit, rest gedimd.
+    /// Compacte banenstrip: één pijl per rijstrook (volg-baan helder wit).
     private func googleMapsLaneStrip(_ section: LaneSection, cellSize: CGFloat, arrowSize: CGFloat) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             ForEach(Array(section.lanes.enumerated()), id: \.offset) { _, lane in
                 let follow = lane.follow
                 let isFollow = follow != nil
-                let arrows = laneArrowDirections(lane)
-                VStack(spacing: 1) {
-                    ForEach(Array(arrows.enumerated()), id: \.offset) { _, dir in
-                        Image(systemName: laneSymbol(dir))
-                            .font(.system(size: arrowSize, weight: dir == follow ? .heavy : .semibold))
-                            .foregroundStyle(
-                                dir == follow
-                                    ? Color.white
-                                    : Color.white.opacity(isFollow ? 0.22 : 0.38)
-                            )
-                    }
-                }
-                .frame(width: cellSize, height: max(cellSize + 6, CGFloat(max(arrows.count, 1)) * (arrowSize + 3) + 8))
-                .background(
-                    isFollow ? Color.white.opacity(0.18) : Color.white.opacity(0.06),
-                    in: RoundedRectangle(cornerRadius: 6)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(isFollow ? Color.white.opacity(0.55) : Color.clear, lineWidth: 1.5)
-                )
+                let primary = follow ?? lane.directions.first ?? "STRAIGHT"
+                Image(systemName: laneSymbol(primary))
+                    .font(.system(size: arrowSize, weight: isFollow ? .heavy : .semibold))
+                    .foregroundStyle(isFollow ? Color.white : Color.white.opacity(0.35))
+                    .frame(width: cellSize, height: cellSize)
+                    .background(
+                        isFollow ? Color.white.opacity(0.2) : Color.white.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 5)
+                    )
             }
         }
-        .padding(.vertical, 4)
         .accessibilityLabel("Rijstroken")
-    }
-
-    private func laneArrowDirections(_ lane: Lane) -> [String] {
-        var dirs = lane.directions
-        if let follow = lane.follow, !dirs.contains(follow) {
-            dirs.append(follow)
-        }
-        if dirs.isEmpty { return ["STRAIGHT"] }
-        return dirs
     }
 
     private func maneuverSymbol(for instruction: String) -> String {

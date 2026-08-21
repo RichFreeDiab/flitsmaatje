@@ -190,24 +190,33 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         return text
     }
 
-    /// Flitsmeister-stijl overlay: grote pijl-afstand + banenstrip (ook naast native CPLaneGuidance).
+    /// Compacte fallback alleen vóór native CarPlay-navigatie (geen dubbele pijlen).
     func updateManeuver(
         instruction: String?,
         distanceText: String?,
         detailText: String? = nil,
         laneSections: [LaneSection] = [],
-        showFallback: Bool = true
+        showFallback: Bool = false
     ) {
+        guard showFallback else {
+            // Native CPManeuver + CPLaneGuidance zijn de enige navigatie-UI.
+            laneLabel.text = nil
+            lanePanel.isHidden = true
+            maneuverLabel.text = nil
+            maneuverPanel.isHidden = true
+            return
+        }
+
         let section = laneSections.first
         let laneStrip = section.map(Self.flitsmeisterLaneStripText)
         let hasLaneStrip = !(laneStrip?.isEmpty ?? true)
 
         if hasLaneStrip, let laneStrip {
             laneLabel.text = laneStrip
-            laneLabel.font = .systemFont(ofSize: laneStrip.count > 18 ? 28 : 36, weight: .bold)
-            laneLabel.numberOfLines = 2
+            laneLabel.font = .systemFont(ofSize: 22, weight: .bold)
+            laneLabel.numberOfLines = 1
             laneLabel.adjustsFontSizeToFitWidth = true
-            laneLabel.minimumScaleFactor = 0.55
+            laneLabel.minimumScaleFactor = 0.6
             lanePanel.isHidden = false
             view.bringSubviewToFront(lanePanel)
         } else {
@@ -225,40 +234,26 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             lines.append(instruction)
         }
 
-        if showFallback, !lines.isEmpty {
-            maneuverLabel.text = lines.joined(separator: "\n")
-            maneuverLabel.numberOfLines = 3
-            maneuverLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        if !lines.isEmpty {
+            maneuverLabel.text = lines.joined(separator: " · ")
+            maneuverLabel.numberOfLines = 2
+            maneuverLabel.font = .systemFont(ofSize: 18, weight: .semibold)
             maneuverPanel.isHidden = false
             view.bringSubviewToFront(maneuverPanel)
-        } else if hasLaneStrip {
-            // Alleen banen zichtbaar; tekst komt van native CarPlay-manoeuvre.
-            maneuverLabel.text = nil
-            maneuverPanel.isHidden = true
         } else {
             maneuverLabel.text = nil
             maneuverPanel.isHidden = true
         }
     }
 
-    /// Unicode-banenstrip: volg-baan helder (▶), rest gedimd (▷).
+    /// Compacte unicode-banen: één pijl per strook, volg tussen 【 】.
     private static func flitsmeisterLaneStripText(_ section: LaneSection) -> String {
         guard !section.lanes.isEmpty else { return "" }
-        let parts = section.lanes.map { lane -> String in
-            let dirs = lane.directions.isEmpty
-                ? [lane.follow ?? "STRAIGHT"]
-                : lane.directions
-            let follow = lane.follow?.uppercased()
-            let arrows = dirs.map { dir -> String in
-                let symbol = laneArrowGlyph(dir)
-                if let follow, dir.uppercased() == follow {
-                    return "【\(symbol)】"
-                }
-                return symbol
-            }
-            return arrows.joined()
-        }
-        return parts.joined(separator: "  ")
+        return section.lanes.map { lane -> String in
+            let primary = (lane.follow ?? lane.directions.first ?? "STRAIGHT").uppercased()
+            let symbol = laneArrowGlyph(primary)
+            return lane.follow != nil ? "【\(symbol)】" : symbol
+        }.joined(separator: " ")
     }
 
     private static func laneArrowGlyph(_ direction: String) -> String {

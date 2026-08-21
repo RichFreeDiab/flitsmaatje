@@ -48,6 +48,12 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertIn("shouldShowLaneSection", NAVIGATION)
         self.assertIn("flitsmeisterLaneStripText", MAP_VIEW)
         self.assertIn("formatExitBanner", NAVIGATION)
+        # Compacte HUD: geen gigantische pijlen die de kaart bedekken
+        self.assertNotIn("size: 52", NAVIGATION_MAP)
+        self.assertNotIn("cellSize: 48", NAVIGATION_MAP)
+
+    def test_carplay_hides_custom_overlay_during_native_session(self):
+        self.assertIn("showFallback: navigationSession == nil", COORDINATOR)
 
     def test_waypoints_are_not_double_encoded(self):
         api = (ROOT / "ios" / "Shared" / "FlitsMaatjeAPI.swift").read_text(encoding="utf-8")
