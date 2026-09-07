@@ -8,16 +8,18 @@
   const lanesEl = document.getElementById("lane-lanes");
   const exitEl = document.getElementById("lane-exit");
   const laneTextEl = document.getElementById("lane-lane-text");
+  const hudEl = document.getElementById("lane-hud");
   if (!arrowEl || !labelEl || !subEl || !lanesEl) return;
 
+  // Upward-angled glyphs (Google Maps style) — no sideways ←/→.
   const DIR_ICON = {
     straight: "↑",
     slight_left: "↖",
     slight_right: "↗",
-    left: "←",
-    right: "→",
-    sharp_left: "↙",
-    sharp_right: "↘",
+    left: "↖",
+    right: "↗",
+    sharp_left: "↰",
+    sharp_right: "↱",
     uturn: "↩",
   };
 
@@ -25,6 +27,8 @@
   let lastLaneKey = "";
   let lastFetchPos = null;
   let cachedLaneSection = null;
+  let emptyLaneStreak = 0;
+  let lastLaneDiagAt = 0;
 
   function compassLabel(deg) {
     if (deg == null || !Number.isFinite(deg)) return "—";
@@ -54,17 +58,32 @@
   function directionIcon(name) {
     const n = String(name || "").toLowerCase();
     if (n.includes("left")) {
-      if (n.includes("sharp")) return "↙";
-      if (n.includes("slight")) return "↖";
-      return "←";
+      if (n.includes("sharp")) return DIR_ICON.sharp_left;
+      if (n.includes("slight")) return DIR_ICON.slight_left;
+      return DIR_ICON.left;
     }
     if (n.includes("right")) {
-      if (n.includes("sharp")) return "↘";
-      if (n.includes("slight")) return "↗";
-      return "→";
+      if (n.includes("sharp")) return DIR_ICON.sharp_right;
+      if (n.includes("slight")) return DIR_ICON.slight_right;
+      return DIR_ICON.right;
     }
-    if (n.includes("uturn") || n.includes("u_turn")) return "↩";
-    return "↑";
+    if (n.includes("uturn") || n.includes("u_turn")) return DIR_ICON.uturn;
+    return DIR_ICON.straight;
+  }
+
+  function laneDisplayDirections(lane) {
+    let dirs = (lane.directions || []).map((d) => String(d).toUpperCase());
+    const follow = lane.follow ? String(lane.follow).toUpperCase() : null;
+    if (follow && !dirs.includes(follow)) dirs.unshift(follow);
+    if (!dirs.length) dirs = ["STRAIGHT"];
+    if (dirs.length > 3) {
+      if (follow && dirs.includes(follow)) {
+        dirs = [follow].concat(dirs.filter((d) => d !== follow).slice(0, 2));
+      } else {
+        dirs = dirs.slice(0, 3);
+      }
+    }
+    return dirs;
   }
 
   function setLaneText(text) {
@@ -89,26 +108,64 @@
     }
   }
 
-  function renderLanes(section) {
+  function applyScaleClass(distanceM) {
+    if (!hudEl) return;
+    const mode = G.laneScaleMode(distanceM);
+    hudEl.classList.remove("scale-far", "scale-prominent", "scale-execute");
+    hudEl.classList.add(`scale-${mode}`);
+  }
+
+  function logLaneDiag(event, extra) {
+    const now = Date.now();
+    if (now - lastLaneDiagAt < 12000) return;
+    lastLaneDiagAt = now;
+    const payload = Object.assign(
+      {
+        event,
+        emptyStreak: emptyLaneStreak,
+        hasSection: Boolean(cachedLaneSection),
+      },
+      extra || {}
+    );
+    try {
+      console.info("[FlitsMaatje lane]", payload);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function renderLanes(section, pos) {
     const lanes = (section && section.lanes) || [];
     if (!lanes.length) {
       lanesEl.hidden = true;
       lanesEl.innerHTML = "";
       delete lanesEl.dataset.hint;
+      applyScaleClass(null);
       return;
     }
+    const distanceM = G.laneSectionDistanceM(section, pos);
+    applyScaleClass(distanceM);
     lanesEl.hidden = false;
     const followIdx = lanes.findIndex((l) => l.follow);
     lanesEl.innerHTML = lanes
       .map((lane, i) => {
-        const dirs = lane.directions || [];
-        const icon = directionIcon(lane.follow || dirs[0] || "STRAIGHT");
-        const follow = Boolean(lane.follow);
-        const cls = follow ? "lane-chip follow" : "lane-chip";
-        const title = follow
+        const dirs = laneDisplayDirections(lane);
+        const follow = lane.follow ? String(lane.follow).toUpperCase() : null;
+        const isFollow = Boolean(follow);
+        const cls = isFollow ? "lane-chip follow" : "lane-chip";
+        const title = isFollow
           ? `Volg baan ${i + 1}/${lanes.length}`
           : `Baan ${i + 1}`;
-        return `<span class="${cls}" title="${title}">${icon}<small>${i + 1}</small></span>`;
+        const arrows = dirs
+          .map((dir) => {
+            const highlighted = follow && dir === follow;
+            const arrowCls = highlighted || (isFollow && dirs.length === 1)
+              ? "lane-arrow-glyph hi"
+              : "lane-arrow-glyph";
+            return `<span class="${arrowCls}">${directionIcon(dir)}</span>`;
+          })
+          .join("");
+        return `<span class="${cls}" title="${title}"><span class="lane-stack">${arrows}</span><small>${i + 1}</small></span>`;
       })
       .join("");
     if (followIdx >= 0) {
@@ -116,6 +173,11 @@
     } else {
       lanesEl.dataset.hint = `${lanes.length} banen`;
     }
+    logLaneDiag("render", {
+      lanes: lanes.length,
+      distanceM,
+      scale: G.laneScaleMode(distanceM),
+    });
   }
 
   function refreshCachedSection() {
@@ -131,7 +193,7 @@
     ) {
       cachedLaneSection = null;
     }
-    renderLanes(cachedLaneSection);
+    renderLanes(cachedLaneSection, pos);
   }
 
   function updateHud() {
@@ -188,6 +250,7 @@
     setLaneText("");
     arrowEl.textContent = "↑";
     arrowEl.removeAttribute("title");
+    applyScaleClass(null);
     if (heading != null && Number.isFinite(heading)) {
       labelEl.textContent = `Koers ${compassLabel(heading)}`;
       subEl.textContent = `${Math.round(heading)}° · pijl blijft zichtbaar`;
@@ -209,9 +272,18 @@
     const waypoints = G.sampledRouteWaypoints(pos, routeCoords);
     const wpKey = waypoints.map((p) => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`).join("|");
     const key = `${pos.lat.toFixed(3)},${pos.lng.toFixed(3)}>${dest.lat.toFixed(3)},${dest.lng.toFixed(3)}:${wpKey}`;
+    const distToLane = cachedLaneSection
+      ? G.laneSectionDistanceM(cachedLaneSection, pos)
+      : null;
+    const approaching =
+      distToLane != null && distToLane <= G.LANE_PROMINENT_M;
+    const refreshMs = approaching ? 45000 : G.LANE_REFRESH_MS;
+    const moveM = approaching
+      ? G.LANE_REFRESH_MOVEMENT_M * 0.6
+      : G.LANE_REFRESH_MOVEMENT_M;
     const moved =
-      lastFetchPos && G.distanceMeters(lastFetchPos, pos) >= G.LANE_REFRESH_MOVEMENT_M;
-    if (key === lastLaneKey && !moved && now - lastLaneFetch < G.LANE_REFRESH_MS) return;
+      lastFetchPos && G.distanceMeters(lastFetchPos, pos) >= moveM;
+    if (key === lastLaneKey && !moved && now - lastLaneFetch < refreshMs) return;
     if (now - lastLaneFetch < 8000) return;
     lastLaneFetch = now;
     lastLaneKey = key;
@@ -228,14 +300,17 @@
       const res = await fetch(url, { signal: ctrl.signal });
       clearTimeout(timer);
       const data = await res.json();
-      cachedLaneSection = G.pickBestLaneSection(
-        data.sections || [],
-        pos,
-        routeCoords
-      );
+      const sections = data.sections || [];
+      if (!sections.length) {
+        emptyLaneStreak += 1;
+        logLaneDiag("empty-response", { streak: emptyLaneStreak });
+      } else {
+        emptyLaneStreak = 0;
+      }
+      cachedLaneSection = G.pickBestLaneSection(sections, pos, routeCoords);
       updateHud();
     } catch (_) {
-      /* lane guidance is enhancement */
+      logLaneDiag("fetch-error", {});
     }
   }
 

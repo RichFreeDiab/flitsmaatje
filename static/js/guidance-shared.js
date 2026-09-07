@@ -1,5 +1,7 @@
 (() => {
   const LANE_HORIZON_M = 3500;
+  const LANE_PROMINENT_M = 1200;
+  const LANE_EXECUTE_M = 300;
   const LANE_REFRESH_MS = 90000;
   const LANE_REFRESH_MOVEMENT_M = 500;
   const LANE_ROUTE_ALIGNMENT_M = 250;
@@ -32,7 +34,7 @@
     return match ? match[1].toUpperCase() : null;
   }
 
-  /** Afrit nummer + naam — parity met iOS NavigationService.parseExit */
+  /** Afrit nummer + naam ï¿½ parity met iOS NavigationService.parseExit */
   function parseExit(step) {
     if (!step) return null;
     const type = String((step.maneuver && step.maneuver.type) || "").toLowerCase();
@@ -43,12 +45,12 @@
     if (!text) return null;
 
     const patterns = [
-      /(?:neem|volg|rij)\s+(?:de\s+)?afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-      /(?:neem|volg|rij)\s+(?:de\s+)?afslag\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-      /afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-      /afslag\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-      /exit\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
-      /off[\s\-]?ramp\s+(\d+[A-Za-z]?)(?:\s*[:\-–,]\s*|\s+)(.+)?/i,
+      /(?:neem|volg|rij)\s+(?:de\s+)?afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-ï¿½,]\s*|\s+)(.+)?/i,
+      /(?:neem|volg|rij)\s+(?:de\s+)?afslag\s+(\d+[A-Za-z]?)(?:\s*[:\-ï¿½,]\s*|\s+)(.+)?/i,
+      /afrit\s+(\d+[A-Za-z]?)(?:\s*[:\-ï¿½,]\s*|\s+)(.+)?/i,
+      /afslag\s+(\d+[A-Za-z]?)(?:\s*[:\-ï¿½,]\s*|\s+)(.+)?/i,
+      /exit\s+(\d+[A-Za-z]?)(?:\s*[:\-ï¿½,]\s*|\s+)(.+)?/i,
+      /off[\s\-]?ramp\s+(\d+[A-Za-z]?)(?:\s*[:\-ï¿½,]\s*|\s+)(.+)?/i,
     ];
     for (const re of patterns) {
       const m = text.match(re);
@@ -86,11 +88,11 @@
     if (!exit) return "";
     const dist =
       distanceM != null && distanceM > 0
-        ? ` · ${(distanceM / 1000).toFixed(1)} km`
+        ? ` ï¿½ ${(distanceM / 1000).toFixed(1)} km`
         : "";
-    if (exit.number && exit.name) return `Afrit ${exit.number} · ${exit.name}${dist}`;
+    if (exit.number && exit.name) return `Afrit ${exit.number} ï¿½ ${exit.name}${dist}`;
     if (exit.number) return `Afrit ${exit.number}${dist}`;
-    if (exit.name) return `Afrit · ${exit.name}${dist}`;
+    if (exit.name) return `Afrit ï¿½ ${exit.name}${dist}`;
     return `Afrit${dist}`;
   }
 
@@ -174,6 +176,21 @@
     return step && step.distance != null && step.distance <= LANE_HORIZON_M;
   }
 
+  function laneSectionDistanceM(section, pos) {
+    if (!section || !pos || section.start_lat == null || section.start_lng == null) {
+      return null;
+    }
+    return Math.round(distanceMeters(pos, { lat: section.start_lat, lng: section.start_lng }));
+  }
+
+  /** far | prominent | execute â€” mirrors iOS NavigationService scaling. */
+  function laneScaleMode(distanceM) {
+    if (distanceM == null || !Number.isFinite(distanceM)) return "far";
+    if (distanceM <= LANE_EXECUTE_M) return "execute";
+    if (distanceM <= LANE_PROMINENT_M) return "prominent";
+    return "far";
+  }
+
   function guidanceDetailText(nav, step, section, pos) {
     const parts = [];
     const exit = currentOrUpcomingExitBanner(nav, step);
@@ -182,7 +199,7 @@
       const lane = laneRecommendationText(section);
       if (lane) parts.push(lane);
     }
-    return parts.join(" · ");
+    return parts.join(" ï¿½ ");
   }
 
   function isBehindVehicle(coordinate, pos, heading) {
@@ -269,6 +286,8 @@
 
   window.FlitsMaatjeGuidance = {
     LANE_HORIZON_M,
+    LANE_PROMINENT_M,
+    LANE_EXECUTE_M,
     LANE_REFRESH_MS,
     LANE_REFRESH_MOVEMENT_M,
     STEP_ADVANCE_M,
@@ -279,6 +298,8 @@
     bestUpcomingExit,
     currentOrUpcomingExitBanner,
     shouldShowLaneSection,
+    laneSectionDistanceM,
+    laneScaleMode,
     guidanceDetailText,
     pruneLaneSection,
     pickBestLaneSection,

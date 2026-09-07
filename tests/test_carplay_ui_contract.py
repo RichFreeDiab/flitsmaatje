@@ -41,21 +41,29 @@ class CarPlayUIContractTests(unittest.TestCase):
 
     def test_lane_choice_is_visual_arrows_with_exit_and_lane_detail_text(self):
         self.assertIn("googleMapsLaneStrip", NAVIGATION_MAP)
+        self.assertIn("laneDisplayDirections", NAVIGATION_MAP)
+        self.assertIn("laneStripMetrics", NAVIGATION_MAP)
         self.assertIn("currentOrUpcomingExitBannerText", NAVIGATION_MAP)
         self.assertIn("Color.white", NAVIGATION_MAP)
         self.assertNotIn("recommendedLaneText", NAVIGATION_MAP)
         self.assertIn("guidanceDetailText", NAVIGATION)
         self.assertIn("shouldShowLaneSection", NAVIGATION)
+        self.assertIn("laneProminentM", NAVIGATION)
+        self.assertIn("laneExecuteM", NAVIGATION)
+        self.assertIn("shouldBoostCarPlayLaneStrip", NAVIGATION)
         self.assertIn("flitsmeisterLaneStripText", MAP_VIEW)
+        self.assertIn("showLaneBoost", MAP_VIEW)
         self.assertIn("formatExitBanner", NAVIGATION)
-        # Compacte HUD: geen gigantische pijlen die de kaart bedekken
+        # Distance-scaled: execute/prominent may grow, but avoid full-screen giants.
         self.assertNotIn("size: 52", NAVIGATION_MAP)
         self.assertNotIn("cellSize: 48", NAVIGATION_MAP)
+        self.assertIn("laneStripMetrics", NAVIGATION_MAP)
 
     def test_carplay_does_not_restart_session_while_active(self):
         self.assertIn("CarPlay startGuidance genegeerd: sessie bestaat al", COORDINATOR)
         self.assertIn("nooit een tweede sessie starten", COORDINATOR)
         self.assertIn("showFallback: navigationSession == nil", COORDINATOR)
+        self.assertIn("showLaneBoost:", COORDINATOR)
         self.assertIn("LocationBackgroundService.shared", (
             ROOT / "ios" / "FlitsMaatje" / "CarPlaySceneDelegate.swift"
         ).read_text(encoding="utf-8"))
@@ -63,6 +71,18 @@ class CarPlayUIContractTests(unittest.TestCase):
             ROOT / "ios" / "FlitsMaatje" / "LocationBackgroundService.swift"
         ).read_text(encoding="utf-8"))
 
+    def test_lane_guidance_diagnostics_and_timing_window(self):
+        self.assertIn("Lane diag:", NAVIGATION)
+        self.assertIn("emptyLaneResponseCount", NAVIGATION)
+        self.assertIn("droppedAlignmentCount", NAVIGATION)
+        self.assertIn("approaching ? 45 : 90", NAVIGATION)
+        self.assertIn("laneCarPlayBoostM", NAVIGATION)
+        guidance_js = (ROOT / "static" / "js" / "guidance-shared.js").read_text(encoding="utf-8")
+        lane_js = (ROOT / "static" / "js" / "lane-hud.js").read_text(encoding="utf-8")
+        self.assertIn("LANE_PROMINENT_M", guidance_js)
+        self.assertIn("laneScaleMode", guidance_js)
+        self.assertIn("lane-stack", lane_js)
+        self.assertIn("scale-execute", lane_js)
     def test_waypoints_are_not_double_encoded(self):
         api = (ROOT / "ios" / "Shared" / "FlitsMaatjeAPI.swift").read_text(encoding="utf-8")
         self.assertIn('URLQueryItem(name: "waypoints", value: json)', api)

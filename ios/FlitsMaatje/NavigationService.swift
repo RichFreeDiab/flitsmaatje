@@ -45,10 +45,19 @@ final class NavigationService: ObservableObject {
 
     private static let speechPreferenceKey = "spoken-guidance-enabled"
     static let laneDisplayHorizonM = 3500
+    /// Google-style: strip grows inside this window.
+    static let laneProminentM = 1200
+    /// Closest approach — largest strip / execute mode.
+    static let laneExecuteM = 300
+    /// Show custom CarPlay strip alongside native when close or complex.
+    static let laneCarPlayBoostM = 1000
     private static let laneRouteAlignmentM: CLLocationDistance = 600
     private static let laneRefreshMovementM: CLLocationDistance = 400
     private static let maxLaneWaypoints = 20
     private static let laneWaypointSpacingM: CLLocationDistance = 400
+    private var emptyLaneResponseCount = 0
+    private var droppedAlignmentCount = 0
+    private var lastLaneDiagnosticAt = Date.distantPast
     private var speechDefaults: UserDefaults {
         UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
     }
@@ -158,6 +167,22 @@ final class NavigationService: ObservableObject {
             return meters <= Self.laneDisplayHorizonM
         }
         return section.startCoordinate != nil
+    }
+
+    /// True when the driver should glance at a larger lane strip.
+    var isLaneGuidanceProminent: Bool {
+        guard let meters = laneGuidanceDistanceM else { return false }
+        return meters <= Self.laneProminentM
+    }
+
+    /// Custom CarPlay strip beside native CPLaneGuidance for complex/close junctions.
+    func shouldBoostCarPlayLaneStrip(for section: LaneSection? = nil) -> Bool {
+        let active = section ?? laneSections.first(where: { shouldShowLaneSection($0) })
+        guard let active, !active.lanes.isEmpty else { return false }
+        let complex = active.lanes.count >= 3
+            || active.lanes.contains { $0.directions.count > 1 }
+        let close = (laneGuidanceDistanceM ?? Int.max) <= Self.laneCarPlayBoostM
+        return complex || close
     }
 
     static func scoreRoute(_ route: MKRoute, avoiding trafficReports: [MapReport]) -> TimeInterval {
@@ -405,6 +430,8 @@ final class NavigationService: ObservableObject {
         destinationName = nil
         laneSections = []
         laneGuidanceDistanceM = nil
+        emptyLaneResponseCount = 0
+        droppedAlignmentCount = 0
         trafficReports = []
         destinationCoordinate = nil
         consecutiveOffRouteUpdates = 0
@@ -594,6 +621,7 @@ final class NavigationService: ObservableObject {
     }
 
     private func updateUpcomingLaneSections(from location: CLLocation) {
+        let beforeCount = laneSections.count
         laneSections.removeAll { section in
             guard let coordinate = section.endCoordinate else { return false }
             let end = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -607,6 +635,10 @@ final class NavigationService: ObservableObject {
                 guard let start = section.startCoordinate else { return false }
                 let startLocation = CLLocation(latitude: start.latitude, longitude: start.longitude)
                 return distanceFromRoute(startLocation, route: route) <= Self.laneRouteAlignmentM
+            }
+            let dropped = laneSections.count - aligned.count
+            if dropped > 0 {
+                droppedAlignmentCount += dropped
             }
             // Nooit alle banen wissen door MapKit≠TomTom-afwijking: behoud dan
             // de dichtstbijzijnde secties binnen de horizon.
@@ -623,6 +655,12 @@ final class NavigationService: ObservableObject {
         }
         guard let section = laneSections.first else {
             laneGuidanceDistanceM = nil
+            logLaneDiagnosticsIfNeeded(
+                event: "no-active-section",
+                sections: 0,
+                beforeCount: beforeCount,
+                distanceM: nil
+            )
             return
         }
         let distance = laneDistance(section, from: location)
@@ -631,14 +669,42 @@ final class NavigationService: ObservableObject {
         } else {
             laneGuidanceDistanceM = nil
         }
+        logLaneDiagnosticsIfNeeded(
+            event: "active",
+            sections: laneSections.count,
+            beforeCount: beforeCount,
+            distanceM: laneGuidanceDistanceM
+        )
+    }
+
+    private func logLaneDiagnosticsIfNeeded(
+        event: String,
+        sections: Int,
+        beforeCount: Int,
+        distanceM: Int?
+    ) {
+        let now = Date()
+        guard now.timeIntervalSince(lastLaneDiagnosticAt) >= 12 else { return }
+        lastLaneDiagnosticAt = now
+        let dist = distanceM.map(String.init) ?? "-"
+        AppLogger.log(
+            "Lane diag: event=\(event) sections=\(sections) before=\(beforeCount) " +
+            "distance_m=\(dist) emptyStreak=\(emptyLaneResponseCount) " +
+            "droppedAlignment=\(droppedAlignmentCount) boost=\(shouldBoostCarPlayLaneStrip())"
+        )
     }
 
     private func maybeRefreshLaneGuidance(from location: CLLocation) {
         guard isNavigating, let destinationCoordinate, let route else { return }
-        let stale = Date().timeIntervalSince(lastLaneRefreshAt) > 90
+        let approaching = (laneGuidanceDistanceM ?? Int.max) <= Self.laneProminentM
+        let refreshInterval: TimeInterval = approaching ? 45 : 90
+        let movementThreshold = approaching
+            ? Self.laneRefreshMovementM * 0.6
+            : Self.laneRefreshMovementM
+        let stale = Date().timeIntervalSince(lastLaneRefreshAt) > refreshInterval
         let empty = laneSections.isEmpty
         let moved = lastLaneRefreshLocation.map {
-            location.distance(from: $0) >= Self.laneRefreshMovementM
+            location.distance(from: $0) >= movementThreshold
         } ?? true
         guard (stale || empty || moved), !isRefreshingLanes else { return }
         isRefreshingLanes = true
@@ -652,9 +718,19 @@ final class NavigationService: ObservableObject {
                     waypoints: waypoints
                 )
                 guard !sections.isEmpty else {
-                    AppLogger.log("Lane guidance: lege response")
+                    self.emptyLaneResponseCount += 1
+                    AppLogger.log(
+                        "Lane guidance: lege response (streak=\(self.emptyLaneResponseCount))"
+                    )
+                    self.logLaneDiagnosticsIfNeeded(
+                        event: "empty-response",
+                        sections: 0,
+                        beforeCount: self.laneSections.count,
+                        distanceM: self.laneGuidanceDistanceM
+                    )
                     return
                 }
+                self.emptyLaneResponseCount = 0
                 self.lastLaneRefreshAt = Date()
                 self.lastLaneRefreshLocation = location
                 self.laneSections = sections

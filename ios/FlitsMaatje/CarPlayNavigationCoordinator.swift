@@ -108,15 +108,17 @@ final class CarPlayNavigationCoordinator: NSObject {
         let distanceM = navigationService.laneGuidanceDistanceM
             ?? (navigationService.currentManeuverDistanceM > 0
                 ? navigationService.currentManeuverDistanceM : nil)
+        let boost = navigationService.shouldBoostCarPlayLaneStrip(for: visibleLanes.first)
         mapViewController?.updateManeuver(
             instruction: navigationService.currentInstruction,
             distanceText: distanceM.map(Self.formatDistance),
             detailText: navigationService.currentOrUpcomingExitBannerText
                 ?? navigationService.currentInstruction,
             laneSections: visibleLanes,
-            // Alleen custom overlay vóór native sessie — anders dubbele pijlen
-            // (native CPManeuver + onze panel).
-            showFallback: navigationSession == nil
+            // Volledige custom overlay vóór native sessie; bij actieve sessie
+            // alleen een boosted lane-strip naast CPLaneGuidance.
+            showFallback: navigationSession == nil,
+            showLaneBoost: navigationSession != nil && boost
         )
 
         guard navigationSession != nil else { return }
