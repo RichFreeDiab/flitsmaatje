@@ -37,6 +37,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             window.rootViewController = mapViewController
 
             let mapTemplate = CPMapTemplate()
+            // Geen await in deze Task — anders eist nieuwe CarPlay-SDK try/await op setRootTemplate.
             interfaceController.setRootTemplate(mapTemplate, animated: false)
 
             CarPlayNavigationCoordinator.shared.locationService = locationService
@@ -61,13 +62,14 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             }
 
             // Als de telefoon-UI niet autostart, start GPS veilig na korte delay.
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            if !locationService.isTracking, locationService.beginExclusiveStartup() {
-                BootLogger.mark("carplay-fallback-activate")
-                locationService.activateForegroundOnly()
-                locationService.markRuntimeReady()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                if !locationService.isTracking, locationService.beginExclusiveStartup() {
+                    BootLogger.mark("carplay-fallback-activate")
+                    locationService.activateForegroundOnly()
+                    locationService.markRuntimeReady()
+                }
+                BootLogger.mark("carplay-connect-done")
             }
-            BootLogger.mark("carplay-connect-done")
         }
     }
 
