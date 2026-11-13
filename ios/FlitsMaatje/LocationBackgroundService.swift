@@ -5,10 +5,18 @@ import UIKit
 
 @MainActor
 final class LocationBackgroundService: NSObject, ObservableObject, CLLocationManagerDelegate {
-    static let shared = LocationBackgroundService()
+    /// Manual singleton — `static let shared = …()` on @MainActor deadlocks on iOS 27
+    /// (TestFlight 553/566 died between gps-before-service and gps-location-shared).
+    private static var _shared: LocationBackgroundService?
+    static var shared: LocationBackgroundService {
+        if let existing = _shared { return existing }
+        let created = LocationBackgroundService()
+        _shared = created
+        return created
+    }
 
     @Published var isTracking = false
-    @Published var statusText = "Wacht op locatietoestemming…"
+    @Published var statusText = "Wacht op locatietoestemming..."
     @Published var currentAlert: NearbyAlert?
     @Published var mapReports: [MapReport] = []
     @Published var currentSpeedKmh: Int?
@@ -102,6 +110,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private let distanceAlarmThresholds = [600, 400, 200, 100]
     private let alarmRepeatInterval: TimeInterval = 25
     private let carPlayRefreshInterval: TimeInterval = 0.5
+
+    private override init() {
+        super.init()
+    }
 
     func prepareForUse() {
         BootLogger.mark("location-prepare")
@@ -360,7 +372,12 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
                 if Task.isCancelled { return }
                 applyAlert(early.alert ?? cachedFixedAlert, lat: lat, lng: lng, mapFallback: nil)
             }
-            DriveSession.shared.syncFromLocation(self)
+            let courseValue = lastLocation?.course ?? -1
+            DriveSession.shared.syncSnapshot(
+                alertId: currentAlert?.id,
+                speedKmh: currentSpeedKmh,
+                course: courseValue
+            )
         } catch {
             if Task.isCancelled { return }
             statusText = "Kon API niet bereiken"

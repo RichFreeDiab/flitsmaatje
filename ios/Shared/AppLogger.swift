@@ -22,7 +22,14 @@ enum LogLevel: String {
 
 @MainActor
 final class AppLogStore: ObservableObject {
-    static let shared = AppLogStore()
+    /// Manual singleton — avoids @MainActor `static let` init deadlock.
+    private static var _shared: AppLogStore?
+    static var shared: AppLogStore {
+        if let existing = _shared { return existing }
+        let created = AppLogStore()
+        _shared = created
+        return created
+    }
 
     @Published private(set) var lines: [String] = []
 

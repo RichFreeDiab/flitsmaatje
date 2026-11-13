@@ -10,8 +10,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        DispatchQueue.global(qos: .utility).async {
-            BootLogger.uploadSync(timeout: 3)
-        }
+        // Async only — sync upload + semaphore on a utility queue raced with
+        // button-tap uploads and contributed to main-thread stalls.
+        BootLogger.uploadAsync()
     }
 }

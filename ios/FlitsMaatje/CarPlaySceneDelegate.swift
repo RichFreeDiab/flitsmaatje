@@ -56,7 +56,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             locationHandlerId = locationService.addLocationUpdateHandler { [weak self] location in
                 // Alleen CarPlay-kaart volgen; nav-progress is centraal afgehandeld.
                 self?.mapViewController?.follow(location: location)
-                DriveSession.shared.syncFromLocation(locationService)
+                DriveSession.shared.syncSnapshot(
+                    alertId: locationService.currentAlert?.id,
+                    speedKmh: locationService.currentSpeedKmh,
+                    course: location.course
+                )
             }
         }
     }

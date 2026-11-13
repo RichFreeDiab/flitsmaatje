@@ -2,24 +2,31 @@ import CoreLocation
 import Foundation
 import MapKit
 
-/// Shared drive state for phone + CarPlay (feeds App Group + route corridor).
-@MainActor
-final class DriveSession: ObservableObject {
-    static let shared = DriveSession()
+/// Thread-safe route/corridor state for phone + CarPlay.
+/// Not an ObservableObject and not @MainActor — avoids MainActor `static let`
+/// initialization deadlocks that killed TestFlight builds 553/566 at GPS start.
+final class DriveSession: @unchecked Sendable {
+    static var shared: DriveSession {
+        if let existing = _shared { return existing }
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = _shared { return existing }
+        let created = DriveSession()
+        _shared = created
+        return created
+    }
 
-    @Published private(set) var isActive = false
-    /// Compact lat/lng pairs — avoids observing raw CLLocationCoordinate2D arrays.
-    @Published private(set) var routePoints: [[Double]] = []
-    @Published var course: CLLocationDirection = -1
-    @Published var speedKmh: Int?
-    @Published var currentAlert: NearbyAlert?
-    @Published var laneItems: [LaneGuidanceItem] = []
-    @Published private(set) var passedAlertIds: [String] = []
-    @Published var layerTrapsEnabled = true
-    @Published var layerIncidentsEnabled = true
-    @Published var layerJamsEnabled = true
+    private static var _shared: DriveSession?
+    private static let lock = NSLock()
 
-    private(set) var phoneOwnsServices = false
+    private let stateLock = NSLock()
+    private var routePoints: [[Double]] = []
+    private var passedAlertIds: [String] = []
+    private var phoneOwnsServices = false
+    private var isActive = false
+    private var speedKmh: Int?
+    private var course: CLLocationDirection = -1
+    private var currentAlertId: String?
 
     private static let historyKey = "flitsmaatje.driveHistory"
     private static let sessionKey = "flitsmaatje.driveSession"
@@ -28,9 +35,6 @@ final class DriveSession: ObservableObject {
         UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
     }
 
-    var locationService: LocationBackgroundService { .shared }
-    var navigationService: NavigationService { .shared }
-
     private init() {
         if let data = defaults.data(forKey: Self.historyKey),
            let ids = try? JSONDecoder().decode([String].self, from: data) {
@@ -38,21 +42,19 @@ final class DriveSession: ObservableObject {
         }
     }
 
-    @discardableResult
-    func ensureServices() -> (LocationBackgroundService, NavigationService) {
-        isActive = true
-        return (locationService, navigationService)
-    }
-
     func markPhoneOwned(_ owned: Bool) {
+        stateLock.lock()
         phoneOwnsServices = owned
-        isActive = owned || locationService.isTracking
+        isActive = owned
+        stateLock.unlock()
         persistLite()
     }
 
     func updateRoute(from route: MKRoute?) {
         guard let route else {
+            stateLock.lock()
             routePoints = []
+            stateLock.unlock()
             persistLite()
             return
         }
@@ -62,42 +64,55 @@ final class DriveSession: ObservableObject {
         )
         route.polyline.getCoordinates(&coordinates, range: NSRange(location: 0, length: route.polyline.pointCount))
         let sampled = Self.sample(coordinates.filter { CLLocationCoordinate2DIsValid($0) }, maxPoints: 90)
+        stateLock.lock()
         routePoints = sampled.map { [$0.latitude, $0.longitude] }
+        stateLock.unlock()
         persistLite()
     }
 
     func clearRoute() {
+        stateLock.lock()
         routePoints = []
+        stateLock.unlock()
         persistLite()
     }
 
     func notePassedAlert(_ alert: NearbyAlert) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         guard !passedAlertIds.contains(alert.id) else { return }
         passedAlertIds.append(alert.id)
         if passedAlertIds.count > 40 {
             passedAlertIds = Array(passedAlertIds.suffix(40))
         }
-        if let data = try? JSONEncoder().encode(passedAlertIds) {
+        let snapshot = passedAlertIds
+        if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: Self.historyKey)
         }
     }
 
-    func syncFromLocation(_ location: LocationBackgroundService) {
-        currentAlert = location.currentAlert
-        speedKmh = location.currentSpeedKmh
-        if let last = location.lastLocation, last.course >= 0 {
-            course = last.course
+    func syncSnapshot(alertId: String?, speedKmh: Int?, course: CLLocationDirection) {
+        stateLock.lock()
+        currentAlertId = alertId
+        self.speedKmh = speedKmh
+        if course >= 0 {
+            self.course = course
         }
+        stateLock.unlock()
         persistLite()
     }
 
     func syncLanes(from sections: [LaneSection]) {
-        laneItems = sections.first?.guidanceItems ?? []
+        // Lane strip is owned by NavigationService; keep API for call-site stability.
+        _ = sections
     }
 
     var routeQueryValue: String? {
-        guard routePoints.count >= 2 else { return nil }
-        return routePoints
+        stateLock.lock()
+        let points = routePoints
+        stateLock.unlock()
+        guard points.count >= 2 else { return nil }
+        return points
             .compactMap { pair -> String? in
                 guard pair.count >= 2 else { return nil }
                 return String(format: "%.5f,%.5f", pair[0], pair[1])
@@ -106,13 +121,16 @@ final class DriveSession: ObservableObject {
     }
 
     private func persistLite() {
+        stateLock.lock()
         let payload: [String: Any] = [
             "isActive": isActive,
             "speedKmh": speedKmh as Any,
             "course": course,
             "routeCount": routePoints.count,
-            "alertId": currentAlert?.id as Any,
+            "alertId": currentAlertId as Any,
+            "phoneOwns": phoneOwnsServices,
         ]
+        stateLock.unlock()
         defaults.set(payload, forKey: Self.sessionKey)
     }
 

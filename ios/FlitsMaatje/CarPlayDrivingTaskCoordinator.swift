@@ -7,7 +7,14 @@ import UIKit
 /// navigatie van Apple Kaarten of een andere navigatie-app bedekken.
 @MainActor
 final class CarPlayDrivingTaskCoordinator: NSObject {
-    static let shared = CarPlayDrivingTaskCoordinator()
+    /// Manual singleton — avoids @MainActor `static let` init deadlock.
+    private static var _shared: CarPlayDrivingTaskCoordinator?
+    static var shared: CarPlayDrivingTaskCoordinator {
+        if let existing = _shared { return existing }
+        let created = CarPlayDrivingTaskCoordinator()
+        _shared = created
+        return created
+    }
 
     weak var locationService: LocationBackgroundService?
 
@@ -16,6 +23,10 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
     private var lastLoggedAlertId: String?
     private var lastLoggedFineText: String?
     private weak var mapViewController: CarPlayMapViewController?
+
+    private override init() {
+        super.init()
+    }
 
     func attach(interfaceController: CPInterfaceController, mapViewController: CarPlayMapViewController? = nil) {
         self.interfaceController = interfaceController

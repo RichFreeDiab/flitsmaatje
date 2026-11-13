@@ -5,6 +5,7 @@ enum BootLogger {
     private static let fileName = "boot.log"
     private static let maxBytes = 64_000
     private static var didWriteProcessStart = false
+    private static let writeLock = NSLock()
 
     private static var logPaths: [String] {
         var paths: [String] = []
@@ -21,14 +22,18 @@ enum BootLogger {
     }
 
     static func mark(_ message: String) {
+        writeLock.lock()
+        defer { writeLock.unlock() }
         if !didWriteProcessStart {
             didWriteProcessStart = true
-            writeLine("process-start")
+            writeLineUnlocked("process-start")
         }
-        writeLine(message)
+        writeLineUnlocked(message)
     }
 
     static func readAll() -> String {
+        writeLock.lock()
+        defer { writeLock.unlock() }
         for path in logPaths {
             guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
                   let text = String(data: data, encoding: .utf8), !text.isEmpty else {
@@ -43,16 +48,19 @@ enum BootLogger {
         uploadAsync()
     }
 
+    /// Never call sync file/log reads on the main thread from UI handlers.
     static func uploadAsync() {
-        let boot = readAll()
-        let diagnostic = AppLogger.readAllSync()
-        let body = """
-        === BOOT LOG ===
-        \(boot.isEmpty ? "(leeg)" : boot)
-        === DIAGNOSTIC LOG ===
-        \(diagnostic.isEmpty ? "(leeg)" : diagnostic)
-        """
-        AppLogger.uploadRaw(body, reason: "boot")
+        DispatchQueue.global(qos: .utility).async {
+            let boot = readAll()
+            let diagnostic = AppLogger.readAllSync()
+            let body = """
+            === BOOT LOG ===
+            \(boot.isEmpty ? "(leeg)" : boot)
+            === DIAGNOSTIC LOG ===
+            \(diagnostic.isEmpty ? "(leeg)" : diagnostic)
+            """
+            AppLogger.uploadRaw(body, reason: "boot")
+        }
     }
 
     static func uploadSync(timeout: TimeInterval = 2.5) {
@@ -67,7 +75,7 @@ enum BootLogger {
         AppLogger.uploadRawSync(body, reason: "boot", timeout: timeout)
     }
 
-    private static func writeLine(_ message: String) {
+    private static func writeLineUnlocked(_ message: String) {
         let line = "[\(isoTimestamp())] \(message)\n"
         guard let data = line.data(using: .utf8) else { return }
 

@@ -5,7 +5,14 @@ import UIKit
 
 @MainActor
 final class CarPlayNavigationCoordinator: NSObject {
-    static let shared = CarPlayNavigationCoordinator()
+    /// Manual singleton — avoids @MainActor `static let` init deadlock.
+    private static var _shared: CarPlayNavigationCoordinator?
+    static var shared: CarPlayNavigationCoordinator {
+        if let existing = _shared { return existing }
+        let created = CarPlayNavigationCoordinator()
+        _shared = created
+        return created
+    }
 
     weak var locationService: LocationBackgroundService?
     weak var navigationService: NavigationService?
@@ -25,6 +32,10 @@ final class CarPlayNavigationCoordinator: NSObject {
     private var maneuverRouteIdentifier: ObjectIdentifier?
     private var maneuverStepIndex = -1
     private var stableManeuvers: [CPManeuver] = []
+
+    private override init() {
+        super.init()
+    }
 
     func attach(
         template: CPMapTemplate,

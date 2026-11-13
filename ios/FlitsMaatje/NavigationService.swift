@@ -5,7 +5,14 @@ import MapKit
 
 @MainActor
 final class NavigationService: ObservableObject {
-    static let shared = NavigationService()
+    /// Manual singleton — avoids @MainActor `static let` init deadlock (iOS 27 / TF 553-566).
+    private static var _shared: NavigationService?
+    static var shared: NavigationService {
+        if let existing = _shared { return existing }
+        let created = NavigationService()
+        _shared = created
+        return created
+    }
 
     @Published var searchQuery = ""
     @Published var searchResults: [MKMapItem] = []
@@ -668,7 +675,7 @@ final class NavigationService: ObservableObject {
         let distance = laneDistance(section, from: location)
         if distance.isFinite {
             laneGuidanceDistanceM = max(0, Int(distance.rounded()))
-        DriveSession.shared.syncLanes(from: laneSections)
+            DriveSession.shared.syncLanes(from: laneSections)
         } else {
             laneGuidanceDistanceM = nil
         }
