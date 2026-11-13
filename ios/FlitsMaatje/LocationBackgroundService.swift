@@ -64,6 +64,9 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var locationProcessingTask: Task<Void, Never>?
     private var speedCheckTask: Task<Void, Never>?
     private var lastPollAt: Date = .distantPast
+    private var lastEarlyPollAt: Date = .distantPast
+    private var lastFullPollAt: Date = .distantPast
+    private var cachedFixedAlert: NearbyAlert?
     private var lastSpeedCheckAt: Date = .distantPast
     private var lastSpeedCheckLocation: CLLocation?
     private var lastAlertId: String?
@@ -318,46 +321,97 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
 
         if Task.isCancelled { return }
-        guard now.timeIntervalSince(lastPollAt) >= 2 else { return }
+
+        let heading = location.course >= 0 ? location.course : nil
+        let road = roadName
+        let route = DriveSession.shared.routeQueryValue
+        let hasRoute = route != nil
+        let earlyDue = now.timeIntervalSince(lastEarlyPollAt) >= AppConfig.earlyWarningPollInterval
+        let fullDue = now.timeIntervalSince(lastFullPollAt) >= (hasRoute ? AppConfig.fixedCameraPollInterval : max(8, AppConfig.earlyWarningPollInterval))
+        guard now.timeIntervalSince(lastPollAt) >= 2, earlyDue || fullDue else { return }
         lastPollAt = now
 
         do {
-            let road = roadName
-            let course = location.course >= 0 ? location.course : nil
-            async let alertRequest = Task.detached(priority: .utility) {
-                try await FlitsMaatjeAPI.fetchNearbyAlert(
-                    lat: lat,
-                    lng: lng,
-                    heading: course,
-                    road: road
-                )
-            }.value
-            async let reportsRequest = Task.detached(priority: .utility) {
-                try await FlitsMaatjeAPI.fetchReports(lat: lat, lng: lng)
-            }.value
-            let (alert, reports) = try await (alertRequest, reportsRequest)
-            if Task.isCancelled { return }
-
-            currentAlert = alert
-            mapReports = reports
-            if let alert {
-                statusText = "\(alert.label) over \(alert.distance_m) m"
-                persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)
-                handleFlitserAlarm(alert: alert)
-                CarPlayNavigationCoordinator.shared.handleFlitserAlert(alert)
-                refreshCarPlay(alert: alert)
-            } else {
-                statusText = effectiveFineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
-                persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
-                resetAlarmState()
-                CarPlayNavigationCoordinator.shared.handleFlitserAlert(nil)
-                refreshCarPlay(alert: nil)
+            if fullDue {
+                lastFullPollAt = now
+                lastEarlyPollAt = now
+                let context = try await Task.detached(priority: .utility) {
+                    try await FlitsMaatjeAPI.fetchDriveContext(
+                        lat: lat,
+                        lng: lng,
+                        heading: heading,
+                        road: road,
+                        route: route
+                    )
+                }.value
+                if Task.isCancelled { return }
+                applyDriveContext(context, lat: lat, lng: lng)
+            } else if earlyDue {
+                lastEarlyPollAt = now
+                let early = try await Task.detached(priority: .utility) {
+                    try await FlitsMaatjeAPI.fetchEarlyWarnings(
+                        lat: lat,
+                        lng: lng,
+                        heading: heading,
+                        road: road,
+                        route: route
+                    )
+                }.value
+                if Task.isCancelled { return }
+                applyAlert(early.alert ?? cachedFixedAlert, lat: lat, lng: lng, mapFallback: nil)
             }
+            DriveSession.shared.syncFromLocation(self)
         } catch {
             if Task.isCancelled { return }
             statusText = "Kon API niet bereiken"
-            AppLogger.error("API nearby-alert mislukt: \(error.localizedDescription)")
+            AppLogger.error("API drive-context mislukt: \(error.localizedDescription)")
             persistSnapshot(lat: lat, lng: lng, alert: currentAlert, message: statusText)
+        }
+    }
+
+    private func applyDriveContext(_ context: DriveContextResponse, lat: Double, lng: Double) {
+        let traps = context.speed_traps + context.speed_traps_alt
+        cachedFixedAlert = traps.first
+        let reportAlerts = context.reports ?? (traps + context.incidents + context.traffic_jams)
+        mapReports = reportAlerts.map { alert in
+            MapReport(
+                id: alert.id,
+                type: alert.type,
+                lat: alert.lat,
+                lng: alert.lng,
+                confirms: alert.confirms,
+                distance_km: Double(alert.distance_m) / 1000.0,
+                road: alert.road ?? alert.road_ref,
+                hectometer: alert.hectometer
+            )
+        }
+        applyAlert(context.alert, lat: lat, lng: lng, mapFallback: mapReports)
+    }
+
+    private func applyAlert(_ alert: NearbyAlert?, lat: Double, lng: Double, mapFallback: [MapReport]?) {
+        if let mapFallback {
+            mapReports = mapFallback
+        }
+        currentAlert = alert
+        if let alert {
+            var message = "\(alert.label) over \(alert.distance_m) m"
+            if let road = alert.roadContextText {
+                message += " - \(road)"
+            }
+            statusText = message
+            persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)
+            handleFlitserAlarm(alert: alert)
+            CarPlayNavigationCoordinator.shared.handleFlitserAlert(alert)
+            refreshCarPlay(alert: alert)
+            if alert.distance_m <= 80 {
+                DriveSession.shared.notePassedAlert(alert)
+            }
+        } else {
+            statusText = effectiveFineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
+            persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
+            resetAlarmState()
+            CarPlayNavigationCoordinator.shared.handleFlitserAlert(nil)
+            refreshCarPlay(alert: nil)
         }
     }
 

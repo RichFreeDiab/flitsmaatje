@@ -15,23 +15,39 @@ enum FlitsMaatjeAPI {
         return URLSession(configuration: config)
     }()
 
+    private static func appendCommonQuery(
+        _ items: inout [URLQueryItem],
+        heading: CLLocationDirection?,
+        road: String?,
+        route: String?
+    ) {
+        if let heading, heading >= 0 {
+            items.append(URLQueryItem(name: "heading", value: String(format: "%.1f", heading)))
+        }
+        if let road, !road.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "road", value: road))
+        }
+        if let route, !route.isEmpty {
+            items.append(URLQueryItem(name: "route", value: route))
+        }
+    }
+
     static func fetchNearbyAlert(
         lat: Double,
         lng: Double,
         heading: CLLocationDirection? = nil,
         road: String? = nil,
-        radiusKm: Double = AppConfig.pollRadiusKm
+        radiusKm: Double = AppConfig.pollRadiusKm,
+        route: String? = nil
     ) async throws -> NearbyAlert? {
         var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/nearby-alert"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [
+        var query = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radius_km", value: String(radiusKm)),
         ]
-        if let heading { components?.queryItems?.append(URLQueryItem(name: "heading", value: String(format: "%.1f", heading))) }
-        if let road, !road.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            components?.queryItems?.append(URLQueryItem(name: "road", value: road))
-        }
+        appendCommonQuery(&query, heading: heading, road: road, route: route)
+        components?.queryItems = query
         guard let url = components?.url else { throw APIError.badURL }
 
         let (data, response) = try await session.data(from: url)
@@ -40,6 +56,54 @@ enum FlitsMaatjeAPI {
         }
         let decoded = try JSONDecoder().decode(NearbyAlertResponse.self, from: data)
         return decoded.alert
+    }
+
+    static func fetchDriveContext(
+        lat: Double,
+        lng: Double,
+        heading: CLLocationDirection? = nil,
+        road: String? = nil,
+        radiusKm: Double = AppConfig.pollRadiusKm,
+        route: String? = nil
+    ) async throws -> DriveContextResponse {
+        var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/drive-context"), resolvingAgainstBaseURL: false)
+        var query = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lng", value: String(lng)),
+            URLQueryItem(name: "radius_km", value: String(radiusKm)),
+        ]
+        appendCommonQuery(&query, heading: heading, road: road, route: route)
+        components?.queryItems = query
+        guard let url = components?.url else { throw APIError.badURL }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badResponse
+        }
+        return try JSONDecoder().decode(DriveContextResponse.self, from: data)
+    }
+
+    static func fetchEarlyWarnings(
+        lat: Double,
+        lng: Double,
+        heading: CLLocationDirection? = nil,
+        road: String? = nil,
+        radiusKm: Double = 12,
+        route: String? = nil
+    ) async throws -> EarlyWarningsResponse {
+        var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("/api/early-warnings"), resolvingAgainstBaseURL: false)
+        var query = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lng", value: String(lng)),
+            URLQueryItem(name: "radius_km", value: String(radiusKm)),
+        ]
+        appendCommonQuery(&query, heading: heading, road: road, route: route)
+        components?.queryItems = query
+        guard let url = components?.url else { throw APIError.badURL }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badResponse
+        }
+        return try JSONDecoder().decode(EarlyWarningsResponse.self, from: data)
     }
 
     static func fetchReports(lat: Double, lng: Double, radiusKm: Double = AppConfig.pollRadiusKm) async throws -> [MapReport] {

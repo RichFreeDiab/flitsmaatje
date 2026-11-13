@@ -40,7 +40,7 @@ enum AlertNotifier {
 
         let content = UNMutableNotificationContent()
         content.title = alert.label
-        content.subtitle = "Over \(alert.distance_m) meter"
+        content.subtitle = Self.distanceCopy(for: alert)
         content.body = "\(alert.icon) FlitsMaatje"
         content.sound = .default
         content.categoryIdentifier = flitserCategoryId
@@ -98,12 +98,39 @@ enum AlertNotifier {
 
         configureSpeechAudioSession()
 
-        let text = "Let op. \(alert.label). Over \(alert.distance_m) meter."
+        let text = "Let op. \(alert.label). \(Self.spokenDistance(for: alert))"
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "nl-NL")
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.preUtteranceDelay = 0.05
         synthesizer.speak(utterance)
+    }
+
+
+    private static func distanceCopy(for alert: NearbyAlert) -> String {
+        if let road = alert.roadContextText {
+            return "\(road) - over \(alert.distance_m) meter"
+        }
+        return "Over \(alert.distance_m) meter"
+    }
+
+    private static func spokenDistance(for alert: NearbyAlert) -> String {
+        let kind = alert.alert_kind ?? alert.type
+        let prefix: String
+        switch kind {
+        case "average", "trajectcontrole":
+            prefix = "Traject over"
+        case "jam", "file":
+            prefix = "File over"
+        case "mobile", "flitser_mobiel", "politie":
+            prefix = "Mobiele controle over"
+        default:
+            prefix = "Over"
+        }
+        if let road = alert.roadContextText {
+            return "\(road). \(prefix) \(alert.distance_m) meter."
+        }
+        return "\(prefix) \(alert.distance_m) meter."
     }
 
     static func setSpeechEnabled(_ enabled: Bool) {

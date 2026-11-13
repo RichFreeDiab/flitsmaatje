@@ -4,7 +4,9 @@ Flask backend met SQLite. Bedoeld als MVP, draait standalone op poort 5068.
 
 Functies:
 - GET  /api/reports          -> actieve meldingen binnen straal van lat/lng
-- GET  /api/nearby-alert     -> dichtstbijzijnde waarschuwing (iOS-widget/CarPlay)
+- GET  /api/nearby-alert     -> gerankte waarschuwing (optioneel route-corridor)
+- GET  /api/drive-context    -> gebundelde traps/incidents/jams + ranking
+- GET  /api/early-warnings   -> snelle feed voor mobiele/urgente meldingen
 - POST /api/reports          -> nieuwe melding aanmaken
 - POST /api/reports/<id>/vote -> bevestigen ("nog aanwezig") of ontkennen ("weg")
 - Achtergrondtaak ruimt verlopen meldingen op (lazy, bij elke GET)
@@ -30,6 +32,16 @@ from tomtom_traffic import (
     fetch_lane_guidance,
     fetch_tomtom_reverse_speed_limit,
     fetch_tomtom_speed_limit,
+)
+from drive_context import (
+    enrich_candidate,
+    normalize_lane_sections,
+    parse_route_points,
+    partition_drive_context,
+    select_ranked_alert,
+    serialize_alert,
+    is_early_warning,
+    on_corridor,
 )
 
 # Nightscout configuratie
@@ -688,8 +700,10 @@ def lane_guidance():
                 waypoints = parsed
         except (TypeError, ValueError):
             waypoints = None
-    sections = fetch_lane_guidance(
-        origin_lat, origin_lng, destination_lat, destination_lng, waypoints=waypoints
+    sections = normalize_lane_sections(
+        fetch_lane_guidance(
+            origin_lat, origin_lng, destination_lat, destination_lng, waypoints=waypoints
+        )
     )
     return jsonify({"sections": sections})
 
@@ -859,26 +873,8 @@ def heading_matches(user_heading, report_heading, tolerance=70):
         return True
 
 
-@app.route("/api/nearby-alert", methods=["GET"])
-def nearby_alert():
-    """Dichtstbijzijnde actieve melding voor iOS/CarPlay.
-
-    Combineert tijdelijke, door gebruikers gemelde incidenten met vaste
-    flitsers uit OpenStreetMap. Een externe kaartbron is aanvullend: een
-    timeout mag de eigen meldingen nooit blokkeren.
-
-    Filter: alleen meldingen vóór je (niet achter), optioneel op huidige weg
-    (`road=` query, o.a. ANWB-mobiel).
-    """
-    try:
-        lat = float(request.args.get("lat"))
-        lng = float(request.args.get("lng"))
-        heading = float(request.args["heading"]) if request.args.get("heading") is not None else None
-    except (TypeError, ValueError):
-        return jsonify({"error": "lat en lng zijn verplicht"}), 400
-
-    current_road = request.args.get("road") or request.args.get("road_name") or ""
-    radius_km = float(request.args.get("radius_km", 15))
+def collect_alert_candidates(lat, lng, radius_km, heading=None, include_fixed=True, early_only=False):
+    """Merge DB / OSM / ANWB / TomTom candidates for alert APIs."""
     db = get_db()
     sync_ndw_reports(db)
     cleanup_expired(db)
@@ -892,66 +888,214 @@ def nearby_alert():
 
     candidates = []
     for row in rows:
-        if not heading_matches(heading, row["heading"]):
-            continue
-        candidates.append({
+        item = {
             "id": row["id"],
             "type": row["type"],
             "lat": row["lat"],
             "lng": row["lng"],
             "heading": row["heading"],
             "confirms": row["confirms"],
+            "created_at": row["created_at"],
+            "expires_at": row["expires_at"],
+            "source": "crowd",
             "road": None,
-        })
-    if should_fetch_osm_speed_cameras(lat, lng):
+        }
+        if str(row["id"]).startswith("ndw-"):
+            item["source"] = "ndw"
+        candidates.append(item)
+
+    if include_fixed and should_fetch_osm_speed_cameras(lat, lng):
         for camera in fetch_osm_speed_cameras(lat, lng):
-            if heading_matches(heading, camera.get("heading")):
-                candidates.append({**camera, "road": camera.get("road")})
+            item = dict(camera)
+            item.setdefault("source", "osm" if str(item.get("id", "")).startswith("osm-") else "scdb")
+            item.setdefault("road", camera.get("road"))
+            candidates.append(item)
+
     for radar in fetch_anwb_mobile_radars():
-        if not heading_matches(heading, radar.get("heading")):
-            continue
-        if not roads_match(current_road, radar.get("road")):
-            continue
-        candidates.append(radar)
-    candidates.extend(fetch_incidents(lat, lng, radius_km))
+        item = dict(radar)
+        item.setdefault("source", "anwb")
+        candidates.append(item)
 
-    closest = None
-    closest_dist_m = None
-    for candidate in candidates:
-        # Alleen flitsers/traject: streng wegfilter + alleen vóór je
-        is_camera = candidate.get("type") in ("flitser_vast", "flitser_mobiel", "trajectcontrole")
+    incidents = fetch_incidents(lat, lng, radius_km if not early_only else min(radius_km, 10))
+    for incident in incidents:
+        if early_only and incident.get("type") not in ("ongeval", "gevaar", "flitser_mobiel", "politie"):
+            continue
+        item = dict(incident)
+        item.setdefault("source", "tomtom")
+        item.setdefault("confirms", 1)
+        candidates.append(item)
+
+    if early_only:
+        candidates = [
+            c for c in candidates
+            if is_early_warning(c) or c.get("type") in ("flitser_mobiel", "politie", "ongeval", "gevaar")
+        ]
+    return candidates
+
+
+def enrich_candidates(candidates, lat, lng, heading=None, route_points=None):
+    return [
+        enrich_candidate(c, lat, lng, user_heading=heading, route_points=route_points)
+        for c in candidates
+    ]
+
+
+def filter_legacy_road_ahead(enriched, lat, lng, heading, current_road, route_points):
+    """Keep existing road/ahead filters when no corridor is active."""
+    if route_points:
+        return enriched
+    filtered = []
+    for item in enriched:
+        is_camera = item.get("type") in ("flitser_vast", "flitser_mobiel", "trajectcontrole")
         if is_camera:
-            if not roads_match(current_road, candidate.get("road")):
-                # Mobiel zonder match al gefilterd; vaste zonder road blijven
-                if candidate.get("road"):
-                    continue
-            if not is_ahead(lat, lng, heading, candidate["lat"], candidate["lng"]):
+            if item.get("road") and not roads_match(current_road, item.get("road")):
                 continue
-        dist_m = haversine_km(lat, lng, candidate["lat"], candidate["lng"]) * 1000
-        threshold = WARN_DISTANCE_M.get(candidate["type"], 800)
-        if dist_m <= threshold and (closest is None or dist_m < closest_dist_m):
-            closest = candidate
-            closest_dist_m = dist_m
+            if not is_ahead(lat, lng, heading, item["lat"], item["lng"]):
+                continue
+        filtered.append(item)
+    return filtered
 
-    if closest is None:
-        return jsonify({"alert": None})
 
-    report_type = closest["type"]
-    alert = {
-        "id": closest["id"],
-        "type": report_type,
-        "label": TYPE_LABELS.get(report_type, report_type),
-        "icon": TYPE_ICONS.get(report_type, "⚠️"),
-        "distance_m": round(closest_dist_m),
-        "lat": closest["lat"],
-        "lng": closest["lng"],
-        "confirms": closest.get("confirms", 0),
-    }
-    if closest.get("road"):
-        alert["road"] = closest["road"]
-    if closest.get("hectometer") is not None:
-        alert["hectometer"] = str(closest["hectometer"])
-    return jsonify({"alert": alert})
+@app.route("/api/nearby-alert", methods=["GET"])
+def nearby_alert():
+    """Gerankte actieve melding voor iOS/CarPlay/widget.
+
+    Met `route=lat,lng;...` alleen corridor-hits; zonder route blijven
+    road/ahead-filters uit dashboard-modus actief.
+    """
+    try:
+        lat = float(request.args.get("lat"))
+        lng = float(request.args.get("lng"))
+        heading = float(request.args["heading"]) if request.args.get("heading") is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "lat en lng zijn verplicht"}), 400
+
+    current_road = request.args.get("road") or request.args.get("road_name") or ""
+    radius_km = float(request.args.get("radius_km", 15))
+    route_points = parse_route_points(request.args.get("route"))
+    candidates = collect_alert_candidates(lat, lng, radius_km, heading=heading)
+    enriched = enrich_candidates(candidates, lat, lng, heading=heading, route_points=route_points)
+    enriched = filter_legacy_road_ahead(enriched, lat, lng, heading, current_road, route_points)
+    best = select_ranked_alert(
+        enriched,
+        WARN_DISTANCE_M,
+        user_heading=heading,
+        route_points=route_points or None,
+        heading_matches_fn=heading_matches,
+    )
+    if best is None:
+        return jsonify({"alert": None, "meta": {"corridor": bool(route_points), "ranked": True}})
+
+    alert = serialize_alert(best, TYPE_LABELS, TYPE_ICONS)
+    if alert.get("road_ref") and not alert.get("road"):
+        alert["road"] = alert["road_ref"]
+    return jsonify({"alert": alert, "meta": {"corridor": bool(route_points), "ranked": True}})
+
+
+@app.route("/api/drive-context", methods=["GET"])
+def drive_context():
+    """Gebundelde drive feed: traps, alt traps, incidents, jams + top alert."""
+    try:
+        lat = float(request.args.get("lat"))
+        lng = float(request.args.get("lng"))
+        heading = float(request.args["heading"]) if request.args.get("heading") is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "lat en lng zijn verplicht"}), 400
+
+    current_road = request.args.get("road") or request.args.get("road_name") or ""
+    radius_km = float(request.args.get("radius_km", 15))
+    route_points = parse_route_points(request.args.get("route"))
+    candidates = collect_alert_candidates(lat, lng, radius_km, heading=heading)
+    enriched = enrich_candidates(candidates, lat, lng, heading=heading, route_points=route_points)
+    enriched = filter_legacy_road_ahead(enriched, lat, lng, heading, current_road, route_points)
+    partitioned = partition_drive_context(
+        enriched,
+        WARN_DISTANCE_M,
+        user_heading=heading,
+        route_points=route_points or None,
+        heading_matches_fn=heading_matches,
+    )
+
+    def dump_list(items, limit=40):
+        out = []
+        for item in items[:limit]:
+            payload = serialize_alert(item, TYPE_LABELS, TYPE_ICONS)
+            if payload.get("road_ref") and not payload.get("road"):
+                payload["road"] = payload["road_ref"]
+            out.append(payload)
+        return out
+
+    alert = None
+    if partitioned["alert"]:
+        alert = serialize_alert(partitioned["alert"], TYPE_LABELS, TYPE_ICONS)
+        if alert.get("road_ref") and not alert.get("road"):
+            alert["road"] = alert["road_ref"]
+
+    return jsonify({
+        "speed_traps": dump_list(partitioned["speed_traps"]),
+        "speed_traps_alt": dump_list(partitioned["speed_traps_alt"]),
+        "incidents": dump_list(partitioned["incidents"]),
+        "traffic_jams": dump_list(partitioned["traffic_jams"]),
+        "early": dump_list(partitioned["early"], limit=25),
+        "alert": alert,
+        "reports": dump_list(partitioned["all"], limit=80),
+        "meta": {
+            "corridor": bool(route_points),
+            "ranked": True,
+            "count": len(partitioned["all"]),
+        },
+    })
+
+
+@app.route("/api/early-warnings", methods=["GET"])
+def early_warnings():
+    """Sneller early-warning kanaal (mobiel / urgent); fixed cameras elders cachen."""
+    try:
+        lat = float(request.args.get("lat"))
+        lng = float(request.args.get("lng"))
+        heading = float(request.args["heading"]) if request.args.get("heading") is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "lat en lng zijn verplicht"}), 400
+
+    current_road = request.args.get("road") or request.args.get("road_name") or ""
+    radius_km = float(request.args.get("radius_km", 12))
+    route_points = parse_route_points(request.args.get("route"))
+    candidates = collect_alert_candidates(
+        lat, lng, radius_km, heading=heading, include_fixed=False, early_only=True
+    )
+    enriched = enrich_candidates(candidates, lat, lng, heading=heading, route_points=route_points)
+    enriched = filter_legacy_road_ahead(enriched, lat, lng, heading, current_road, route_points)
+    if route_points:
+        enriched = [item for item in enriched if on_corridor(item, route_points)]
+
+    enriched.sort(
+        key=lambda item: (
+            item.get("priority") or 0,
+            item.get("confidence") or 0,
+            -(item.get("distance_m") or 0),
+        ),
+        reverse=True,
+    )
+
+    def dump(item):
+        payload = serialize_alert(item, TYPE_LABELS, TYPE_ICONS)
+        if payload.get("road_ref") and not payload.get("road"):
+            payload["road"] = payload["road_ref"]
+        return payload
+
+    alerts = [dump(item) for item in enriched[:30]]
+    top = select_ranked_alert(
+        enriched,
+        WARN_DISTANCE_M,
+        user_heading=heading,
+        route_points=route_points or None,
+        heading_matches_fn=heading_matches,
+    )
+    return jsonify({
+        "alerts": alerts,
+        "alert": dump(top) if top else None,
+        "meta": {"corridor": bool(route_points), "channel": "early", "interval_hint_s": 20},
+    })
 
 
 @app.route("/api/reports", methods=["POST"])

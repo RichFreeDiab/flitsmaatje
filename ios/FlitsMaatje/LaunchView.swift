@@ -145,7 +145,7 @@ struct LaunchView: View {
         .alert("Over FlitsMaatje", isPresented: $showAbout) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Snelheid, snelheidslimiet, flitsers en navigatie in één app.")
+            Text("Snelheid, snelheidslimiet, flitsers en navigatie in Ã©Ã©n app.")
         }
     }
 
@@ -172,7 +172,7 @@ struct LaunchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// CarPlay mag de rijmodus meteen starten zodra de CarPlay-scène
+    /// CarPlay mag de rijmodus meteen starten zodra de CarPlay-scÃ¨ne
     /// door iOS is verbonden. De gebruiker hoeft dan niet eerst op Start te tikken.
     private func startForCarPlayIfNeeded() {
         guard CarPlaySessionTracker.isForegroundOnCarPlay,
@@ -183,7 +183,7 @@ struct LaunchView: View {
         startGPS()
     }
 
-    /// Stap 1: alleen UI — geen logger, geen GPS, geen zware objecten.
+    /// Stap 1: alleen UI â€” geen logger, geen GPS, geen zware objecten.
     private func armApp() {
         openNavigationAfterGPS = true
         BootLogger.mark("start-tap")
@@ -199,12 +199,14 @@ struct LaunchView: View {
     /// Stap 2: GPS pas na bevestiging.
     private func startGPS() {
         phase = .gpsStarting
-        statusMessage = "GPS voorbereiden…"
+        statusMessage = "GPS voorbereidenâ€¦"
         BootLogger.mark("gps-tap")
 
         Task {
             BootLogger.mark("gps-before-service")
             let service = LocationBackgroundService.shared
+            DriveSession.shared.ensureServices()
+            DriveSession.shared.markPhoneOwned(true)
             location = service
             navigationService = NavigationService.shared
             CarPlayNavigationCoordinator.shared.navigationService = NavigationService.shared
@@ -217,13 +219,13 @@ struct LaunchView: View {
             CarPlayDrivingTaskCoordinator.shared.locationService = service
             BootLogger.mark("gps-service-created")
 
-            statusMessage = "Locatie toestemming…"
+            statusMessage = "Locatie toestemmingâ€¦"
             service.prepareForUse()
             BootLogger.mark("gps-prepared")
 
             try? await Task.sleep(nanoseconds: 600_000_000)
 
-            statusMessage = "GPS starten…"
+            statusMessage = "GPS startenâ€¦"
             if !service.isTracking {
                 service.activateForegroundOnly()
             }
@@ -275,3 +277,4 @@ private struct RunningShellView: View {
         .padding()
     }
 }
+

@@ -57,6 +57,37 @@ struct NearbyAlert: Codable, Equatable {
     let confirms: Int
     let road: String?
     let hectometer: String?
+    let bearing: Double?
+    let bearing2: Double?
+    let priority: Int?
+    let confidence: Double?
+    let road_ref: String?
+    let geometry: String?
+    let alert_kind: String?
+    let source: String?
+    let polyline: [[Double]]?
+    let corridor_m: Double?
+
+    var roadContextText: String? {
+        let roadValue = (road_ref ?? road)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hm = hectometer?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let roadValue, !roadValue.isEmpty, let hm, !hm.isEmpty {
+            return "\(roadValue) hm \(hm)"
+        }
+        if let roadValue, !roadValue.isEmpty { return roadValue }
+        if let hm, !hm.isEmpty { return "hm \(hm)" }
+        return nil
+    }
+
+    var isPolylineAlert: Bool {
+        (geometry == "line") || ((polyline?.count ?? 0) >= 2)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, label, icon, distance_m, lat, lng, confirms
+        case road, hectometer, bearing, bearing2, priority, confidence
+        case road_ref, geometry, alert_kind, source, polyline, corridor_m
+    }
 
     init(
         id: String,
@@ -68,7 +99,17 @@ struct NearbyAlert: Codable, Equatable {
         lng: Double,
         confirms: Int,
         road: String? = nil,
-        hectometer: String? = nil
+        hectometer: String? = nil,
+        bearing: Double? = nil,
+        bearing2: Double? = nil,
+        priority: Int? = nil,
+        confidence: Double? = nil,
+        road_ref: String? = nil,
+        geometry: String? = nil,
+        alert_kind: String? = nil,
+        source: String? = nil,
+        polyline: [[Double]]? = nil,
+        corridor_m: Double? = nil
     ) {
         self.id = id
         self.type = type
@@ -80,7 +121,77 @@ struct NearbyAlert: Codable, Equatable {
         self.confirms = confirms
         self.road = road
         self.hectometer = hectometer
+        self.bearing = bearing
+        self.bearing2 = bearing2
+        self.priority = priority
+        self.confidence = confidence
+        self.road_ref = road_ref
+        self.geometry = geometry
+        self.alert_kind = alert_kind
+        self.source = source
+        self.polyline = polyline
+        self.corridor_m = corridor_m
     }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        type = try c.decode(String.self, forKey: .type)
+        label = try c.decode(String.self, forKey: .label)
+        icon = try c.decode(String.self, forKey: .icon)
+        distance_m = try c.decode(Int.self, forKey: .distance_m)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lng = try c.decode(Double.self, forKey: .lng)
+        confirms = try c.decode(Int.self, forKey: .confirms)
+        road = try c.decodeIfPresent(String.self, forKey: .road)
+        if let asString = try? c.decodeIfPresent(String.self, forKey: .hectometer) {
+            hectometer = asString
+        } else if let asNumber = try? c.decodeIfPresent(Double.self, forKey: .hectometer) {
+            hectometer = String(asNumber)
+        } else {
+            hectometer = nil
+        }
+        bearing = try c.decodeIfPresent(Double.self, forKey: .bearing)
+        bearing2 = try c.decodeIfPresent(Double.self, forKey: .bearing2)
+        priority = try c.decodeIfPresent(Int.self, forKey: .priority)
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
+        road_ref = try c.decodeIfPresent(String.self, forKey: .road_ref)
+        geometry = try c.decodeIfPresent(String.self, forKey: .geometry)
+        alert_kind = try c.decodeIfPresent(String.self, forKey: .alert_kind)
+        source = try c.decodeIfPresent(String.self, forKey: .source)
+        polyline = try c.decodeIfPresent([[Double]].self, forKey: .polyline)
+        corridor_m = try c.decodeIfPresent(Double.self, forKey: .corridor_m)
+    }
+}
+
+struct DriveContextResponse: Codable {
+    let speed_traps: [NearbyAlert]
+    let speed_traps_alt: [NearbyAlert]
+    let incidents: [NearbyAlert]
+    let traffic_jams: [NearbyAlert]
+    let early: [NearbyAlert]
+    let alert: NearbyAlert?
+    let reports: [NearbyAlert]?
+    let meta: DriveContextMeta?
+}
+
+struct DriveContextMeta: Codable {
+    let corridor: Bool?
+    let ranked: Bool?
+    let count: Int?
+    let channel: String?
+    let interval_hint_s: Int?
+}
+
+struct EarlyWarningsResponse: Codable {
+    let alerts: [NearbyAlert]
+    let alert: NearbyAlert?
+    let meta: DriveContextMeta?
+}
+
+struct LaneGuidanceItem: Codable, Equatable {
+    let directionType: String
+    let isActive: Bool
 }
 
 struct SpeedLimitInfo: Codable, Equatable {
@@ -218,6 +329,17 @@ struct LaneSection: Codable, Equatable {
     let end_lat: Double?
     let end_lng: Double?
     let lanes: [Lane]
+    let items: [LaneGuidanceItem]?
+
+    var guidanceItems: [LaneGuidanceItem] {
+        if let items, !items.isEmpty { return items }
+        return lanes.map {
+            LaneGuidanceItem(
+                directionType: $0.directionType ?? ($0.follow ?? $0.directions.first ?? "straight").lowercased(),
+                isActive: $0.isActive ?? ($0.follow != nil)
+            )
+        }
+    }
 
     var startCoordinate: CLLocationCoordinate2D? {
         guard let start_lat, let start_lng else { return nil }
@@ -233,6 +355,27 @@ struct LaneSection: Codable, Equatable {
 struct Lane: Codable, Equatable {
     let directions: [String]
     let follow: String?
+    let directionType: String?
+    let isActive: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case directions, follow, directionType, isActive
+    }
+
+    init(directions: [String], follow: String?, directionType: String? = nil, isActive: Bool? = nil) {
+        self.directions = directions
+        self.follow = follow
+        self.directionType = directionType
+        self.isActive = isActive
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        directions = try c.decodeIfPresent([String].self, forKey: .directions) ?? []
+        follow = try c.decodeIfPresent(String.self, forKey: .follow)
+        directionType = try c.decodeIfPresent(String.self, forKey: .directionType)
+        isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive)
+    }
 }
 
 struct TomTomTraffic: Codable, Equatable {

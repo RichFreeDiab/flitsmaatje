@@ -115,6 +115,17 @@
 
       if (routeLayer && window.flitsmaatjeMap) window.flitsmaatjeMap.removeLayer(routeLayer);
       routeCoordinates = r.geometry && r.geometry.coordinates ? r.geometry.coordinates.map(c => ({lat:c[1], lng:c[0]})) : [];
+      window.flitsmaatjeActiveRoute = (function(coords) {
+        if (!coords || coords.length < 2) return null;
+        const maxPoints = 80;
+        const step = Math.max(1, Math.floor(coords.length / maxPoints));
+        const sampled = [];
+        for (let i = 0; i < coords.length; i += step) sampled.push(coords[i]);
+        const last = coords[coords.length - 1];
+        const prev = sampled[sampled.length - 1];
+        if (!prev || prev.lat !== last.lat || prev.lng !== last.lng) sampled.push(last);
+        return sampled.map(p => p.lat.toFixed(5) + "," + p.lng.toFixed(5)).join(";");
+      })(routeCoordinates);
       if (window.flitsmaatjeMap && r.geometry) {
         routeLayer = L.geoJSON(r.geometry, {style:{color:"#e8482c",weight:6,opacity:.85}}).addTo(window.flitsmaatjeMap);
         window.flitsmaatjeMap.fitBounds(routeLayer.getBounds(), {padding:[40,40]});

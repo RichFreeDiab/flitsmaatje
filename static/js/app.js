@@ -214,20 +214,101 @@ function startGPS() {
   requestWakeLock();
 }
 
+let earlyPollTimer = null;
+let polylineLayers = {};
+
 function startPolling() {
-  fetchReports();
-  pollTimer = setInterval(fetchReports, 15000);
+  fetchDriveContext();
+  pollTimer = setInterval(fetchDriveContext, 45000);
+  if (earlyPollTimer) clearInterval(earlyPollTimer);
+  earlyPollTimer = setInterval(fetchEarlyWarnings, 20000);
+}
+
+function routeQuery() {
+  return window.flitsmaatjeActiveRoute || null;
+}
+
+async function fetchDriveContext() {
+  if (!userPos) return;
+  try {
+    const params = new URLSearchParams({
+      lat: String(userPos.lat),
+      lng: String(userPos.lng),
+      radius_km: "15",
+    });
+    if (typeof currentHeading !== "undefined" && currentHeading !== null && Number.isFinite(currentHeading)) {
+      params.set("heading", String(currentHeading));
+    }
+    const route = routeQuery();
+    if (route) params.set("route", route);
+    const res = await fetch(`/api/drive-context?${params.toString()}`);
+    const data = await res.json();
+    const reports = (data.reports || []).map((r) => ({
+      ...r,
+      distance_km: typeof r.distance_km === "number" ? r.distance_km : (r.distance_m || 0) / 1000,
+      denies: r.denies || 0,
+    }));
+    renderReports(reports);
+    renderPolylines(reports);
+    if (data.alert) window.flitsmaatjeCurrentAlert = data.alert;
+  } catch (e) {
+    console.error("Kon drive-context niet ophalen:", e);
+    try {
+      const res = await fetch(`/api/reports?lat=${userPos.lat}&lng=${userPos.lng}&radius_km=15`);
+      const data = await res.json();
+      renderReports(data.reports || []);
+    } catch (fallbackError) {
+      console.error("Kon meldingen niet ophalen:", fallbackError);
+    }
+  }
+}
+
+async function fetchEarlyWarnings() {
+  if (!userPos) return;
+  try {
+    const params = new URLSearchParams({
+      lat: String(userPos.lat),
+      lng: String(userPos.lng),
+      radius_km: "12",
+    });
+    if (typeof currentHeading !== "undefined" && currentHeading !== null && Number.isFinite(currentHeading)) {
+      params.set("heading", String(currentHeading));
+    }
+    const route = routeQuery();
+    if (route) params.set("route", route);
+    const res = await fetch(`/api/early-warnings?${params.toString()}`);
+    const data = await res.json();
+    if (data.alert) window.flitsmaatjeCurrentAlert = data.alert;
+  } catch (e) {
+    console.error("Early-warning poll mislukt:", e);
+  }
 }
 
 async function fetchReports() {
-  if (!userPos) return;
-  try {
-    const res = await fetch(`/api/reports?lat=${userPos.lat}&lng=${userPos.lng}&radius_km=15`);
-    const data = await res.json();
-    renderReports(data.reports || []);
-  } catch (e) {
-    console.error("Kon meldingen niet ophalen:", e);
-  }
+  return fetchDriveContext();
+}
+
+function renderPolylines(reports) {
+  if (!map) return;
+  const seen = new Set();
+  reports.forEach((r) => {
+    if (!(r.geometry === "line" && Array.isArray(r.polyline) && r.polyline.length >= 2)) return;
+    seen.add(r.id);
+    if (polylineLayers[r.id]) return;
+    const latlngs = r.polyline.map((pair) => [pair[0], pair[1]]);
+    const layer = L.polyline(latlngs, {
+      color: r.type === "file" ? "#f0c000" : "#e8482c",
+      weight: 5,
+      opacity: 0.85,
+    }).addTo(map);
+    polylineLayers[r.id] = layer;
+  });
+  Object.keys(polylineLayers).forEach((id) => {
+    if (!seen.has(id)) {
+      map.removeLayer(polylineLayers[id]);
+      delete polylineLayers[id];
+    }
+  });
 }
 
 function renderReports(reports) {

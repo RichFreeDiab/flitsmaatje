@@ -456,6 +456,9 @@ struct NavigationMapView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(alert.label).font(.headline).foregroundStyle(.white)
                         Text(String(format: "Over %.1f km", Double(alert.distance_m) / 1000)).font(.subheadline.bold()).foregroundStyle(.white.opacity(0.9))
+                        if let road = alert.roadContextText {
+                            Text(road).font(.caption).foregroundStyle(.white.opacity(0.85))
+                        }
                     }
                     Spacer()
                 }.padding(12).background(Color.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))

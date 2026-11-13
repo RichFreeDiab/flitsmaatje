@@ -375,6 +375,7 @@ final class NavigationService: ObservableObject {
             }
 
             route = best
+            DriveSession.shared.updateRoute(from: best)
             laneGuidanceDistanceM = nil
             let waypoints = sampledRouteWaypoints(from: location, route: best)
             do {
@@ -419,6 +420,7 @@ final class NavigationService: ObservableObject {
     }
 
     func stopNavigation() {
+        DriveSession.shared.clearRoute()
         route = nil
         isNavigating = false
         currentStepIndex = 0
@@ -666,6 +668,7 @@ final class NavigationService: ObservableObject {
         let distance = laneDistance(section, from: location)
         if distance.isFinite {
             laneGuidanceDistanceM = max(0, Int(distance.rounded()))
+        DriveSession.shared.syncLanes(from: laneSections)
         } else {
             laneGuidanceDistanceM = nil
         }

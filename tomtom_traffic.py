@@ -358,6 +358,20 @@ def fetch_incidents(lat, lng, radius_km=15):
                 9: "wegwerkzaamheden",
             }.get(category, "gevaar")
             incident_id = props.get("id") or f"{index}-{coordinate[1]}-{coordinate[0]}"
+            polyline = None
+            gtype = (geometry or {}).get("type")
+            coords = (geometry or {}).get("coordinates") or []
+            if gtype == "LineString":
+                polyline = [[float(p[1]), float(p[0])] for p in coords if isinstance(p, (list, tuple)) and len(p) >= 2]
+            elif gtype == "MultiLineString":
+                polyline = []
+                for line in coords:
+                    for p in line or []:
+                        if isinstance(p, (list, tuple)) and len(p) >= 2:
+                            polyline.append([float(p[1]), float(p[0])])
+            if polyline and len(polyline) > 80:
+                step = max(1, len(polyline) // 80)
+                polyline = polyline[::step]
             reports.append({
                 "id": f"tomtom-{incident_id}",
                 "type": report_type,
@@ -369,6 +383,9 @@ def fetch_incidents(lat, lng, radius_km=15):
                 "road": props.get("from") or props.get("to"),
                 "created_at": time.time(),
                 "expires_at": time.time() + 15 * 60,
+                "source": "tomtom",
+                "geometry": "line" if polyline and len(polyline) >= 2 else "point",
+                "polyline": polyline if polyline and len(polyline) >= 2 else None,
             })
         _store(cache_key, reports, 60)
         return reports

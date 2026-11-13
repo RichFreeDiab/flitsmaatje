@@ -6,4 +6,7 @@ enum AppConfig {
     static let sharedDefaultsKey = "flitsmaatje.widgetState"
     static let widgetKind = "FlitsMaatjeWidget"
     static let pollRadiusKm = 15.0
+    static let earlyWarningPollInterval: TimeInterval = 20
+    static let fixedCameraPollInterval: TimeInterval = 45
 }
+
