@@ -28,7 +28,8 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertNotIn("Kies de gemarkeerde rijstrook", COORDINATOR)
 
     def test_navigation_service_is_shared_between_phone_and_carplay(self):
-        self.assertIn("static let shared = NavigationService()", NAVIGATION)
+        # Manual singleton (static var) — static let on @MainActor deadlocks on iOS 27.
+        self.assertIn("static var shared: NavigationService", NAVIGATION)
         self.assertIn("NavigationService.shared", (
             ROOT / "ios" / "FlitsMaatje" / "LaunchView.swift"
         ).read_text(encoding="utf-8"))
@@ -67,9 +68,11 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertIn("LocationBackgroundService.shared", (
             ROOT / "ios" / "FlitsMaatje" / "CarPlaySceneDelegate.swift"
         ).read_text(encoding="utf-8"))
-        self.assertIn("static let shared = LocationBackgroundService()", (
+        location_service = (
             ROOT / "ios" / "FlitsMaatje" / "LocationBackgroundService.swift"
-        ).read_text(encoding="utf-8"))
+        ).read_text(encoding="utf-8")
+        self.assertIn("static var shared: LocationBackgroundService", location_service)
+        self.assertNotIn("static let shared = LocationBackgroundService()", location_service)
 
     def test_lane_guidance_diagnostics_and_timing_window(self):
         self.assertIn("Lane diag:", NAVIGATION)
