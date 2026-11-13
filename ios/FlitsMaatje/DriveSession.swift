@@ -8,7 +8,8 @@ final class DriveSession: ObservableObject {
     static let shared = DriveSession()
 
     @Published private(set) var isActive = false
-    @Published private(set) var routeCoordinates: [CLLocationCoordinate2D] = []
+    /// Compact lat/lng pairs — avoids observing raw CLLocationCoordinate2D arrays.
+    @Published private(set) var routePoints: [[Double]] = []
     @Published var course: CLLocationDirection = -1
     @Published var speedKmh: Int?
     @Published var currentAlert: NearbyAlert?
@@ -40,18 +41,18 @@ final class DriveSession: ObservableObject {
     @discardableResult
     func ensureServices() -> (LocationBackgroundService, NavigationService) {
         isActive = true
-        return (LocationBackgroundService.shared, NavigationService.shared)
+        return (locationService, navigationService)
     }
 
     func markPhoneOwned(_ owned: Bool) {
         phoneOwnsServices = owned
-        isActive = owned || LocationBackgroundService.shared.isTracking
+        isActive = owned || locationService.isTracking
         persistLite()
     }
 
     func updateRoute(from route: MKRoute?) {
         guard let route else {
-            routeCoordinates = []
+            routePoints = []
             persistLite()
             return
         }
@@ -60,12 +61,13 @@ final class DriveSession: ObservableObject {
             count: route.polyline.pointCount
         )
         route.polyline.getCoordinates(&coordinates, range: NSRange(location: 0, length: route.polyline.pointCount))
-        routeCoordinates = Self.sample(coordinates.filter { CLLocationCoordinate2DIsValid($0) }, maxPoints: 90)
+        let sampled = Self.sample(coordinates.filter { CLLocationCoordinate2DIsValid($0) }, maxPoints: 90)
+        routePoints = sampled.map { [$0.latitude, $0.longitude] }
         persistLite()
     }
 
     func clearRoute() {
-        routeCoordinates = []
+        routePoints = []
         persistLite()
     }
 
@@ -94,9 +96,12 @@ final class DriveSession: ObservableObject {
     }
 
     var routeQueryValue: String? {
-        guard routeCoordinates.count >= 2 else { return nil }
-        return routeCoordinates
-            .map { String(format: "%.5f,%.5f", $0.latitude, $0.longitude) }
+        guard routePoints.count >= 2 else { return nil }
+        return routePoints
+            .compactMap { pair -> String? in
+                guard pair.count >= 2 else { return nil }
+                return String(format: "%.5f,%.5f", pair[0], pair[1])
+            }
             .joined(separator: ";")
     }
 
@@ -105,7 +110,7 @@ final class DriveSession: ObservableObject {
             "isActive": isActive,
             "speedKmh": speedKmh as Any,
             "course": course,
-            "routeCount": routeCoordinates.count,
+            "routeCount": routePoints.count,
             "alertId": currentAlert?.id as Any,
         ]
         defaults.set(payload, forKey: Self.sessionKey)

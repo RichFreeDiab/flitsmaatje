@@ -199,17 +199,18 @@ struct LaunchView: View {
     /// Stap 2: GPS pas na bevestiging.
     private func startGPS() {
         phase = .gpsStarting
-        statusMessage = "GPS voorbereidenâ€¦"
+        statusMessage = "GPS voorbereiden..."
         BootLogger.mark("gps-tap")
 
-        Task {
+        Task { @MainActor in
             BootLogger.mark("gps-before-service")
             let service = LocationBackgroundService.shared
-            DriveSession.shared.ensureServices()
-            DriveSession.shared.markPhoneOwned(true)
+            BootLogger.mark("gps-location-shared")
+            let nav = NavigationService.shared
+            BootLogger.mark("gps-nav-shared")
             location = service
-            navigationService = NavigationService.shared
-            CarPlayNavigationCoordinator.shared.navigationService = NavigationService.shared
+            navigationService = nav
+            CarPlayNavigationCoordinator.shared.navigationService = nav
             CarPlayNavigationCoordinator.shared.locationService = service
             service.onLocationUpdate = { _ in
                 // Nav-progress gebeurt in LocationBackgroundService.processLocation.
@@ -218,14 +219,18 @@ struct LaunchView: View {
             // shared coordinator connected to the live GPS service immediately.
             CarPlayDrivingTaskCoordinator.shared.locationService = service
             BootLogger.mark("gps-service-created")
+            // DriveSession pas na gedeelde services — crash-window zat hier tussen
+            // gps-before-service en gps-service-created in build 553.
+            DriveSession.shared.markPhoneOwned(true)
+            BootLogger.mark("gps-drive-session")
 
-            statusMessage = "Locatie toestemmingâ€¦"
+            statusMessage = "Locatie toestemming..."
             service.prepareForUse()
             BootLogger.mark("gps-prepared")
 
             try? await Task.sleep(nanoseconds: 600_000_000)
 
-            statusMessage = "GPS startenâ€¦"
+            statusMessage = "GPS starten..."
             if !service.isTracking {
                 service.activateForegroundOnly()
             }

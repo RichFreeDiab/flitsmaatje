@@ -1,4 +1,4 @@
-import CarPlay
+﻿import CarPlay
 import CoreLocation
 import UIKit
 
@@ -17,11 +17,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             guard let self else { return }
 
             AppLogger.log("CarPlay connect")
+            BootLogger.mark("carplay-connect")
             CarPlaySessionTracker.setForegroundOnCarPlay(true)
 
-            // EÃ©n gedeelde GPS-service â€” tweede CLLocationManager veroorzaakte
+            // EÃƒÂ©n gedeelde GPS-service Ã¢â‚¬â€ tweede CLLocationManager veroorzaakte
             // dubbele updates en CarPlay-sessie-crashes bij herberekenen.
-            DriveSession.shared.ensureServices()
             let locationService = LocationBackgroundService.shared
             let navigationService = NavigationService.shared
             self.locationService = locationService
@@ -72,7 +72,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             CarPlaySessionTracker.setForegroundOnCarPlay(false)
             self.locationService?.removeLocationUpdateHandler(self.locationHandlerId)
             self.locationHandlerId = nil
-            // Stop gÃ©Ã©n shared GPS/navigatie â€” telefoon blijft rijden.
+            // Stop gÃƒÂ©ÃƒÂ©n shared GPS/navigatie Ã¢â‚¬â€ telefoon blijft rijden.
             CarPlayNavigationCoordinator.shared.detach()
             CarPlayDrivingTaskCoordinator.shared.detach()
             self.locationService = nil
@@ -82,4 +82,5 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         }
     }
 }
+
 
