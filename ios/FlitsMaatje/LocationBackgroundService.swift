@@ -89,11 +89,33 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private var speedCheckGeneration = 0
     private var lastSpeedLimitUpdatedAt: Date = .distantPast
     private var isSpeedCheckInFlight = false
+    /// Pas na volledige startup: voorkomt crash door API/nav/audio tijdens boot.
+    private var runtimeReady = false
+    private static var startupInFlight = false
 
     /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update
     /// direct als routevoortgang te verwerken.
     var onLocationUpdate: ((CLLocation) -> Void)?
     private var locationUpdateHandlers: [UUID: (CLLocation) -> Void] = [:]
+
+    /// Eén starter tegelijk (telefoon of CarPlay) — voorkomt dubbele activate-race.
+    @discardableResult
+    func beginExclusiveStartup() -> Bool {
+        if isTracking || runtimeReady { return true }
+        if Self.startupInFlight { return false }
+        Self.startupInFlight = true
+        return true
+    }
+
+    func markRuntimeReady() {
+        runtimeReady = true
+        Self.startupInFlight = false
+        BootLogger.mark("location-runtime-ready")
+        // Audio pas ná boot, niet tijdens startUpdatingLocation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.configureAudioSession()
+        }
+    }
 
     @discardableResult
     func addLocationUpdateHandler(_ handler: @escaping (CLLocation) -> Void) -> UUID {
@@ -128,6 +150,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         isAppActive = true
         BootLogger.mark("location-activate-foreground")
         applyAuthorizationState(allowBackground: false)
+        BootLogger.mark("location-activate-done")
     }
 
     func requestPermissionAndStart() {
@@ -248,44 +271,45 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
     }
 
-    /// Apple vereist: eerst startUpdatingLocation, dán pas allowsBackgroundLocationUpdates.
+    /// Apple vereist: eerst startUpdatingLocation, dan pas allowsBackgroundLocationUpdates.
     private func startTracking(enableBackground: Bool) {
+        BootLogger.mark("location-start-tracking")
         configureManagerIfNeeded()
         guard isAppActive else { return }
         guard manager.authorizationStatus == .authorizedAlways ||
               manager.authorizationStatus == .authorizedWhenInUse else {
             AppLogger.log("Locatie: nog geen toestemming")
+            BootLogger.mark("location-start-no-auth")
             return
         }
 
         if !isTracking {
             AppLogger.log("Locatie: startUpdatingLocation (auth=\(manager.authorizationStatus.rawValue))")
+            BootLogger.mark("location-before-start-updating")
             manager.allowsBackgroundLocationUpdates = false
             manager.showsBackgroundLocationIndicator = false
             manager.startUpdatingLocation()
             isTracking = true
-            configureAudioSession()
+            BootLogger.mark("location-after-start-updating")
+            // Audio pas later — setActive tijdens boot crashte/killde op iOS 26/27.
         }
 
-        let wantsBackground = enableBackground && manager.authorizationStatus == .authorizedAlways
-        if wantsBackground && !manager.allowsBackgroundLocationUpdates {
-            // Extra vertraging: achtergrond pas na stabiele voorgrond-GPS
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                guard let self, self.isTracking, self.manager.authorizationStatus == .authorizedAlways else { return }
-                self.manager.allowsBackgroundLocationUpdates = true
-                self.manager.showsBackgroundLocationIndicator = true
-                AppLogger.log("Locatie: achtergrond-updates=aan")
-                self.statusText = "Achtergrond-tracking actief"
-            }
-        } else if !wantsBackground && manager.allowsBackgroundLocationUpdates {
+        // Achtergrond alleen op expliciet verzoek, nooit tijdens eerste boot.
+        if enableBackground,
+           runtimeReady,
+           manager.authorizationStatus == .authorizedAlways,
+           !manager.allowsBackgroundLocationUpdates {
+            manager.allowsBackgroundLocationUpdates = true
+            manager.showsBackgroundLocationIndicator = true
+            statusText = "Achtergrond-tracking actief - flitsalarm + boete-indicatie"
+        } else if !enableBackground && manager.allowsBackgroundLocationUpdates {
             manager.allowsBackgroundLocationUpdates = false
             manager.showsBackgroundLocationIndicator = false
-            AppLogger.log("Locatie: achtergrond-updates=uit")
+            statusText = "Tracking actief - flitsalarm + boete-indicatie"
+        } else {
+            statusText = "Tracking actief - flitsalarm + boete-indicatie"
         }
-
-        statusText = wantsBackground
-            ? "Achtergrond-tracking actief — flitsalarm + boete-indicatie"
-            : "Tracking actief — flitsalarm + boete-indicatie"
+        BootLogger.mark("location-start-tracking-done")
     }
 
     private func startIfNeeded() {
@@ -298,11 +322,16 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         if Task.isCancelled { return }
 
         lastLocation = location
-        AppLogger.log("GPS update accuracy=\(Int(location.horizontalAccuracy))m speed=\(currentSpeedKmh ?? -1)kmh")
         updateCurrentSpeed(from: location)
-        // CarPlay leest dezelfde App Group-snapshot; schrijf snelheid direct weg.
         persistSnapshot(lat: location.coordinate.latitude, lng: location.coordinate.longitude, alert: currentAlert, message: statusText)
-        // Eén plek voor nav-progress — voorkomt dubbele CarPlay-updates (crash).
+
+        // Tijdens boot geen nav/API/CarPlay-work — kill-window na gps-service-created.
+        guard runtimeReady else {
+            onLocationUpdate?(location)
+            return
+        }
+
+        AppLogger.log("GPS update accuracy=\(Int(location.horizontalAccuracy))m speed=\(currentSpeedKmh ?? -1)kmh")
         NavigationService.shared.updateTrafficReports(mapReports)
         NavigationService.shared.updateProgress(location: location)
         CarPlayNavigationCoordinator.shared.updateNavigationProgress()
@@ -631,6 +660,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         guard shouldAlarm else { return }
 
         lastAlarmAt = Date()
+        configureAudioSession()
         AlertNotifier.playFlitserAlarm()
         AlertNotifier.notifyFlitser(alert: alert)
     }
@@ -656,7 +686,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func configureAudioSession() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay])
-        try? AVAudioSession.sharedInstance().setActive(true)
+        guard runtimeReady else { return }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true, options: [])
+        } catch {
+            AppLogger.error("Audio session mislukt: \(error.localizedDescription)")
+            BootLogger.mark("audio-session-failed")
+        }
     }
 }
