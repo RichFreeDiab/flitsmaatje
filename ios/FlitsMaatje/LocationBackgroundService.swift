@@ -60,10 +60,8 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     private lazy var manager: CLLocationManager = {
         let m = CLLocationManager()
         m.delegate = self
-        m.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        // Navigatie-apps krijgen zo vrijwel iedere GPS-update; 15 meter gaf
-        // bij lage snelheid en optrekken een zichtbare achterstand.
-        m.distanceFilter = kCLDistanceFilterNone
+        m.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        m.distanceFilter = 15
         m.pausesLocationUpdatesAutomatically = false
         m.activityType = .automotiveNavigation
         return m
@@ -92,6 +90,10 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     /// Pas na volledige startup: voorkomt crash door API/nav/audio tijdens boot.
     private var runtimeReady = false
     private static var startupInFlight = false
+    private var trackingStartedAt: Date = .distantPast
+    private var pendingLocation: CLLocation?
+    private var locationPumpScheduled = false
+    private var lastUIPublishAt: Date = .distantPast
 
     /// Wordt door de telefoon- en CarPlay-navigatie gebruikt om elke GPS-update
     /// direct als routevoortgang te verwerken.
@@ -108,12 +110,13 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     func markRuntimeReady() {
-        runtimeReady = true
         Self.startupInFlight = false
-        BootLogger.mark("location-runtime-ready")
-        // Audio pas ná boot, niet tijdens startUpdatingLocation.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.configureAudioSession()
+        BootLogger.mark("location-runtime-ready-scheduled")
+        // Eerste GPS-burst (5 fixes in 3ms op 599) mag geen API/audio starten.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self else { return }
+            self.runtimeReady = true
+            BootLogger.mark("location-runtime-ready")
         }
     }
 
@@ -238,10 +241,21 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
     }
 
     private func scheduleLocationProcessing(_ location: CLLocation) {
-        locationProcessingTask?.cancel()
-        locationProcessingTask = Task { [weak self] in
+        if location.timestamp.timeIntervalSinceNow < -15 {
+            return
+        }
+        pendingLocation = location
+        guard !locationPumpScheduled else { return }
+        locationPumpScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
             guard let self else { return }
-            await self.processLocation(location)
+            self.locationPumpScheduled = false
+            guard let pending = self.pendingLocation else { return }
+            self.locationProcessingTask?.cancel()
+            self.locationProcessingTask = Task { [weak self] in
+                guard let self else { return }
+                await self.processLocation(pending)
+            }
         }
     }
 
@@ -288,10 +302,18 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             BootLogger.mark("location-before-start-updating")
             manager.allowsBackgroundLocationUpdates = false
             manager.showsBackgroundLocationIndicator = false
+            manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            manager.distanceFilter = 15
             manager.startUpdatingLocation()
             isTracking = true
+            trackingStartedAt = Date()
             BootLogger.mark("location-after-start-updating")
-            // Audio pas later — setActive tijdens boot crashte/killde op iOS 26/27.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+                guard let self, self.isTracking else { return }
+                self.manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+                self.manager.distanceFilter = 5
+                BootLogger.mark("location-accuracy-upgraded")
+            }
         }
 
         // Achtergrond alleen op expliciet verzoek, nooit tijdens eerste boot.
@@ -320,31 +342,38 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
     private func processLocation(_ location: CLLocation) async {
         if Task.isCancelled { return }
-
-        lastLocation = location
-        updateCurrentSpeed(from: location)
-        persistSnapshot(lat: location.coordinate.latitude, lng: location.coordinate.longitude, alert: currentAlert, message: statusText)
-
-        // Tijdens boot geen nav/API/CarPlay-work — kill-window na gps-service-created.
-        guard runtimeReady else {
-            onLocationUpdate?(location)
+        if location.horizontalAccuracy < 0 || location.horizontalAccuracy > 80 {
             return
         }
 
-        AppLogger.log("GPS update accuracy=\(Int(location.horizontalAccuracy))m speed=\(currentSpeedKmh ?? -1)kmh")
+        lastLocation = location
+        updateCurrentSpeed(from: location)
+        let now = Date()
+        if now.timeIntervalSince(lastUIPublishAt) >= 0.5 {
+            lastUIPublishAt = now
+            persistSnapshot(
+                lat: location.coordinate.latitude,
+                lng: location.coordinate.longitude,
+                alert: currentAlert,
+                message: statusText
+            )
+            onLocationUpdate?(location)
+        }
+
+        let warmedUp = now.timeIntervalSince(trackingStartedAt) >= 3
+        guard runtimeReady, warmedUp else { return }
+
         if let nav = NavigationService.existing {
             nav.updateTrafficReports(mapReports)
             nav.updateProgress(location: location)
         }
         CarPlayNavigationCoordinator.existing?.updateNavigationProgress()
-        onLocationUpdate?(location)
         for handler in locationUpdateHandlers.values {
             handler(location)
         }
 
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude
-        let now = Date()
         let speed = currentSpeedKmh
 
         if !isSpeedCheckInFlight, shouldRunSpeedCheck(now: now, location: location) {

@@ -154,7 +154,7 @@ struct LaunchView: View {
         BootLogger.mark("phase-running")
         BootLogger.uploadAsync()
 
-        DispatchQueue.main.async {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             BootLogger.mark("gps-deferred-activate")
             service.prepareForUse()
             BootLogger.mark("gps-prepared")
