@@ -63,7 +63,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
             // Als de telefoon-UI niet autostart, start GPS veilig na korte delay.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                if !locationService.isTracking, locationService.beginExclusiveStartup() {
+                if !locationService.isTracking {
                     BootLogger.mark("carplay-fallback-activate")
                     locationService.activateForegroundOnly()
                     locationService.markRuntimeReady()

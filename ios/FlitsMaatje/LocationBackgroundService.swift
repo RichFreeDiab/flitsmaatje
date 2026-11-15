@@ -363,54 +363,40 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
 
         if Task.isCancelled { return }
 
+        // Bewezen stabiele poll (pre-drive-context). Route meegeven mag; decode faalt soft.
+        guard now.timeIntervalSince(lastPollAt) >= 2 else { return }
+        lastPollAt = now
         let heading = location.course >= 0 ? location.course : nil
         let road = roadName
         let route = DriveSession.shared.routeQueryValue
-        let hasRoute = route != nil
-        let earlyDue = now.timeIntervalSince(lastEarlyPollAt) >= AppConfig.earlyWarningPollInterval
-        let fullDue = now.timeIntervalSince(lastFullPollAt) >= (hasRoute ? AppConfig.fixedCameraPollInterval : max(8, AppConfig.earlyWarningPollInterval))
-        guard now.timeIntervalSince(lastPollAt) >= 2, earlyDue || fullDue else { return }
-        lastPollAt = now
 
         do {
-            if fullDue {
-                lastFullPollAt = now
-                lastEarlyPollAt = now
-                let context = try await Task.detached(priority: .utility) {
-                    try await FlitsMaatjeAPI.fetchDriveContext(
-                        lat: lat,
-                        lng: lng,
-                        heading: heading,
-                        road: road,
-                        route: route
-                    )
-                }.value
-                if Task.isCancelled { return }
-                applyDriveContext(context, lat: lat, lng: lng)
-            } else if earlyDue {
-                lastEarlyPollAt = now
-                let early = try await Task.detached(priority: .utility) {
-                    try await FlitsMaatjeAPI.fetchEarlyWarnings(
-                        lat: lat,
-                        lng: lng,
-                        heading: heading,
-                        road: road,
-                        route: route
-                    )
-                }.value
-                if Task.isCancelled { return }
-                applyAlert(early.alert ?? cachedFixedAlert, lat: lat, lng: lng, mapFallback: nil)
-            }
-            let courseValue = lastLocation?.course ?? -1
+            async let alertRequest = Task.detached(priority: .utility) {
+                try await FlitsMaatjeAPI.fetchNearbyAlert(
+                    lat: lat,
+                    lng: lng,
+                    heading: heading,
+                    road: road,
+                    route: route
+                )
+            }.value
+            async let reportsRequest = Task.detached(priority: .utility) {
+                try await FlitsMaatjeAPI.fetchReports(lat: lat, lng: lng)
+            }.value
+            let (alert, reports) = try await (alertRequest, reportsRequest)
+            if Task.isCancelled { return }
+
+            mapReports = reports
+            applyAlert(alert, lat: lat, lng: lng, mapFallback: reports)
             DriveSession.shared.syncSnapshot(
                 alertId: currentAlert?.id,
                 speedKmh: currentSpeedKmh,
-                course: courseValue
+                course: lastLocation?.course ?? -1
             )
         } catch {
             if Task.isCancelled { return }
             statusText = "Kon API niet bereiken"
-            AppLogger.error("API drive-context mislukt: \(error.localizedDescription)")
+            AppLogger.error("API nearby-alert mislukt: \(error.localizedDescription)")
             persistSnapshot(lat: lat, lng: lng, alert: currentAlert, message: statusText)
         }
     }

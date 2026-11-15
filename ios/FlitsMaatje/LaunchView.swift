@@ -6,7 +6,6 @@ struct LaunchView: View {
     @State private var location: LocationBackgroundService?
     @State private var navigationService: NavigationService?
     @State private var statusMessage = "Klaar om te rijden"
-    @State private var openNavigationAfterGPS = false
     @State private var showLocationHelp = false
     @State private var showAbout = false
     @State private var carPlayAutostartRequested = false
@@ -47,10 +46,7 @@ struct LaunchView: View {
                         .environmentObject(location)
                         .onAppear {
                             BootLogger.mark("dashboard-visible")
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 500_000_000)
-                                CarPlayDrivingTaskCoordinator.shared.locationService = location
-                            }
+                            CarPlayDrivingTaskCoordinator.shared.locationService = location
                         }
                 }
             case .navigation:
@@ -58,6 +54,11 @@ struct LaunchView: View {
                     NavigationMapView()
                         .environmentObject(location)
                         .environmentObject(navigationService)
+                        .onAppear { BootLogger.mark("navigation-visible") }
+                } else if let location {
+                    RunningShellView(location: location) {
+                        phase = .dashboard
+                    }
                 }
             }
         }
@@ -79,10 +80,7 @@ struct LaunchView: View {
                 Spacer()
                 Menu {
                     Button(action: startDriving) {
-                        Label("Snelheidsdashboard", systemImage: "speedometer")
-                    }
-                    Button(action: startDriving) {
-                        Label("Navigatie", systemImage: "map")
+                        Label("Start", systemImage: "speedometer")
                     }
                     Divider()
                     Button { showLocationHelp = true } label: {
@@ -146,72 +144,48 @@ struct LaunchView: View {
         startDriving()
     }
 
-    /// Een tik: meteen GPS + navigatie. Geen tussen-scherm meer.
     private func startDriving() {
-        openNavigationAfterGPS = true
         BootLogger.mark("start-tap")
         startGPS()
     }
 
+    /// Minimale, non-blocking startup. No sleeps, no exclusive locks, no sync uploads.
     private func startGPS() {
         guard !startupStarted else { return }
         startupStarted = true
         phase = .gpsStarting
-        statusMessage = "GPS voorbereiden..."
+        statusMessage = "GPS starten..."
         BootLogger.mark("gps-tap")
 
-        Task { @MainActor in
-            BootLogger.mark("gps-before-service")
-            let service = LocationBackgroundService.shared
-            BootLogger.mark("gps-location-shared")
+        let service = LocationBackgroundService.shared
+        BootLogger.mark("gps-location-shared")
+        location = service
 
-            guard service.beginExclusiveStartup() else {
-                BootLogger.mark("gps-startup-busy")
-                location = service
-                navigationService = NavigationService.shared
-                service.markRuntimeReady()
-                phase = .navigation
-                return
-            }
+        let nav = NavigationService.shared
+        BootLogger.mark("gps-nav-shared")
+        navigationService = nav
 
-            location = service
-            BootLogger.mark("gps-location-assigned")
+        CarPlayNavigationCoordinator.shared.navigationService = nav
+        CarPlayNavigationCoordinator.shared.locationService = service
+        CarPlayDrivingTaskCoordinator.shared.locationService = service
+        BootLogger.mark("gps-wired")
 
-            statusMessage = "Locatie toestemming..."
-            service.prepareForUse()
-            BootLogger.mark("gps-prepared")
+        service.prepareForUse()
+        BootLogger.mark("gps-prepared")
 
-            let nav = NavigationService.shared
-            BootLogger.mark("gps-nav-shared")
-            navigationService = nav
-            BootLogger.mark("gps-nav-assigned")
-
-            CarPlayNavigationCoordinator.shared.navigationService = nav
-            CarPlayNavigationCoordinator.shared.locationService = service
-            CarPlayDrivingTaskCoordinator.shared.locationService = service
-            BootLogger.mark("gps-service-created")
-
-            statusMessage = "GPS starten..."
-            BootLogger.mark("gps-before-activate")
-            if !service.isTracking {
-                service.activateForegroundOnly()
-            }
-            BootLogger.mark("gps-active")
-
-            DriveSession.shared.markPhoneOwned(true)
-            BootLogger.mark("gps-drive-session")
-
-            service.markRuntimeReady()
-            BootLogger.mark("gps-runtime-ready")
-
-            DispatchQueue.global(qos: .utility).async {
-                BootLogger.uploadAsync()
-            }
-
-            phase = openNavigationAfterGPS ? .navigation : .running
-            BootLogger.mark(openNavigationAfterGPS ? "phase-navigation" : "phase-running")
-            BootLogger.uploadAsync()
+        if !service.isTracking {
+            service.activateForegroundOnly()
         }
+        BootLogger.mark("gps-active")
+
+        service.markRuntimeReady()
+        DriveSession.shared.markPhoneOwned(true)
+        BootLogger.mark("gps-ready")
+
+        // Direct door naar navigatie — nooit blijven hangen op de spinner.
+        phase = .navigation
+        BootLogger.mark("phase-navigation")
+        BootLogger.uploadAsync()
     }
 }
 
