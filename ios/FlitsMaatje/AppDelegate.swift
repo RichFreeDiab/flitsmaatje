@@ -6,12 +6,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        true
+        BootLogger.mark("did-finish-launching")
+        AppLogger.install()
+        return true
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Async only — sync upload + semaphore on a utility queue raced with
-        // button-tap uploads and contributed to main-thread stalls.
+        BootLogger.mark("did-become-active")
         BootLogger.uploadAsync()
     }
 }

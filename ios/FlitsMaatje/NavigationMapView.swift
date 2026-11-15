@@ -5,7 +5,12 @@ struct NavigationMapView: View {
     @EnvironmentObject private var location: LocationBackgroundService
     @EnvironmentObject private var navigation: NavigationService
 
-    @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var cameraPosition: MapCameraPosition = .region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 52.1, longitude: 5.2),
+            span: MKCoordinateSpan(latitudeDelta: 0.6, longitudeDelta: 0.6)
+        )
+    )
     @State private var didCenterOnUser = false
     @FocusState private var searchFocused: Bool
     @State private var favoriteToEdit: FavoriteDestinationKind?
@@ -121,8 +126,8 @@ struct NavigationMapView: View {
                     Marker(navigation.destinationName ?? "Bestemming", coordinate: dest)
                 }
             }
-            .mapStyle(.standard(elevation: .realistic, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: true))
-            .mapControls { MapCompass(); MapUserLocationButton() }
+            .mapStyle(.standard(pointsOfInterest: .excludingAll, showsTraffic: true))
+            .mapControls { MapCompass() }
             .onTapGesture { screenPoint in
                 guard !navigation.isNavigating,
                       let coordinate = proxy.convert(screenPoint, from: .local),

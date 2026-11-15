@@ -43,11 +43,7 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
         mapView.userTrackingMode = .none
         mapView.pointOfInterestFilter = .excludingAll
         mapView.showsTraffic = true
-        mapView.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .realistic, emphasisStyle: .muted)
-        mapView.cameraZoomRange = MKMapView.CameraZoomRange(
-            minCenterCoordinateDistance: 180,
-            maxCenterCoordinateDistance: 900
-        )
+        mapView.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
         view.addSubview(mapView)
         NSLayoutConstraint.activate([
             mapView.topAnchor.constraint(equalTo: view.topAnchor), mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor),

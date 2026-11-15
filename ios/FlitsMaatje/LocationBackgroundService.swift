@@ -332,9 +332,11 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         }
 
         AppLogger.log("GPS update accuracy=\(Int(location.horizontalAccuracy))m speed=\(currentSpeedKmh ?? -1)kmh")
-        NavigationService.shared.updateTrafficReports(mapReports)
-        NavigationService.shared.updateProgress(location: location)
-        CarPlayNavigationCoordinator.shared.updateNavigationProgress()
+        if let nav = NavigationService.existing {
+            nav.updateTrafficReports(mapReports)
+            nav.updateProgress(location: location)
+        }
+        CarPlayNavigationCoordinator.existing?.updateNavigationProgress()
         onLocationUpdate?(location)
         for handler in locationUpdateHandlers.values {
             handler(location)
@@ -433,7 +435,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             statusText = message
             persistSnapshot(lat: lat, lng: lng, alert: alert, message: statusText)
             handleFlitserAlarm(alert: alert)
-            CarPlayNavigationCoordinator.shared.handleFlitserAlert(alert)
+            CarPlayNavigationCoordinator.existing?.handleFlitserAlert(alert)
             refreshCarPlay(alert: alert)
             if alert.distance_m <= 80 {
                 DriveSession.shared.notePassedAlert(alert)
@@ -442,7 +444,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             statusText = effectiveFineEstimate?.displayText(speedKmh: currentSpeedKmh, limit: speedLimit) ?? "Geen meldingen in de buurt"
             persistSnapshot(lat: lat, lng: lng, alert: nil, message: statusText)
             resetAlarmState()
-            CarPlayNavigationCoordinator.shared.handleFlitserAlert(nil)
+            CarPlayNavigationCoordinator.existing?.handleFlitserAlert(nil)
             refreshCarPlay(alert: nil)
         }
     }
@@ -488,7 +490,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             )
             // Boeteweergave ververs direct; deze update mag niet worden
             // overgeslagen door de flitser-refresh rate-limit.
-            CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
+            CarPlayDrivingTaskCoordinator.existing?.updateSpeeding(
                 speedKmh: currentSpeedKmh,
                 limit: speedLimit,
                 fine: effectiveFineEstimate
@@ -582,7 +584,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
             AlertNotifier.updateSpeedingPopup(speedKmh: currentSpeedKmh, limit: speedLimit, fine: fine)
         }
         refreshCarPlaySpeeding()
-        CarPlayNavigationCoordinator.shared.handleSpeedingFine(
+        CarPlayNavigationCoordinator.existing?.handleSpeedingFine(
             fine: activeFine,
             speedKmh: currentSpeedKmh,
             limit: speedLimit
@@ -598,7 +600,7 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         lastSpeedingSignature = nil
         AlertNotifier.clearSpeedingPopup()
         refreshCarPlaySpeeding()
-        CarPlayNavigationCoordinator.shared.handleSpeedingFine(
+        CarPlayNavigationCoordinator.existing?.handleSpeedingFine(
             fine: nil,
             speedKmh: nil,
             limit: nil
@@ -609,14 +611,14 @@ final class LocationBackgroundService: NSObject, ObservableObject, CLLocationMan
         let now = Date()
         guard now.timeIntervalSince(lastCarPlayRefreshAt) >= carPlayRefreshInterval else { return }
         lastCarPlayRefreshAt = now
-        CarPlayDrivingTaskCoordinator.shared.update(alert: alert)
+        CarPlayDrivingTaskCoordinator.existing?.update(alert: alert)
     }
 
     private func refreshCarPlaySpeeding() {
         let now = Date()
         guard now.timeIntervalSince(lastCarPlayRefreshAt) >= carPlayRefreshInterval else { return }
         lastCarPlayRefreshAt = now
-        CarPlayDrivingTaskCoordinator.shared.updateSpeeding(
+        CarPlayDrivingTaskCoordinator.existing?.updateSpeeding(
             speedKmh: currentSpeedKmh,
             limit: speedLimit,
             fine: effectiveFineEstimate

@@ -16,6 +16,8 @@ final class CarPlayDrivingTaskCoordinator: NSObject {
         return created
     }
 
+    static var existing: CarPlayDrivingTaskCoordinator? { _shared }
+
     weak var locationService: LocationBackgroundService?
 
     private(set) weak var interfaceController: CPInterfaceController?

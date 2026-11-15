@@ -14,6 +14,8 @@ final class CarPlayNavigationCoordinator: NSObject {
         return created
     }
 
+    static var existing: CarPlayNavigationCoordinator? { _shared }
+
     weak var locationService: LocationBackgroundService?
     weak var navigationService: NavigationService?
 

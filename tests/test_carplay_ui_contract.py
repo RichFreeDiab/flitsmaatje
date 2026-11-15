@@ -120,7 +120,9 @@ class CarPlayUIContractTests(unittest.TestCase):
     def test_map_follows_from_a_close_pitched_camera(self):
         self.assertIn("pitch: 64", MAP_VIEW)
         self.assertIn("let lookAhead =", MAP_VIEW)
-        self.assertIn("maxCenterCoordinateDistance: 900", MAP_VIEW)
+        # Tight CameraZoomRange + realistic elevation killed TestFlight starts on iOS 27.
+        self.assertIn("elevationStyle: .flat", MAP_VIEW)
+        self.assertNotIn("maxCenterCoordinateDistance: 900", MAP_VIEW)
 
     def test_fine_card_contains_speed_and_compact_amount(self):
         self.assertIn('Boete bij \\($0) km/u:', MAP_VIEW)

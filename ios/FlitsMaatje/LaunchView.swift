@@ -13,7 +13,6 @@ struct LaunchView: View {
 
     private enum Phase {
         case idle
-        case gpsStarting
         case running
         case dashboard
         case navigation
@@ -24,30 +23,24 @@ struct LaunchView: View {
             switch phase {
             case .idle:
                 idleView
-            case .gpsStarting:
-                VStack(spacing: 20) {
-                    ProgressView()
-                    Text(statusMessage)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .running:
                 if let location {
-                    RunningShellView(location: location) {
-                        BootLogger.mark("dashboard-tap")
-                        phase = .dashboard
-                    }
+                    RunningShellView(
+                        location: location,
+                        onOpenDashboard: {
+                            BootLogger.mark("dashboard-tap")
+                            phase = .dashboard
+                        },
+                        onOpenMap: openMap
+                    )
+                } else {
+                    idleView
                 }
             case .dashboard:
                 if let location {
                     ContentView()
                         .environmentObject(location)
-                        .onAppear {
-                            BootLogger.mark("dashboard-visible")
-                            CarPlayDrivingTaskCoordinator.shared.locationService = location
-                        }
+                        .onAppear { BootLogger.mark("dashboard-visible") }
                 }
             case .navigation:
                 if let location, let navigationService {
@@ -56,9 +49,7 @@ struct LaunchView: View {
                         .environmentObject(navigationService)
                         .onAppear { BootLogger.mark("navigation-visible") }
                 } else if let location {
-                    RunningShellView(location: location) {
-                        phase = .dashboard
-                    }
+                    RunningShellView(location: location, onOpenDashboard: { phase = .dashboard }, onOpenMap: openMap)
                 }
             }
         }
@@ -149,49 +140,50 @@ struct LaunchView: View {
         startGPS()
     }
 
-    /// Minimale, non-blocking startup. No sleeps, no exclusive locks, no sync uploads.
+    /// GPS + eenvoudig snelheidsscherm. Geen SwiftUI-Map, geen NavigationService
+    /// en geen CarPlay-coordinator in dezelfde tik — dat crashte 553–592.
     private func startGPS() {
         guard !startupStarted else { return }
         startupStarted = true
-        phase = .gpsStarting
-        statusMessage = "GPS starten..."
         BootLogger.mark("gps-tap")
 
         let service = LocationBackgroundService.shared
         BootLogger.mark("gps-location-shared")
         location = service
+        phase = .running
+        BootLogger.mark("phase-running")
+        BootLogger.uploadAsync()
 
+        DispatchQueue.main.async {
+            BootLogger.mark("gps-deferred-activate")
+            service.prepareForUse()
+            BootLogger.mark("gps-prepared")
+            if !service.isTracking {
+                service.activateForegroundOnly()
+            }
+            BootLogger.mark("gps-active")
+            service.markRuntimeReady()
+            BootLogger.mark("gps-ready")
+            BootLogger.uploadAsync()
+        }
+    }
+
+    private func openMap() {
+        BootLogger.mark("map-tap")
+        let service = location ?? LocationBackgroundService.shared
+        location = service
         let nav = NavigationService.shared
-        BootLogger.mark("gps-nav-shared")
         navigationService = nav
-
         CarPlayNavigationCoordinator.shared.navigationService = nav
         CarPlayNavigationCoordinator.shared.locationService = service
-        CarPlayDrivingTaskCoordinator.shared.locationService = service
-        BootLogger.mark("gps-wired")
-
-        service.prepareForUse()
-        BootLogger.mark("gps-prepared")
-
-        if !service.isTracking {
-            service.activateForegroundOnly()
-        }
-        BootLogger.mark("gps-active")
-
-        service.markRuntimeReady()
-        DriveSession.shared.markPhoneOwned(true)
-        BootLogger.mark("gps-ready")
-
-        // Direct door naar navigatie — nooit blijven hangen op de spinner.
         phase = .navigation
-        BootLogger.mark("phase-navigation")
-        BootLogger.uploadAsync()
     }
 }
 
 private struct RunningShellView: View {
     @ObservedObject var location: LocationBackgroundService
     let onOpenDashboard: () -> Void
+    let onOpenMap: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
@@ -209,8 +201,19 @@ private struct RunningShellView: View {
                     .font(.system(size: 44, weight: .bold, design: .rounded))
             }
 
+            if let alert = location.currentAlert {
+                Text("\(alert.label) over \(alert.distance_m) m")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+
             Button("Open dashboard", action: onOpenDashboard)
                 .buttonStyle(.borderedProminent)
+
+            Button("Kaart openen", action: onOpenMap)
+                .buttonStyle(.bordered)
 
             if location.managerAuthorizationIsWhenInUse {
                 Button("Zet locatie op Altijd (CarPlay)") {
@@ -226,5 +229,6 @@ private struct RunningShellView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+        .onAppear { BootLogger.mark("running-visible") }
     }
 }

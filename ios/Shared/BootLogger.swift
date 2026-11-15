@@ -26,9 +26,10 @@ enum BootLogger {
         return Array(Set(paths))
     }
 
-    /// Never blocks the caller. Safe from MainActor / button handlers.
+    /// Append one line. Tiny synchronous write so a crash in the same runloop still leaves a mark.
     static func mark(_ message: String) {
         let stamped = "[\(isoTimestamp())] \(message)"
+        writeLatestLineSync(stamped)
         queue.async {
             if !didWriteProcessStart {
                 didWriteProcessStart = true
@@ -39,18 +40,39 @@ enum BootLogger {
         }
     }
 
+    private static func writeLatestLineSync(_ line: String) {
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("boot-latest.log")
+        guard let data = (line + "\n").data(using: .utf8) else { return }
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
+        }
+        guard let handle = FileHandle(forWritingAtPath: path) else { return }
+        defer { try? handle.close() }
+        handle.seekToEndOfFile()
+        handle.write(data)
+    }
+
     static func readAll() -> String {
         queue.sync {
+            var chunks: [String] = []
+            let latest = (NSTemporaryDirectory() as NSString).appendingPathComponent("boot-latest.log")
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: latest)),
+               let text = String(data: data, encoding: .utf8),
+               !text.isEmpty {
+                chunks.append(text)
+            }
             if !memoryLines.isEmpty {
-                return memoryLines.joined(separator: "\n")
+                chunks.append(memoryLines.joined(separator: "\n"))
+            } else {
+                for path in logPaths {
+                    guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                          let text = String(data: data, encoding: .utf8),
+                          !text.isEmpty else { continue }
+                    chunks.append(text)
+                    break
+                }
             }
-            for path in logPaths {
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-                      let text = String(data: data, encoding: .utf8),
-                      !text.isEmpty else { continue }
-                return text
-            }
-            return ""
+            return chunks.joined(separator: "\n")
         }
     }
 

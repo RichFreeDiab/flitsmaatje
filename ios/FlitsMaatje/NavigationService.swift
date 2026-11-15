@@ -14,6 +14,9 @@ final class NavigationService: ObservableObject {
         return created
     }
 
+    /// Peek without creating — GPS updates must not instantiate MapKit/speech at boot.
+    static var existing: NavigationService? { _shared }
+
     @Published var searchQuery = ""
     @Published var searchResults: [MKMapItem] = []
     @Published var route: MKRoute?
