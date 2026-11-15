@@ -122,15 +122,20 @@ final class DriveSession: @unchecked Sendable {
 
     private func persistLite() {
         stateLock.lock()
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "isActive": isActive,
-            "speedKmh": speedKmh as Any,
             "course": course,
             "routeCount": routePoints.count,
-            "alertId": currentAlertId as Any,
             "phoneOwns": phoneOwnsServices,
         ]
+        if let speedKmh {
+            payload["speedKmh"] = speedKmh
+        }
+        if let currentAlertId {
+            payload["alertId"] = currentAlertId
+        }
         stateLock.unlock()
+        // NSNull in a dict crashes UserDefaults (NSInvalidArgumentException on 599/617).
         defaults.set(payload, forKey: Self.sessionKey)
     }
 

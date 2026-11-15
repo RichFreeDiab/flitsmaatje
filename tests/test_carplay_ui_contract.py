@@ -151,6 +151,13 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertIn("FineCalculator.estimate(", location_service)
         self.assertNotIn('return "Boete wordt berekend…"', location_service)
 
+    def test_drive_session_does_not_write_null_to_userdefaults(self):
+        drive = (ROOT / "ios" / "FlitsMaatje" / "DriveSession.swift").read_text(encoding="utf-8")
+        self.assertNotIn("speedKmh as Any", drive)
+        self.assertNotIn("alertId as Any", drive)
+        self.assertIn('if let speedKmh', drive)
+        self.assertIn('if let currentAlertId', drive)
+
     def test_native_maneuver_objects_are_stable_between_gps_updates(self):
         self.assertIn("private var stableManeuvers: [CPManeuver]", COORDINATOR)
         self.assertIn("let mustRebuild =", COORDINATOR)
