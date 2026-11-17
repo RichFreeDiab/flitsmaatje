@@ -128,6 +128,24 @@ class CarPlayUIContractTests(unittest.TestCase):
         self.assertIn('Boete bij \\($0) km/u:', MAP_VIEW)
         self.assertIn('return "\\(prefix)€ \\(amount)"', MAP_VIEW)
 
+    def test_phone_guidance_is_route_bound_and_boete_card_is_actionable(self):
+        lane_hud = (ROOT / "static" / "js" / "lane-hud.js").read_text(encoding="utf-8")
+        style = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        service_worker = (ROOT / "static" / "sw.js").read_text(encoding="utf-8")
+        self.assertIn("hudEl.hidden = !(hasRoute && step)", lane_hud)
+        self.assertIn("distanceM > G.LANE_PROMINENT_M", lane_hud)
+        self.assertIn('const CACHE = "flitsmaatje-v2"', service_worker)
+        self.assertIn('fineText != "Boete —"', NAVIGATION_MAP)
+        self.assertIn('fineText != "Boete --"', NAVIGATION_MAP)
+        self.assertIn("private var hasVisibleAlert", NAVIGATION_MAP)
+        self.assertIn("if !hasVisibleAlert", NAVIGATION_MAP)
+        self.assertEqual(NAVIGATION_MAP.count('Toggle("Boete-indicatie tonen"'), 1)
+        self.assertNotIn('Toggle("Boetemelding aan/uit"', NAVIGATION_MAP)
+        self.assertIn("body.alert-active #fine-banner", style)
+
+    def test_carplay_lane_strip_stays_on_one_compact_line(self):
+        self.assertIn("laneLabel.numberOfLines = 1", MAP_VIEW)
+
     def test_spoken_guidance_and_live_maneuver_distance_are_updated(self):
         self.assertIn("@Published var voiceEnabled: Bool", NAVIGATION)
         self.assertIn('speechPreferenceKey = "spoken-guidance-enabled"', NAVIGATION)

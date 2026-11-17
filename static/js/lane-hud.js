@@ -7,7 +7,6 @@
   const subEl = document.getElementById("lane-sub");
   const lanesEl = document.getElementById("lane-lanes");
   const exitEl = document.getElementById("lane-exit");
-  const laneTextEl = document.getElementById("lane-lane-text");
   const hudEl = document.getElementById("lane-hud");
   if (!arrowEl || !labelEl || !subEl || !lanesEl) return;
 
@@ -29,13 +28,6 @@
   let cachedLaneSection = null;
   let emptyLaneStreak = 0;
   let lastLaneDiagAt = 0;
-
-  function compassLabel(deg) {
-    if (deg == null || !Number.isFinite(deg)) return "—";
-    const names = ["N", "NO", "O", "ZO", "Z", "ZW", "W", "NW"];
-    const idx = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
-    return names[idx];
-  }
 
   function maneuverIcon(step) {
     if (!step || !step.maneuver) return "↑";
@@ -86,17 +78,6 @@
     return dirs;
   }
 
-  function setLaneText(text) {
-    if (!laneTextEl) return;
-    if (text) {
-      laneTextEl.hidden = false;
-      laneTextEl.textContent = text;
-    } else {
-      laneTextEl.hidden = true;
-      laneTextEl.textContent = "";
-    }
-  }
-
   function setExitText(text) {
     if (!exitEl) return;
     if (text) {
@@ -136,17 +117,15 @@
 
   function renderLanes(section, pos) {
     const lanes = (section && section.lanes) || [];
-    if (!lanes.length) {
+    const distanceM = G.laneSectionDistanceM(section, pos);
+    if (!lanes.length || distanceM == null || distanceM > G.LANE_PROMINENT_M) {
       lanesEl.hidden = true;
       lanesEl.innerHTML = "";
-      delete lanesEl.dataset.hint;
       applyScaleClass(null);
       return;
     }
-    const distanceM = G.laneSectionDistanceM(section, pos);
     applyScaleClass(distanceM);
     lanesEl.hidden = false;
-    const followIdx = lanes.findIndex((l) => l.follow);
     lanesEl.innerHTML = lanes
       .map((lane, i) => {
         const dirs = laneDisplayDirections(lane);
@@ -168,11 +147,6 @@
         return `<span class="${cls}" title="${title}"><span class="lane-stack">${arrows}</span><small>${i + 1}</small></span>`;
       })
       .join("");
-    if (followIdx >= 0) {
-      lanesEl.dataset.hint = G.laneRecommendationText(section);
-    } else {
-      lanesEl.dataset.hint = `${lanes.length} banen`;
-    }
     logLaneDiag("render", {
       lanes: lanes.length,
       distanceM,
@@ -199,68 +173,38 @@
   function updateHud() {
     const nav = window.flitsmaatjeNav;
     const pos = window.flitsmaatjePos;
-    const heading =
-      typeof window.flitsmaatjeHeading === "number"
-        ? window.flitsmaatjeHeading
-        : null;
     const hasRoute = !!(nav && nav.hasRoute && nav.hasRoute());
     const step = hasRoute && nav.getNextStep ? nav.getNextStep() : null;
 
     refreshCachedSection();
-
-    if (heading != null && Number.isFinite(heading) && !(hasRoute && step)) {
-      arrowEl.style.transform = `rotate(${heading}deg)`;
-    }
+    hudEl.hidden = !(hasRoute && step);
 
     if (hasRoute && step) {
       arrowEl.textContent = maneuverIcon(step);
       arrowEl.style.transform = "none";
-      const road = step.name ? ` · ${step.name}` : "";
       const km =
         step.distance != null ? `${(step.distance / 1000).toFixed(1)} km` : "";
       labelEl.textContent =
         step.maneuver && step.maneuver.instruction
           ? step.maneuver.instruction
-          : `${(step.maneuver && step.maneuver.modifier) || "rechtdoor"}${road}`;
+          : (step.maneuver && step.maneuver.modifier) || "Rechtdoor";
 
       const exitBanner = G.currentOrUpcomingExitBanner(nav, step);
       setExitText(exitBanner || "");
-
-      const detail = G.guidanceDetailText(nav, step, cachedLaneSection, pos);
-      setLaneText(
-        detail && detail !== exitBanner
-          ? detail
-          : lanesEl.dataset.hint || (!lanesEl.hidden ? "Rijbaan" : "")
-      );
-
-      subEl.textContent = [
-        km,
-        heading != null
-          ? `koers ${Math.round(heading)}° ${compassLabel(heading)}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      subEl.textContent = km;
       maybeFetchLanes(nav);
       return;
     }
 
     cachedLaneSection = null;
     setExitText("");
-    setLaneText("");
     arrowEl.textContent = "↑";
     arrowEl.removeAttribute("title");
     applyScaleClass(null);
-    if (heading != null && Number.isFinite(heading)) {
-      labelEl.textContent = `Koers ${compassLabel(heading)}`;
-      subEl.textContent = `${Math.round(heading)}° · pijl blijft zichtbaar`;
-    } else {
-      labelEl.textContent = "Richting…";
-      subEl.textContent = "Wacht op GPS-koers";
-    }
+    labelEl.textContent = "Richting…";
+    subEl.textContent = "Wacht op GPS-koers";
     lanesEl.hidden = true;
     lanesEl.innerHTML = "";
-    delete lanesEl.dataset.hint;
   }
 
   async function maybeFetchLanes(nav) {

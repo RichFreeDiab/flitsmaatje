@@ -574,15 +574,13 @@ function renderSpeedLimit(limit, fine) {
   speedPanelEl.classList.add("speeding");
 
   if (fine.om_zaak) {
-    fineText.textContent = `${fine.excess_kmh} km/u te hard — geen vaste boete, dagvaarding OM (mogelijk rijontzegging)`;
+    fineText.textContent = `+${fine.excess_kmh} km/u · OM-dagvaarding`;
   } else {
-    fineText.textContent = `${fine.excess_kmh} km/u te hard — indicatief €${fine.bedrag} (incl. €${ADMIN_COST_DISPLAY} adm.kosten)`;
+    fineText.textContent = `+${fine.excess_kmh} km/u · indicatief €${fine.bedrag}`;
   }
   fineBanner.classList.remove("hidden");
   playFineBeep();
 }
-
-const ADMIN_COST_DISPLAY = 9;
 
 let lastFineBeepTime = 0;
 function playFineBeep() {

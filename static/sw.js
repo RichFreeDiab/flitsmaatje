@@ -1,4 +1,4 @@
-const CACHE = "flitsmaatje-v1";
+const CACHE = "flitsmaatje-v2";
 const ASSETS = ["/", "/static/css/style.css", "/static/js/app.js", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

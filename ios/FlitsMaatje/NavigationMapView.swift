@@ -295,12 +295,12 @@ struct NavigationMapView: View {
     private var laneStripMetrics: (cell: CGFloat, arrow: CGFloat, icon: CGFloat, maxWidth: CGFloat) {
         let meters = laneDistanceMeters
         if meters > 0 && meters <= NavigationService.laneExecuteM {
-            return (44, 20, 34, 360)
+            return (34, 17, 30, 320)
         }
         if meters > 0 && meters <= NavigationService.laneProminentM {
-            return (38, 18, 30, 340)
+            return (32, 16, 28, 310)
         }
-        return (32, 16, 26, 320)
+        return (30, 15, 26, 300)
     }
 
     private var maneuverBanner: some View {
@@ -331,7 +331,7 @@ struct NavigationMapView: View {
             if let section = activeLaneSection {
                 googleMapsLaneStrip(section, cellSize: metrics.cell, arrowSize: metrics.arrow)
                 if let advice = NavigationService.laneRecommendationText(for: section),
-                   laneDistanceMeters <= NavigationService.laneProminentM {
+                   laneDistanceMeters <= NavigationService.laneExecuteM {
                     Text(advice)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.9))
@@ -423,9 +423,16 @@ struct NavigationMapView: View {
         }
     }
 
+    private var hasVisibleAlert: Bool {
+        navigation.alertsEnabled && location.currentAlert != nil
+    }
+
     private var bottomHUD: some View {
         VStack(spacing: 8) {
-            if let traffic = location.trafficInfo, let delay = traffic.delay_s, delay >= 60 {
+            if !hasVisibleAlert,
+               let traffic = location.trafficInfo,
+               let delay = traffic.delay_s,
+               delay >= 60 {
                 HStack(spacing: 8) {
                     Image(systemName: traffic.road_closure ? "exclamationmark.triangle.fill" : "car.fill")
                     Text(traffic.road_closure ? "Wegafsluiting gemeld" : "TomTom: +\(delay / 60) min vertraging")
@@ -436,7 +443,11 @@ struct NavigationMapView: View {
                 .padding(10)
                 .background(Color.yellow.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
             }
-            if navigation.finesEnabled, let fineText = location.fineStatusText {
+            if navigation.finesEnabled,
+               !hasVisibleAlert,
+               let fineText = location.fineStatusText,
+               fineText != "Boete —",
+               fineText != "Boete --" {
                 HStack(spacing: 8) {
                     Image(systemName: "eurosign.circle.fill")
                         .font(.headline)
@@ -446,24 +457,21 @@ struct NavigationMapView: View {
                         .minimumScaleFactor(0.75)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(fineText == "Boete —" ? Color.white : Color.black)
+                .foregroundStyle(Color.black)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .frame(maxWidth: 290, alignment: .leading)
-                .background(fineText == "Boete —" ? Color.gray : Color.orange, in: RoundedRectangle(cornerRadius: 13))
+                .background(Color.orange, in: RoundedRectangle(cornerRadius: 13))
                 .shadow(color: .black.opacity(0.22), radius: 5, y: 2)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .accessibilityLabel("Boete-indicatie: \(fineText)")
             }
-            if navigation.alertsEnabled, let alert = location.currentAlert {
+            if hasVisibleAlert, let alert = location.currentAlert {
                 HStack(spacing: 12) {
                     Text(alert.icon).font(.title)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(alert.label).font(.headline).foregroundStyle(.white)
                         Text(String(format: "Over %.1f km", Double(alert.distance_m) / 1000)).font(.subheadline.bold()).foregroundStyle(.white.opacity(0.9))
-                        if let road = alert.roadContextText {
-                            Text(road).font(.caption).foregroundStyle(.white.opacity(0.85))
-                        }
                     }
                     Spacer()
                 }.padding(12).background(Color.red.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
@@ -514,7 +522,6 @@ struct NavigationMapView: View {
                     Toggle("Boete-indicatie tonen", isOn: $navigation.finesEnabled)
                     Toggle("Verkeersmeldingen tonen", isOn: $navigation.alertsEnabled)
                     Toggle("Gesproken waarschuwingen", isOn: $navigation.voiceEnabled)
-                    Toggle("Boetemelding aan/uit", isOn: $navigation.finesEnabled)
                 }
                 Section {
                     Text("Uit: alleen alarmtoon en trilling. Aan: ook gesproken route- en flitserwaarschuwingen.")
