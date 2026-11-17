@@ -13,7 +13,7 @@
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="/static/css/style.css?v=20260907-lanes">
+<link rel="stylesheet" href="/static/css/style.css?v=20261117-compact">
 </head>
 <body>
 
@@ -23,11 +23,10 @@
   </div>
 
 
-  <div id="lane-hud" aria-live="polite">
+  <div id="lane-hud" aria-live="polite" hidden>
     <div class="lane-main">
       <span id="lane-arrow" class="lane-arrow">↑</span>
       <div class="lane-beside">
-        <div id="lane-lane-text" class="lane-lane-text" hidden></div>
         <div id="lane-exit" class="lane-exit" hidden></div>
       </div>
     </div>
@@ -82,8 +81,8 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/js/app.js"></script>
-  <script src="/static/js/guidance-shared.js?v=20260907-lanes"></script>
+  <script src="/static/js/guidance-shared.js?v=20261117-compact"></script>
   <script src="/static/js/navigation.js"></script>
-  <script src="/static/js/lane-hud.js?v=20260907-lanes"></script>
+  <script src="/static/js/lane-hud.js?v=20261117-compact"></script>
 </body>
 </html>

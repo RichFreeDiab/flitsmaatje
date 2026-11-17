@@ -205,8 +205,8 @@ final class CarPlayMapViewController: UIViewController, MKMapViewDelegate {
             let laneStrip = Self.flitsmeisterLaneStripText(section)
             let boosted = showLaneBoost || section.lanes.count >= 3
             laneLabel.text = laneStrip
-            laneLabel.font = .systemFont(ofSize: boosted ? 28 : 22, weight: .bold)
-            laneLabel.numberOfLines = 2
+            laneLabel.font = .systemFont(ofSize: boosted ? 24 : 20, weight: .bold)
+            laneLabel.numberOfLines = 1
             laneLabel.adjustsFontSizeToFitWidth = true
             laneLabel.minimumScaleFactor = 0.55
             lanePanel.isHidden = false

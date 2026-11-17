@@ -1,12 +1,10 @@
 (() => {
   const css = document.createElement("style");
   css.textContent = `
-    #nav-tools{position:absolute;top:16px;right:12px;z-index:1003;background:#1e2327;padding:8px;border-radius:12px;display:flex;gap:6px}
-    #nav-tools input{width:230px;padding:10px;border:0;border-radius:8px}
-    #nav-tools button{padding:10px;border:0;border-radius:8px;background:#e8482c;color:white;font-weight:700}
-    #route-info{position:absolute;top:76px;right:12px;z-index:1002;background:#1e2327;color:white;padding:10px;border-radius:10px;max-width:320px}
-    #route-info .instruction{font-size:18px;font-weight:700;margin-top:6px}
-    #route-info .muted{opacity:.8;font-size:13px}
+    #nav-tools{position:absolute;top:max(12px,env(safe-area-inset-top));right:12px;z-index:1003;background:#1e2327;padding:6px;border-radius:12px;display:flex;gap:6px}
+    #nav-tools input{width:min(180px,48vw);padding:9px;border:0;border-radius:8px}
+    #nav-tools button{padding:9px;border:0;border-radius:8px;background:#e8482c;color:white;font-weight:700}
+    #route-info{position:absolute;top:64px;right:12px;z-index:1002;background:rgba(30,35,39,.92);color:white;padding:7px 10px;border-radius:10px;max-width:min(220px,70vw);font-size:12px}
   `;
   document.head.appendChild(css);
 
@@ -20,6 +18,7 @@
   let routeLayer = null;
   let steps = [];
   let nextStep = 0;
+  let routeSummary = "";
   let destinationQuery = "";
   let routeCoordinates = [];
   let lastRerouteAt = 0;
@@ -51,32 +50,8 @@
   }
 
   function renderStep() {
-    const step = steps[nextStep];
-    if (!step) {
-      info.innerHTML = '<div class="instruction">🏁 Route voltooid</div>';
-      return;
-    }
-    const km = ((step.distance || 0) / 1000).toFixed(1);
-    let guidanceHtml = "";
-    const G = window.FlitsMaatjeGuidance;
-    if (G) {
-      const nav = window.flitsmaatjeNav;
-      const exit = G.currentOrUpcomingExitBanner(nav, step);
-      const detail = G.guidanceDetailText(nav, step, null, window.flitsmaatjePos);
-      if (exit) {
-        guidanceHtml += '<div class="muted">' + exit + "</div>";
-      }
-      if (detail && detail !== exit) {
-        guidanceHtml += '<div class="muted">' + detail + "</div>";
-      }
-    }
-    info.innerHTML =
-      '<div class="muted">Volgende instructie · ' +
-      km +
-      ' km</div><div class="instruction">' +
-      instruction(step) +
-      "</div>" +
-      guidanceHtml;
+    info.textContent = steps[nextStep] ? routeSummary : "🏁 Route voltooid";
+    info.hidden = false;
   }
 
   async function route() {
@@ -133,16 +108,13 @@
 
       steps = (r.legs || []).flatMap(leg => leg.steps || []).filter(step => step.maneuver);
       nextStep = 0;
+      routeSummary = `Route · ${(r.distance / 1000).toFixed(1)} km · ca. ${Math.round(r.duration / 60)} min`;
       info.hidden = false;
       renderStep();
       window.dispatchEvent(new CustomEvent("flitsmaatje:nav"));
-      const summary = document.createElement("div");
-      summary.className = "muted";
-      summary.textContent = "Totaal " + (r.distance / 1000).toFixed(1) + " km · ongeveer " + Math.round(r.duration / 60) + " min";
-      info.appendChild(summary);
     } catch (e) {
       info.hidden = false;
-      info.innerHTML = '<div class="instruction">⚠️ ' + (e.message || "Route zoeken mislukt") + '</div>';
+      info.textContent = "⚠️ " + (e.message || "Route zoeken mislukt");
     } finally {
       button.disabled = false;
       button.textContent = "Route";
